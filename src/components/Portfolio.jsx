@@ -76,7 +76,7 @@ export default function Portfolio() {
       <div className="port__header">
         <span className="section-label reveal">Portfolio</span>
         <h2 className="section-heading reveal">
-          Partnering with exceptional<br />
+          Partnering with exceptional1<br />
           founders from <em>day one</em>
         </h2>
       </div>
