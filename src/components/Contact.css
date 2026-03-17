@@ -1,0 +1,40 @@
+.contact {
+  padding: 14rem 8%;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.contact::before {
+  content: '';
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--gold-dim), transparent 70%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.contact__inner {
+  position: relative;
+}
+
+.contact__heading {
+  font-family: var(--serif);
+  font-size: clamp(2.8rem, 6vw, 5rem);
+  font-weight: 300;
+  line-height: 1.1;
+  color: var(--cream);
+  margin-bottom: 1.5rem;
+}
+
+.contact__desc {
+  font-size: 1.05rem;
+  color: var(--text-muted);
+  max-width: 440px;
+  margin: 0 auto 3rem;
+  line-height: 1.75;
+}

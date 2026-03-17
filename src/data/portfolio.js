@@ -1,0 +1,60 @@
+export const portfolio = [
+  {
+    name: 'YOUWARE',
+    founder: 'Leon Ming, Founder',
+    moic: '9.33×',
+    irrValue: '1,120%',
+    irrLabel: 'IRR',
+    quote: '"If I had to choose one institution to have on my board, Creekstone would unequivocally be the one and only answer."',
+  },
+  {
+    name: 'TRACE X',
+    founder: 'Chris Pan, Founder',
+    moic: '7.8×',
+    irrValue: '620%',
+    irrLabel: 'IRR',
+    quote: '"Creekstone stands out as a pioneer with sharp, native AI investment intelligence."',
+  },
+  {
+    name: 'KALEISCOPE',
+    founder: 'Qiuqiu, Founder',
+    moic: '6.6×',
+    irrValue: '408%',
+    irrLabel: 'IRR',
+    quote: '"Their post-investment support has been so professional they feel like extended team members."',
+  },
+  {
+    name: 'Code Plus',
+    founder: 'Zhijie, Founder',
+    moic: '4.3×',
+    irrValue: '620%',
+    irrLabel: 'IRR',
+    quote: '"Creekstone provided significant assistance throughout the entire process—from idea to fundraising to team recruitment."',
+  },
+  {
+    name: 'XMAX',
+    founder: 'Jiaxin, Founder',
+    moic: '2.67×',
+    irrValue: '320%',
+    irrLabel: 'IRR',
+    quote: '"Full of energy, passion, and realness, they\'ve been essential to our journey."',
+  },
+  {
+    name: 'MEMU',
+    founder: 'Peter Chen, Founder',
+    logo: '/images/memu-logo.png',
+    moic: '—',
+    irrValue: '3 TS',
+    irrLabel: 'Pre-A',
+    quote: '"They\'ve taught me that the best investor-founder relationships are built on mutual success."',
+    link: '#memu-detail',
+  },
+]
+
+export const coinvestorLogos = [
+  '/images/coinvestor-1.jpeg',
+  '/images/coinvestor-2.jpeg',
+  '/images/coinvestor-3.jpeg',
+  '/images/coinvestor-4.jpeg',
+  '/images/coinvestor-5.jpeg',
+]

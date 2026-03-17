@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(if [ -f deploy.sh ])",
+      "Bash(then cat deploy.sh)",
+      "Bash(elif [ -f package.json ])",
+      "Bash(then cat package.json)",
+      "Bash(elif [ -f Makefile ])",
+      "Bash(then cat Makefile)",
+      "Bash(else ls -la)",
+      "Bash(fi)",
+      "Bash(systemctl list-units:*)",
+      "Bash(sudo grep:*)",
+      "Bash(sudo cat:*)"
+    ]
+  }
+}

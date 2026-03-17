@@ -1,0 +1,204 @@
+:root {
+  --bg: #08080c;
+  --bg-elevated: #0f0f15;
+  --bg-card: rgba(255, 255, 255, 0.03);
+  --gold: #c9a55c;
+  --gold-dim: rgba(201, 165, 92, 0.15);
+  --gold-glow: rgba(201, 165, 92, 0.4);
+  --cream: #f5f0e8;
+  --text: #d4d0c8;
+  --text-muted: #6a665e;
+  --accent: #e94560;
+  --border: rgba(255, 255, 255, 0.06);
+  --serif: 'Cormorant Garamond', Georgia, serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+}
+
+html.lenis, html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Grain overlay (static PNG, zero GPU cost) ─── */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwBAMAAAClLOS0AAAAElBMVEUAAAAAAAAAAAAAAAAAAAAAAADgKxmiAAAABnRSTlMFCQ0RFRkEB95jAAAAkklEQVQ4y43RQQ6AIAwE0EaJR3Dv/xdciIGOFRM3hl+gzBSAX01UO8mlMAFaBFgCfIICtQjQpyB0gFNfQG0CNCkIBeCcnlAbAR2S41uAd2p8C3Cf5KsZ8F8eTlIA/08SAPlEBTh5AaW8gNoLqF1yKjcA2hRkOcC9Ov8GYBO+/o0A6yPAZBc88hzg5AWU8gPqG+ADQOQV1EWMOTAAAAAASUVORK5CYII=");
+  background-repeat: repeat;
+  background-size: 48px 48px;
+  mix-blend-mode: overlay;
+}
+
+/* ─── Section defaults ─── */
+section {
+  position: relative;
+  padding: 10rem 8%;
+}
+
+@media (max-width: 768px) {
+  section { padding: 6rem 5%; }
+}
+
+/* ─── Headings ─── */
+.section-label {
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 1.5rem;
+  display: block;
+}
+
+.section-heading {
+  font-family: var(--serif);
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  font-weight: 300;
+  line-height: 1.15;
+  color: var(--cream);
+  margin-bottom: 1.5rem;
+}
+
+.section-heading em {
+  font-style: italic;
+  color: var(--gold);
+}
+
+.section-desc {
+  font-size: 1.05rem;
+  color: var(--text-muted);
+  max-width: 540px;
+  line-height: 1.75;
+}
+
+/* ─── Horizontal rule ─── */
+.hr {
+  width: 100%;
+  height: 1px;
+  background: var(--border);
+  border: none;
+}
+
+/* ─── Reveal animations (GSAP will handle these) ─── */
+.reveal {
+  opacity: 0;
+  transform: translateY(60px);
+}
+
+.reveal-line {
+  overflow: hidden;
+}
+
+.reveal-line > * {
+  transform: translateY(110%);
+}
+
+/* ─── Buttons ─── */
+.btn-primary {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.1rem 2.8rem;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: var(--gold);
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  text-decoration: none;
+  overflow: hidden;
+  transition: transform 0.5s var(--ease-out-expo), box-shadow 0.5s var(--ease-out-expo);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 60px var(--gold-glow);
+}
+
+.btn-primary .btn-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--cream);
+  transform: translateY(100%);
+  transition: transform 0.5s var(--ease-out-expo);
+}
+
+.btn-primary:hover .btn-fill {
+  transform: translateY(0);
+}
+
+.btn-primary span {
+  position: relative;
+  z-index: 1;
+}
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 2rem;
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--gold);
+  background: transparent;
+  border: 1px solid rgba(201, 165, 92, 0.3);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.4s var(--ease-out-expo);
+}
+
+.btn-outline:hover {
+  background: var(--gold-dim);
+  border-color: var(--gold);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(201, 165, 92, 0.3);
+  border-radius: 2px;
+}

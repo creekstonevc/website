@@ -1,0 +1,122 @@
+.port {
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.port__header {
+  max-width: 600px;
+  margin-bottom: 5rem;
+}
+
+.port__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+.port__card {
+  transition: transform 0.25s ease-out;
+  will-change: transform;
+}
+
+.port__card--link {
+  cursor: pointer;
+}
+
+.port__card-inner {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  padding: 2rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.4s, background 0.4s;
+}
+
+.port__card:hover .port__card-inner {
+  border-color: rgba(201, 165, 92, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.port__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.port__name-block {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.port__logo {
+  height: 28px;
+  width: auto;
+}
+
+.port__name {
+  font-family: var(--serif);
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: var(--cream);
+}
+
+.port__founder {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.port__metrics {
+  display: flex;
+  gap: 1.5rem;
+  flex-shrink: 0;
+}
+
+.port__metric {
+  text-align: right;
+}
+
+.port__metric-val {
+  display: block;
+  font-family: var(--serif);
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: var(--gold);
+  line-height: 1.2;
+}
+
+.port__metric-lbl {
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.port__divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border);
+  margin: 1.5rem 0;
+}
+
+.port__quote {
+  font-family: var(--serif);
+  font-size: 1rem;
+  font-style: italic;
+  font-weight: 300;
+  color: var(--text-muted);
+  line-height: 1.7;
+  flex: 1;
+}
+
+@media (max-width: 1200px) {
+  .port__grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 700px) {
+  .port__grid { grid-template-columns: 1fr; }
+}

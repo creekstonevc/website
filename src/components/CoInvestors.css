@@ -1,0 +1,31 @@
+.coinv {
+  text-align: left;
+}
+
+.coinv__header {
+  max-width: 500px;
+  margin-bottom: 4rem;
+}
+
+.coinv__logos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3rem;
+}
+
+.coinv__item {
+  opacity: 0;
+}
+
+.coinv__item img {
+  height: 36px;
+  width: auto;
+  filter: brightness(0) invert(1);
+  opacity: 0.4;
+  transition: opacity 0.4s;
+}
+
+.coinv__item:hover img {
+  opacity: 0.9;
+}
