@@ -40,7 +40,7 @@ export default function Hero() {
       </div>
 
       <div className="hero__content">
-        <span className="hero__label">We Creates &bull; We Spark</span>
+        <span className="hero__label">We Create &bull; We Spark</span>
 
         <h1 className="hero__title">
           {words.map((w, i) => (
