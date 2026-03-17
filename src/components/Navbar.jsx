@@ -4,7 +4,7 @@ import './Navbar.css'
 
 const links = [
   { href: '#about', label: 'About' },
-  { href: '#team', label: 'Team' },
+  { href: '#team', label: 'Teams' },
   { href: '#portfolio', label: 'Portfolio' },
   { href: '#contact', label: 'Contact' },
 ]
