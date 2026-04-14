@@ -158,25 +158,50 @@
     .echo-label::before{content:'>';color:var(--g)}
     .echo-sub{font-size:11px;color:var(--tx3);letter-spacing:.08em;font-family:'Space Mono',monospace}
     .echo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:8px}
-    .ec{border:1px solid rgba(201,168,76,.1);overflow:hidden;position:relative;transition:transform .4s cubic-bezier(.25,.46,.45,.94),box-shadow .4s,border-color .4s;z-index:1}
-    .ec:hover{transform:scale(1.035);z-index:10;box-shadow:0 20px 60px rgba(0,0,0,.72),0 0 0 1px rgba(201,168,76,.22);border-color:rgba(201,168,76,.22)}
-    .ec-hdr{background:rgba(201,168,76,.05);padding:9px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,168,76,.08);font-family:'Space Mono',monospace}
+    /* card */
+    .ec{border:1px solid rgba(201,168,76,.1);overflow:hidden;position:relative;
+      transition:transform .4s cubic-bezier(.25,.46,.45,.94),box-shadow .4s,border-color .4s;z-index:1}
+    .ec:hover{transform:scale(1.035);z-index:10;
+      box-shadow:0 20px 60px rgba(0,0,0,.72),0 0 0 1px rgba(201,168,76,.22);
+      border-color:rgba(201,168,76,.22)}
+    /* header */
+    .ec-hdr{background:rgba(201,168,76,.05);padding:9px 18px;display:flex;align-items:center;
+      justify-content:space-between;font-family:'Space Mono',monospace}
     .ec-sig{font-size:8px;color:var(--g);letter-spacing:.3em}
     .ec-tag{font-size:8px;color:var(--tx3);letter-spacing:.2em;text-transform:uppercase}
-    .ec-cs{background:linear-gradient(150deg,#F9F0D4 0%,#F4E8BE 55%,#F0E2B4 100%);padding:18px 20px 16px;position:relative}
-    .ec-cs::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 12% 88%,rgba(120,90,15,.06) 0%,transparent 55%),radial-gradient(ellipse at 88% 12%,rgba(120,90,15,.04) 0%,transparent 45%);pointer-events:none}
-    .ec-cs-lbl{font-size:8px;color:rgba(90,64,9,.42);letter-spacing:.32em;font-family:'Space Mono',monospace;margin-bottom:9px;text-transform:uppercase}
-    .ec-cs-q{font-family:'Caveat',cursive;font-size:17px;line-height:1.62;color:#221508;font-weight:500;position:relative;z-index:1}
-    .ec-div{background:#080808;padding:7px 0;text-align:center;font-family:'Space Mono',monospace;font-size:8px;color:#1c1c1c;letter-spacing:.5em;border-top:1px solid rgba(201,168,76,.06);border-bottom:1px solid rgba(201,168,76,.06)}
-    .ec:hover .ec-div{color:#333}
-    .ec-master{background:#030303;padding:14px 20px 18px}
-    .ec-term-bar{display:flex;align-items:center;gap:5px;margin-bottom:10px}
-    .ec-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+    /* CS — code/terminal panel */
+    .ec-code{background:#020202;padding:16px 20px 18px;border-bottom:1px solid rgba(201,168,76,.07)}
+    .ec-code-bar{display:flex;align-items:center;gap:5px;margin-bottom:12px}
+    .ec-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
     .ec-dot.r{background:#FF5F57}.ec-dot.y{background:#FEBC2E}.ec-dot.gg{background:#28C840}
-    .ec-prompt{font-family:'Space Mono',monospace;font-size:8px;color:rgba(201,168,76,.35);letter-spacing:.15em;margin-left:4px}
-    .ec-master-q{font-family:'Space Mono',monospace;font-size:11px;line-height:1.88;color:rgba(201,168,76,.76);text-align:right}
-    .ec-attr{font-family:'Space Mono',monospace;font-size:9px;color:rgba(201,168,76,.28);letter-spacing:.12em;text-align:right;margin-top:9px}
-    .ec-cur{display:inline-block;width:5px;height:10px;background:rgba(201,168,76,.35);vertical-align:middle;animation:blink 1.3s step-end infinite}
+    .ec-code-title{font-family:'Space Mono',monospace;font-size:8px;color:rgba(201,168,76,.3);
+      letter-spacing:.18em;margin-left:6px}
+    /* code quote body — two-line style: prompt + quote */
+    .ec-code-inner{padding-left:2px}
+    .ec-code-prompt{font-family:'Space Mono',monospace;font-size:8px;color:rgba(201,168,76,.38);
+      letter-spacing:.08em;margin-bottom:6px}
+    .ec-code-q{font-family:'Space Mono',monospace;font-size:11px;line-height:1.9;
+      color:rgba(220,200,155,.88);padding-left:10px;border-left:2px solid rgba(201,168,76,.2)}
+    .ec-code-q em{font-style:normal;color:rgba(201,168,76,.9)}
+    .ec-code-foot{font-family:'Space Mono',monospace;font-size:8px;
+      color:rgba(201,168,76,.2);text-align:right;margin-top:10px;letter-spacing:.1em}
+    /* Master — handwriting on parchment */
+    .ec-scroll{background:linear-gradient(160deg,#F8EDD0 0%,#F3E5B8 60%,#EEE0AE 100%);
+      padding:20px 22px 18px;position:relative}
+    .ec-scroll::before{content:'';position:absolute;inset:0;
+      background:
+        radial-gradient(ellipse at 8% 92%,rgba(110,80,10,.07) 0%,transparent 50%),
+        radial-gradient(ellipse at 92% 8%,rgba(110,80,10,.05) 0%,transparent 40%);
+      pointer-events:none}
+    .ec-scroll-q{font-family:'Caveat',cursive;font-size:18px;line-height:1.58;
+      color:#1E1206;font-weight:500;position:relative;z-index:1;
+      padding-bottom:14px;border-bottom:1px solid rgba(100,70,10,.12)}
+    .ec-scroll-attr{font-family:'Space Mono',monospace;font-size:8px;
+      color:rgba(90,60,10,.45);letter-spacing:.14em;text-align:right;
+      margin-top:10px;position:relative;z-index:1}
+    .ec-cur{display:inline-block;width:6px;height:11px;
+      background:rgba(201,168,76,.35);vertical-align:middle;
+      animation:blink 1.3s step-end infinite}
 
     /* ── §06 PERSPECTIVES ── */
     #perspectives{background:var(--bg2);padding:120px 48px}
@@ -518,113 +543,153 @@
 
       <div class="ec">
         <div class="ec-hdr"><span class="ec-sig">SIGNAL.01</span><span class="ec-tag">NATIVE</span></div>
-        <div class="ec-cs">
-          <div class="ec-cs-lbl">Creekstone →</div>
-          <p class="ec-cs-q">"We refuse the domestication of old experience. We only back the 1% native variables that dare to recalculate the world."</p>
+        <div class="ec-code">
+          <div class="ec-code-bar">
+            <div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div>
+            <span class="ec-code-title">creekstone.signal — native</span>
+          </div>
+          <div class="ec-code-inner">
+            <div class="ec-code-prompt">$ thesis.emit("native")</div>
+            <p class="ec-code-q">"We refuse the domestication of old experience. We only back the 1% native variables that dare to recalculate the world."</p>
+          </div>
+          <div class="ec-code-foot">// creekstone<span class="ec-cur"></span></div>
         </div>
-        <div class="ec-div">· echo ·</div>
-        <div class="ec-master">
-          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
-          <p class="ec-master-q">"Specific knowledge is knowledge you cannot be trained for. If society can train you, it can replace you."</p>
-          <div class="ec-attr">— Naval Ravikant<span class="ec-cur"></span></div>
+        <div class="ec-scroll">
+          <p class="ec-scroll-q">"Specific knowledge is knowledge you cannot be trained for. If society can train you, it can replace you."</p>
+          <div class="ec-scroll-attr">— Naval Ravikant</div>
         </div>
       </div>
 
       <div class="ec">
         <div class="ec-hdr"><span class="ec-sig">SIGNAL.02</span><span class="ec-tag">DELIVERY</span></div>
-        <div class="ec-cs">
-          <div class="ec-cs-lbl">Creekstone →</div>
-          <p class="ec-cs-q">"Interaction is no longer the destination. Delivery is."</p>
+        <div class="ec-code">
+          <div class="ec-code-bar">
+            <div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div>
+            <span class="ec-code-title">creekstone.signal — delivery</span>
+          </div>
+          <div class="ec-code-inner">
+            <div class="ec-code-prompt">$ thesis.emit("delivery")</div>
+            <p class="ec-code-q">"Interaction is no longer the destination. Delivery is."</p>
+          </div>
+          <div class="ec-code-foot">// creekstone<span class="ec-cur"></span></div>
         </div>
-        <div class="ec-div">· echo ·</div>
-        <div class="ec-master">
-          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
-          <p class="ec-master-q">"The hottest new programming language is English."</p>
-          <div class="ec-attr">— Andrej Karpathy<span class="ec-cur"></span></div>
+        <div class="ec-scroll">
+          <p class="ec-scroll-q">"The hottest new programming language is English."</p>
+          <div class="ec-scroll-attr">— Andrej Karpathy</div>
         </div>
       </div>
 
       <div class="ec">
         <div class="ec-hdr"><span class="ec-sig">SIGNAL.03</span><span class="ec-tag">VERTICAL</span></div>
-        <div class="ec-cs">
-          <div class="ec-cs-lbl">Creekstone →</div>
-          <p class="ec-cs-q">"Going brutally vertical is the only way out."</p>
+        <div class="ec-code">
+          <div class="ec-code-bar">
+            <div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div>
+            <span class="ec-code-title">creekstone.signal — vertical</span>
+          </div>
+          <div class="ec-code-inner">
+            <div class="ec-code-prompt">$ thesis.emit("vertical")</div>
+            <p class="ec-code-q">"Going brutally vertical is the only way out."</p>
+          </div>
+          <div class="ec-code-foot">// creekstone<span class="ec-cur"></span></div>
         </div>
-        <div class="ec-div">· echo ·</div>
-        <div class="ec-master">
-          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
-          <p class="ec-master-q">"Competition is for losers. If you want to create and capture lasting value, build a monopoly."</p>
-          <div class="ec-attr">— Peter Thiel · Zero to One<span class="ec-cur"></span></div>
+        <div class="ec-scroll">
+          <p class="ec-scroll-q">"Competition is for losers. If you want to create and capture lasting value, build a monopoly."</p>
+          <div class="ec-scroll-attr">— Peter Thiel · Zero to One</div>
         </div>
       </div>
 
       <div class="ec">
         <div class="ec-hdr"><span class="ec-sig">SIGNAL.04</span><span class="ec-tag">LEGACY</span></div>
-        <div class="ec-cs">
-          <div class="ec-cs-lbl">Creekstone →</div>
-          <p class="ec-cs-q">"Your legacy system is someone else's native home."</p>
+        <div class="ec-code">
+          <div class="ec-code-bar">
+            <div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div>
+            <span class="ec-code-title">creekstone.signal — legacy</span>
+          </div>
+          <div class="ec-code-inner">
+            <div class="ec-code-prompt">$ thesis.emit("legacy")</div>
+            <p class="ec-code-q">"Your legacy system is someone else's native home."</p>
+          </div>
+          <div class="ec-code-foot">// creekstone<span class="ec-cur"></span></div>
         </div>
-        <div class="ec-div">· echo ·</div>
-        <div class="ec-master">
-          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
-          <p class="ec-master-q">"No man ever steps in the same river twice, for it's not the same river and he's not the same man."</p>
-          <div class="ec-attr">— Heraclitus · ~500 BC<span class="ec-cur"></span></div>
+        <div class="ec-scroll">
+          <p class="ec-scroll-q">"No man ever steps in the same river twice, for it's not the same river and he's not the same man."</p>
+          <div class="ec-scroll-attr">— Heraclitus · ~500 BC</div>
         </div>
       </div>
 
       <div class="ec">
         <div class="ec-hdr"><span class="ec-sig">SIGNAL.05</span><span class="ec-tag">MOAT</span></div>
-        <div class="ec-cs">
-          <div class="ec-cs-lbl">Creekstone →</div>
-          <p class="ec-cs-q">"The real moat is not code — it is every dynamic evolution driven by the cognitive core."</p>
+        <div class="ec-code">
+          <div class="ec-code-bar">
+            <div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div>
+            <span class="ec-code-title">creekstone.signal — moat</span>
+          </div>
+          <div class="ec-code-inner">
+            <div class="ec-code-prompt">$ thesis.emit("moat")</div>
+            <p class="ec-code-q">"The real moat is not code — it is every dynamic evolution driven by the cognitive core."</p>
+          </div>
+          <div class="ec-code-foot">// creekstone<span class="ec-cur"></span></div>
         </div>
-        <div class="ec-div">· echo ·</div>
-        <div class="ec-master">
-          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
-          <p class="ec-master-q">"What I cannot create, I do not understand."</p>
-          <div class="ec-attr">— Richard Feynman · Caltech Blackboard<span class="ec-cur"></span></div>
+        <div class="ec-scroll">
+          <p class="ec-scroll-q">"What I cannot create, I do not understand."</p>
+          <div class="ec-scroll-attr">— Richard Feynman · Caltech Blackboard</div>
         </div>
       </div>
 
       <div class="ec">
         <div class="ec-hdr"><span class="ec-sig">SIGNAL.06</span><span class="ec-tag">CONTEXT</span></div>
-        <div class="ec-cs">
-          <div class="ec-cs-lbl">Creekstone →</div>
-          <p class="ec-cs-q">"Context is not a feature. Context is civilization."</p>
+        <div class="ec-code">
+          <div class="ec-code-bar">
+            <div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div>
+            <span class="ec-code-title">creekstone.signal — context</span>
+          </div>
+          <div class="ec-code-inner">
+            <div class="ec-code-prompt">$ thesis.emit("context")</div>
+            <p class="ec-code-q">"Context is not a feature. Context is civilization."</p>
+          </div>
+          <div class="ec-code-foot">// creekstone<span class="ec-cur"></span></div>
         </div>
-        <div class="ec-div">· echo ·</div>
-        <div class="ec-master">
-          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
-          <p class="ec-master-q">"The limits of my language are the limits of my world."</p>
-          <div class="ec-attr">— Ludwig Wittgenstein · 1921<span class="ec-cur"></span></div>
+        <div class="ec-scroll">
+          <p class="ec-scroll-q">"The limits of my language are the limits of my world."</p>
+          <div class="ec-scroll-attr">— Ludwig Wittgenstein · 1921</div>
         </div>
       </div>
 
       <div class="ec">
         <div class="ec-hdr"><span class="ec-sig">SIGNAL.07</span><span class="ec-tag">AGENT</span></div>
-        <div class="ec-cs">
-          <div class="ec-cs-lbl">Creekstone →</div>
-          <p class="ec-cs-q">"The future Agent is not a dialogue box. The final form of Agent is the disappearing UI — Proactive Sensing."</p>
+        <div class="ec-code">
+          <div class="ec-code-bar">
+            <div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div>
+            <span class="ec-code-title">creekstone.signal — agent</span>
+          </div>
+          <div class="ec-code-inner">
+            <div class="ec-code-prompt">$ thesis.emit("agent")</div>
+            <p class="ec-code-q">"The future Agent is not a dialogue box. The final form of Agent is the disappearing UI — Proactive Sensing."</p>
+          </div>
+          <div class="ec-code-foot">// creekstone<span class="ec-cur"></span></div>
         </div>
-        <div class="ec-div">· echo ·</div>
-        <div class="ec-master">
-          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
-          <p class="ec-master-q">"The medium is the message."</p>
-          <div class="ec-attr">— Marshall McLuhan · 1964<span class="ec-cur"></span></div>
+        <div class="ec-scroll">
+          <p class="ec-scroll-q">"The medium is the message."</p>
+          <div class="ec-scroll-attr">— Marshall McLuhan · 1964</div>
         </div>
       </div>
 
       <div class="ec">
         <div class="ec-hdr"><span class="ec-sig">SIGNAL.08</span><span class="ec-tag">CO-FOUNDER</span></div>
-        <div class="ec-cs">
-          <div class="ec-cs-lbl">Creekstone →</div>
-          <p class="ec-cs-q">"We don't preach from the high ground. We evolve alongside you in the mud — as co-founders."</p>
+        <div class="ec-code">
+          <div class="ec-code-bar">
+            <div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div>
+            <span class="ec-code-title">creekstone.signal — co-founder</span>
+          </div>
+          <div class="ec-code-inner">
+            <div class="ec-code-prompt">$ thesis.emit("co-founder")</div>
+            <p class="ec-code-q">"We don't preach from the high ground. We evolve alongside you in the mud — as co-founders."</p>
+          </div>
+          <div class="ec-code-foot">// creekstone<span class="ec-cur"></span></div>
         </div>
-        <div class="ec-div">· echo ·</div>
-        <div class="ec-master">
-          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
-          <p class="ec-master-q">"One must still have chaos in oneself to be able to give birth to a dancing star."</p>
-          <div class="ec-attr">— Friedrich Nietzsche · 1883<span class="ec-cur"></span></div>
+        <div class="ec-scroll">
+          <p class="ec-scroll-q">"One must still have chaos in oneself to be able to give birth to a dancing star."</p>
+          <div class="ec-scroll-attr">— Friedrich Nietzsche · 1883</div>
         </div>
       </div>
 
