@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Creekstone Ventures — Agent Native · Founder Friendly</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Caveat:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
@@ -153,44 +153,30 @@
     .qname{font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--gl)}
     .qco{font-size:10px;color:var(--tx3);margin-top:2px}
 
-    /* North Star — dual-quote, hover scale */
-    .qb-label{font-family:'Space Mono',monospace;font-size:9px;color:var(--g);letter-spacing:.4em;text-transform:uppercase;margin-bottom:24px;padding-bottom:12px;border-bottom:1px solid var(--br);display:flex;align-items:center;gap:10px}
-    .qb-label::before{content:'>';color:var(--g)}
-    .ns-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-    .nsc{
-      background:var(--bg3);border:1px solid rgba(201,168,76,.1);
-      font-family:'Space Mono',monospace;position:relative;
-      transition:transform .4s cubic-bezier(.25,.46,.45,.94),box-shadow .4s,border-color .4s,background .4s;
-      z-index:1;
-    }
-    .nsc:hover{
-      transform:scale(1.04);z-index:10;
-      box-shadow:0 20px 60px rgba(0,0,0,.72),0 0 0 1px rgba(201,168,76,.24);
-      border-color:rgba(201,168,76,.24);background:var(--bg4);
-    }
-    .ns-hdr{background:rgba(201,168,76,.05);padding:9px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,168,76,.1)}
-    .ns-sig{font-size:8px;color:var(--g);letter-spacing:.3em}
-    .ns-tag{font-size:8px;color:var(--tx3);letter-spacing:.2em;text-transform:uppercase}
-    .ns-body{padding:22px 20px}
-    /* CS quote */
-    .ns-cs{border-left:2px solid rgba(201,168,76,.35);padding:10px 0 10px 14px;margin-bottom:14px;transition:border-color .3s,background .3s;border-radius:0 3px 3px 0}
-    .nsc:hover .ns-cs{border-left-color:rgba(201,168,76,.65)}
-    .ns-from{font-size:8px;color:var(--g);letter-spacing:.3em;margin-bottom:8px}
-    /* Quote text — bigger */
-    .ns-q{font-size:13px;line-height:1.82;color:var(--tx);font-family:'Inter',sans-serif;font-weight:300;transition:color .3s}
-    .nsc:hover .ns-q{color:#f2f2f2}
-    /* Echo divider */
-    .ns-echo{font-size:8px;color:var(--tx4);letter-spacing:.5em;text-align:center;padding:12px 0;text-transform:uppercase;transition:color .3s}
-    .nsc:hover .ns-echo{color:var(--tx3)}
-    /* Master quote */
-    .ns-master{border-right:2px solid rgba(201,168,76,.15);padding:10px 14px 10px 0;text-align:right;transition:border-color .3s}
-    .nsc:hover .ns-master{border-right-color:rgba(201,168,76,.35)}
-    .ns-from-r{font-size:8px;color:var(--tx3);letter-spacing:.3em;margin-bottom:8px;transition:color .3s}
-    .nsc:hover .ns-from-r{color:var(--g)}
-    .ns-q-m{font-size:13px;line-height:1.82;color:var(--tx2);font-family:'Inter',sans-serif;font-weight:300;font-style:italic;transition:color .3s}
-    .nsc:hover .ns-q-m{color:#aaa}
-    .ns-attr{font-size:9px;color:var(--gdim);letter-spacing:.12em;margin-top:9px}
-    .ns-c{display:inline-block;width:5px;height:10px;background:var(--gdim);vertical-align:middle;animation:blink 1.3s step-end infinite}
+    /* ── ECHO section ── */
+    .echo-label{font-family:'Space Mono',monospace;font-size:9px;color:var(--g);letter-spacing:.4em;text-transform:uppercase;margin-bottom:8px;padding-bottom:12px;border-bottom:1px solid var(--br);display:flex;align-items:baseline;gap:12px}
+    .echo-label::before{content:'>';color:var(--g)}
+    .echo-sub{font-size:11px;color:var(--tx3);letter-spacing:.08em;font-family:'Space Mono',monospace}
+    .echo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:8px}
+    .ec{border:1px solid rgba(201,168,76,.1);overflow:hidden;position:relative;transition:transform .4s cubic-bezier(.25,.46,.45,.94),box-shadow .4s,border-color .4s;z-index:1}
+    .ec:hover{transform:scale(1.035);z-index:10;box-shadow:0 20px 60px rgba(0,0,0,.72),0 0 0 1px rgba(201,168,76,.22);border-color:rgba(201,168,76,.22)}
+    .ec-hdr{background:rgba(201,168,76,.05);padding:9px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,168,76,.08);font-family:'Space Mono',monospace}
+    .ec-sig{font-size:8px;color:var(--g);letter-spacing:.3em}
+    .ec-tag{font-size:8px;color:var(--tx3);letter-spacing:.2em;text-transform:uppercase}
+    .ec-cs{background:linear-gradient(150deg,#F9F0D4 0%,#F4E8BE 55%,#F0E2B4 100%);padding:18px 20px 16px;position:relative}
+    .ec-cs::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 12% 88%,rgba(120,90,15,.06) 0%,transparent 55%),radial-gradient(ellipse at 88% 12%,rgba(120,90,15,.04) 0%,transparent 45%);pointer-events:none}
+    .ec-cs-lbl{font-size:8px;color:rgba(90,64,9,.42);letter-spacing:.32em;font-family:'Space Mono',monospace;margin-bottom:9px;text-transform:uppercase}
+    .ec-cs-q{font-family:'Caveat',cursive;font-size:17px;line-height:1.62;color:#221508;font-weight:500;position:relative;z-index:1}
+    .ec-div{background:#080808;padding:7px 0;text-align:center;font-family:'Space Mono',monospace;font-size:8px;color:#1c1c1c;letter-spacing:.5em;border-top:1px solid rgba(201,168,76,.06);border-bottom:1px solid rgba(201,168,76,.06)}
+    .ec:hover .ec-div{color:#333}
+    .ec-master{background:#030303;padding:14px 20px 18px}
+    .ec-term-bar{display:flex;align-items:center;gap:5px;margin-bottom:10px}
+    .ec-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+    .ec-dot.r{background:#FF5F57}.ec-dot.y{background:#FEBC2E}.ec-dot.gg{background:#28C840}
+    .ec-prompt{font-family:'Space Mono',monospace;font-size:8px;color:rgba(201,168,76,.35);letter-spacing:.15em;margin-left:4px}
+    .ec-master-q{font-family:'Space Mono',monospace;font-size:11px;line-height:1.88;color:rgba(201,168,76,.76);text-align:right}
+    .ec-attr{font-family:'Space Mono',monospace;font-size:9px;color:rgba(201,168,76,.28);letter-spacing:.12em;text-align:right;margin-top:9px}
+    .ec-cur{display:inline-block;width:5px;height:10px;background:rgba(201,168,76,.35);vertical-align:middle;animation:blink 1.3s step-end infinite}
 
     /* ── §06 PERSPECTIVES ── */
     #perspectives{background:var(--bg2);padding:120px 48px}
@@ -527,136 +513,122 @@
     </div>
 
     <!-- North Star dual-quote -->
-    <div class="qb-label fi d3">NORTH STAR COORDINATES</div>
-    <div class="ns-grid fi d4">
+    <div class="echo-label fi d3">ECHO <span class="echo-sub">回音</span></div>
+    <div class="echo-grid fi d4">
 
-      <div class="nsc">
-        <div class="ns-hdr"><span class="ns-sig">SIGNAL.01</span><span class="ns-tag">NATIVE</span></div>
-        <div class="ns-body">
-          <div class="ns-cs">
-            <div class="ns-from">CREEKSTONE →</div>
-            <p class="ns-q">"We refuse the domestication of old experience. We only back the 1% native variables that dare to recalculate the world."</p>
-          </div>
-          <div class="ns-echo">· · · · echo · · · ·</div>
-          <div class="ns-master">
-            <div class="ns-from-r">← MASTER</div>
-            <p class="ns-q-m">"Specific knowledge is knowledge you cannot be trained for. If society can train you, it can replace you."</p>
-            <div class="ns-attr">— Naval Ravikant<span class="ns-c"></span></div>
-          </div>
+      <div class="ec">
+        <div class="ec-hdr"><span class="ec-sig">SIGNAL.01</span><span class="ec-tag">NATIVE</span></div>
+        <div class="ec-cs">
+          <div class="ec-cs-lbl">Creekstone →</div>
+          <p class="ec-cs-q">"We refuse the domestication of old experience. We only back the 1% native variables that dare to recalculate the world."</p>
+        </div>
+        <div class="ec-div">· echo ·</div>
+        <div class="ec-master">
+          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
+          <p class="ec-master-q">"Specific knowledge is knowledge you cannot be trained for. If society can train you, it can replace you."</p>
+          <div class="ec-attr">— Naval Ravikant<span class="ec-cur"></span></div>
         </div>
       </div>
 
-      <div class="nsc">
-        <div class="ns-hdr"><span class="ns-sig">SIGNAL.02</span><span class="ns-tag">DELIVERY</span></div>
-        <div class="ns-body">
-          <div class="ns-cs">
-            <div class="ns-from">CREEKSTONE →</div>
-            <p class="ns-q">"Interaction is no longer the destination. Delivery is."</p>
-          </div>
-          <div class="ns-echo">· · · · echo · · · ·</div>
-          <div class="ns-master">
-            <div class="ns-from-r">← MASTER</div>
-            <p class="ns-q-m">"The hottest new programming language is English."</p>
-            <div class="ns-attr">— Andrej Karpathy<span class="ns-c"></span></div>
-          </div>
+      <div class="ec">
+        <div class="ec-hdr"><span class="ec-sig">SIGNAL.02</span><span class="ec-tag">DELIVERY</span></div>
+        <div class="ec-cs">
+          <div class="ec-cs-lbl">Creekstone →</div>
+          <p class="ec-cs-q">"Interaction is no longer the destination. Delivery is."</p>
+        </div>
+        <div class="ec-div">· echo ·</div>
+        <div class="ec-master">
+          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
+          <p class="ec-master-q">"The hottest new programming language is English."</p>
+          <div class="ec-attr">— Andrej Karpathy<span class="ec-cur"></span></div>
         </div>
       </div>
 
-      <div class="nsc">
-        <div class="ns-hdr"><span class="ns-sig">SIGNAL.03</span><span class="ns-tag">VERTICAL</span></div>
-        <div class="ns-body">
-          <div class="ns-cs">
-            <div class="ns-from">CREEKSTONE →</div>
-            <p class="ns-q">"Going brutally vertical is the only way out."</p>
-          </div>
-          <div class="ns-echo">· · · · echo · · · ·</div>
-          <div class="ns-master">
-            <div class="ns-from-r">← MASTER</div>
-            <p class="ns-q-m">"Competition is for losers. If you want to create and capture lasting value, build a monopoly."</p>
-            <div class="ns-attr">— Peter Thiel · Zero to One<span class="ns-c"></span></div>
-          </div>
+      <div class="ec">
+        <div class="ec-hdr"><span class="ec-sig">SIGNAL.03</span><span class="ec-tag">VERTICAL</span></div>
+        <div class="ec-cs">
+          <div class="ec-cs-lbl">Creekstone →</div>
+          <p class="ec-cs-q">"Going brutally vertical is the only way out."</p>
+        </div>
+        <div class="ec-div">· echo ·</div>
+        <div class="ec-master">
+          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
+          <p class="ec-master-q">"Competition is for losers. If you want to create and capture lasting value, build a monopoly."</p>
+          <div class="ec-attr">— Peter Thiel · Zero to One<span class="ec-cur"></span></div>
         </div>
       </div>
 
-      <div class="nsc">
-        <div class="ns-hdr"><span class="ns-sig">SIGNAL.04</span><span class="ns-tag">LEGACY</span></div>
-        <div class="ns-body">
-          <div class="ns-cs">
-            <div class="ns-from">CREEKSTONE →</div>
-            <p class="ns-q">"Your legacy system is someone else's native home."</p>
-          </div>
-          <div class="ns-echo">· · · · echo · · · ·</div>
-          <div class="ns-master">
-            <div class="ns-from-r">← MASTER</div>
-            <p class="ns-q-m">"No man ever steps in the same river twice, for it's not the same river and he's not the same man."</p>
-            <div class="ns-attr">— Heraclitus · ~500 BC<span class="ns-c"></span></div>
-          </div>
+      <div class="ec">
+        <div class="ec-hdr"><span class="ec-sig">SIGNAL.04</span><span class="ec-tag">LEGACY</span></div>
+        <div class="ec-cs">
+          <div class="ec-cs-lbl">Creekstone →</div>
+          <p class="ec-cs-q">"Your legacy system is someone else's native home."</p>
+        </div>
+        <div class="ec-div">· echo ·</div>
+        <div class="ec-master">
+          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
+          <p class="ec-master-q">"No man ever steps in the same river twice, for it's not the same river and he's not the same man."</p>
+          <div class="ec-attr">— Heraclitus · ~500 BC<span class="ec-cur"></span></div>
         </div>
       </div>
 
-      <div class="nsc">
-        <div class="ns-hdr"><span class="ns-sig">SIGNAL.05</span><span class="ns-tag">MOAT</span></div>
-        <div class="ns-body">
-          <div class="ns-cs">
-            <div class="ns-from">CREEKSTONE →</div>
-            <p class="ns-q">"The real moat is not code — it is every dynamic evolution driven by the cognitive core."</p>
-          </div>
-          <div class="ns-echo">· · · · echo · · · ·</div>
-          <div class="ns-master">
-            <div class="ns-from-r">← MASTER</div>
-            <p class="ns-q-m">"What I cannot create, I do not understand."</p>
-            <div class="ns-attr">— Richard Feynman · Caltech Blackboard<span class="ns-c"></span></div>
-          </div>
+      <div class="ec">
+        <div class="ec-hdr"><span class="ec-sig">SIGNAL.05</span><span class="ec-tag">MOAT</span></div>
+        <div class="ec-cs">
+          <div class="ec-cs-lbl">Creekstone →</div>
+          <p class="ec-cs-q">"The real moat is not code — it is every dynamic evolution driven by the cognitive core."</p>
+        </div>
+        <div class="ec-div">· echo ·</div>
+        <div class="ec-master">
+          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
+          <p class="ec-master-q">"What I cannot create, I do not understand."</p>
+          <div class="ec-attr">— Richard Feynman · Caltech Blackboard<span class="ec-cur"></span></div>
         </div>
       </div>
 
-      <div class="nsc">
-        <div class="ns-hdr"><span class="ns-sig">SIGNAL.06</span><span class="ns-tag">CONTEXT</span></div>
-        <div class="ns-body">
-          <div class="ns-cs">
-            <div class="ns-from">CREEKSTONE →</div>
-            <p class="ns-q">"Context is not a feature. Context is civilization."</p>
-          </div>
-          <div class="ns-echo">· · · · echo · · · ·</div>
-          <div class="ns-master">
-            <div class="ns-from-r">← MASTER</div>
-            <p class="ns-q-m">"The limits of my language are the limits of my world."</p>
-            <div class="ns-attr">— Ludwig Wittgenstein · 1921<span class="ns-c"></span></div>
-          </div>
+      <div class="ec">
+        <div class="ec-hdr"><span class="ec-sig">SIGNAL.06</span><span class="ec-tag">CONTEXT</span></div>
+        <div class="ec-cs">
+          <div class="ec-cs-lbl">Creekstone →</div>
+          <p class="ec-cs-q">"Context is not a feature. Context is civilization."</p>
+        </div>
+        <div class="ec-div">· echo ·</div>
+        <div class="ec-master">
+          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
+          <p class="ec-master-q">"The limits of my language are the limits of my world."</p>
+          <div class="ec-attr">— Ludwig Wittgenstein · 1921<span class="ec-cur"></span></div>
         </div>
       </div>
 
-      <div class="nsc">
-        <div class="ns-hdr"><span class="ns-sig">SIGNAL.07</span><span class="ns-tag">AGENT</span></div>
-        <div class="ns-body">
-          <div class="ns-cs">
-            <div class="ns-from">CREEKSTONE →</div>
-            <p class="ns-q">"The future Agent is not a dialogue box. The final form of Agent is the disappearing UI — Proactive Sensing."</p>
-          </div>
-          <div class="ns-echo">· · · · echo · · · ·</div>
-          <div class="ns-master">
-            <div class="ns-from-r">← MASTER</div>
-            <p class="ns-q-m">"The medium is the message."</p>
-            <div class="ns-attr">— Marshall McLuhan · 1964<span class="ns-c"></span></div>
-          </div>
+      <div class="ec">
+        <div class="ec-hdr"><span class="ec-sig">SIGNAL.07</span><span class="ec-tag">AGENT</span></div>
+        <div class="ec-cs">
+          <div class="ec-cs-lbl">Creekstone →</div>
+          <p class="ec-cs-q">"The future Agent is not a dialogue box. The final form of Agent is the disappearing UI — Proactive Sensing."</p>
+        </div>
+        <div class="ec-div">· echo ·</div>
+        <div class="ec-master">
+          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
+          <p class="ec-master-q">"The medium is the message."</p>
+          <div class="ec-attr">— Marshall McLuhan · 1964<span class="ec-cur"></span></div>
         </div>
       </div>
 
-      <div class="nsc">
-        <div class="ns-hdr"><span class="ns-sig">SIGNAL.08</span><span class="ns-tag">CO-FOUNDER</span></div>
-        <div class="ns-body">
-          <div class="ns-cs">
-            <div class="ns-from">CREEKSTONE →</div>
-            <p class="ns-q">"We don't preach from the high ground. We evolve alongside you in the mud — as co-founders."</p>
-          </div>
-          <div class="ns-echo">· · · · echo · · · ·</div>
-          <div class="ns-master">
-            <div class="ns-from-r">← MASTER</div>
-            <p class="ns-q-m">"One must still have chaos in oneself to be able to give birth to a dancing star."</p>
-            <div class="ns-attr">— Friedrich Nietzsche · 1883<span class="ns-c"></span></div>
-          </div>
+      <div class="ec">
+        <div class="ec-hdr"><span class="ec-sig">SIGNAL.08</span><span class="ec-tag">CO-FOUNDER</span></div>
+        <div class="ec-cs">
+          <div class="ec-cs-lbl">Creekstone →</div>
+          <p class="ec-cs-q">"We don't preach from the high ground. We evolve alongside you in the mud — as co-founders."</p>
+        </div>
+        <div class="ec-div">· echo ·</div>
+        <div class="ec-master">
+          <div class="ec-term-bar"><div class="ec-dot r"></div><div class="ec-dot y"></div><div class="ec-dot gg"></div><span class="ec-prompt">$ read --src master</span></div>
+          <p class="ec-master-q">"One must still have chaos in oneself to be able to give birth to a dancing star."</p>
+          <div class="ec-attr">— Friedrich Nietzsche · 1883<span class="ec-cur"></span></div>
         </div>
       </div>
+
+    </div>
 
     </div>
   </div>
