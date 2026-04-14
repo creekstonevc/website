@@ -44,11 +44,9 @@
 
     /* Brand stack — logo on top, name below, tight */
     .hero-brand-stack{display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:48px;opacity:0;animation:fup .8s .15s forwards}
-    /* Logo wrapper with orbital rings */
-    .hero-logo-wrap{position:relative;width:80px;height:80px;flex-shrink:0}
-    .hero-logo-wrap::before{content:'';position:absolute;inset:-9px;border-radius:50%;border:1px solid rgba(201,168,76,.2);animation:slowspin 14s linear infinite reverse;pointer-events:none}
-    .hero-logo-wrap::after{content:'';position:absolute;inset:-20px;border-radius:50%;border:1px solid rgba(201,168,76,.08);animation:slowspin 22s linear infinite;pointer-events:none}
-    .hero-logo{width:80px;height:80px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(201,168,76,.42)) drop-shadow(0 0 44px rgba(201,168,76,.14));animation:slowspin 28s linear infinite}
+    /* Logo wrapper — clean, no rings */
+    .hero-logo-wrap{position:relative;flex-shrink:0}
+    .hero-logo{width:96px;height:96px;object-fit:contain;filter:drop-shadow(0 0 22px rgba(201,168,76,.38));animation:slowspin 28s linear infinite}
     .hero-brand-txt{text-align:center}
     .hero-brandname{font-size:22px;font-weight:300;letter-spacing:.28em;text-transform:uppercase;line-height:1.1;color:var(--tx)}
     .hero-brand-sub{font-family:'Space Mono',monospace;font-size:9px;color:var(--g);letter-spacing:.38em;text-transform:uppercase;margin-top:6px;opacity:.7}
