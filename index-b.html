@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Creekstone Ventures — Agent Native · Founder Friendly</title>
+  <title>[B] Creekstone Ventures — Agent Native · Founder Friendly</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
   <style>
@@ -838,9 +838,16 @@ document.querySelectorAll('.fi-fill[data-w]').forEach(b=>{
   const ctx=canvas.getContext('2d');
   const G=a=>`rgba(201,168,76,${a})`;
   const LBLS=['agent','model','tool','plan','exec','RAG','memory','API','loop','infer','ctx','task','RL','MCP','LLM','ASI','embed','token','call','think'];
+  const PORTFOLIO=['YOUWARE','Oldest Life','Kaleidoscope','Virden','mem-u','Xmax','Machine Pulse','RSI','AirJelly'];
   let W,H,pts=[],mx=-1,my=-1;
   const N=95,DIST=135;
+  /* dwell state */
+  let dwellX=-1,dwellY=-1,dwellTimer=null;
+  let showName=null,nameAlpha=0,nameY=0,namePhase=0; // 0=idle 1=clustering 2=showing 3=fading
+  let lastNameIdx=-1;
+
   function resize(){W=canvas.width=canvas.offsetWidth||window.innerWidth;H=canvas.height=canvas.offsetHeight||window.innerHeight;}
+
   class P{
     constructor(hub=false){this.hub=hub;this.init();}
     init(){
@@ -852,7 +859,13 @@ document.querySelectorAll('.fi-fill[data-w]').forEach(b=>{
     }
     step(){
       this.t+=this.ps;
+      /* normal mouse attraction */
       if(mx>0){const dx=mx-this.x,dy=my-this.y,d=Math.sqrt(dx*dx+dy*dy);const R=this.hub?300:220;if(d<R&&d>1){const f=this.hub?.9:.65;this.x+=dx/d*f;this.y+=dy/d*f;}}
+      /* cluster surge during phases 1-2 */
+      if((namePhase===1||namePhase===2)&&mx>0){
+        const dx=mx-this.x,dy=my-this.y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<280&&d>1){const f=this.hub?3.5:2.2;this.x+=dx/d*f;this.y+=dy/d*f;}
+      }
       this.x+=this.vx;this.y+=this.vy;
       if(this.x<-90||this.x>W+90||this.y<-90||this.y>H+90)this.init();
     }
@@ -864,17 +877,64 @@ document.querySelectorAll('.fi-fill[data-w]').forEach(b=>{
         gr.addColorStop(0,G(.38*pulse*boost));gr.addColorStop(1,G(0));
         ctx.beginPath();ctx.arc(this.x,this.y,22,0,Math.PI*2);ctx.fillStyle=gr;ctx.fill();
         ctx.beginPath();ctx.arc(this.x,this.y,this.r*pulse,0,Math.PI*2);ctx.fillStyle=G(this.a*pulse*boost);ctx.fill();
-        if(this.near()){ctx.fillStyle=G(this.a*boost*.85);ctx.font='9px Space Mono,monospace';ctx.fillText(this.lbl,this.x+8,this.y-8);}
+        if(this.near()&&namePhase===0){ctx.fillStyle=G(this.a*boost*.85);ctx.font='9px Space Mono,monospace';ctx.fillText(this.lbl,this.x+8,this.y-8);}
       }else if(this.node){
         const s=3.8;ctx.strokeStyle=G(this.a*pulse*boost);ctx.lineWidth=this.near()?1.2:.65;
         ctx.strokeRect(this.x-s,this.y-s,s*2,s*2);ctx.fillStyle=G(this.a*.14*boost);ctx.fillRect(this.x-s,this.y-s,s*2,s*2);
-        ctx.fillStyle=G(this.a*pulse*boost);ctx.font='8px Space Mono,monospace';ctx.fillText(this.lbl,this.x+s+4,this.y+3);
+        if(namePhase===0){ctx.fillStyle=G(this.a*pulse*boost);ctx.font='8px Space Mono,monospace';ctx.fillText(this.lbl,this.x+s+4,this.y+3);}
       }else{
         ctx.beginPath();ctx.arc(this.x,this.y,this.r*(this.near()?1.7:1)*pulse,0,Math.PI*2);ctx.fillStyle=G(this.a*pulse*boost);ctx.fill();
       }
     }
   }
-  function init(){resize();pts=[];for(let i=0;i<6;i++)pts.push(new P(true));for(let i=0;i<N;i++)pts.push(new P(false));}
+
+  function pickName(){
+    let idx;do{idx=Math.floor(Math.random()*PORTFOLIO.length);}while(idx===lastNameIdx);
+    lastNameIdx=idx;return PORTFOLIO[idx];
+  }
+
+  function triggerCluster(){
+    if(namePhase!==0)return;
+    showName=pickName();nameAlpha=0;namePhase=1;
+    /* phase1 = clustering (0.8s), then phase2 = showing (2.5s), then phase3 = fading */
+    setTimeout(()=>{if(namePhase===1)namePhase=2;},800);
+    setTimeout(()=>{if(namePhase===2)namePhase=3;},800+2500);
+  }
+
+  function drawName(){
+    if(!showName||namePhase===0)return;
+    if(namePhase===1)nameAlpha=Math.min(nameAlpha+.04,0.5);
+    else if(namePhase===2)nameAlpha=Math.min(nameAlpha+.06,1);
+    else{nameAlpha=Math.max(nameAlpha-.04,0);if(nameAlpha<=0){namePhase=0;showName=null;scheduleDwell();return;}}
+    const ny=mx>0?my-44:H/2-44;
+    const nx=mx>0?mx:W/2;
+    /* glow halo behind text */
+    const haloR=ctx.createRadialGradient(nx,ny+10,0,nx,ny+10,90);
+    haloR.addColorStop(0,G(.18*nameAlpha));haloR.addColorStop(1,G(0));
+    ctx.beginPath();ctx.arc(nx,ny+10,90,0,Math.PI*2);ctx.fillStyle=haloR;ctx.fill();
+    /* text */
+    ctx.save();
+    ctx.font=`300 ${Math.max(24,Math.min(32,W/20))}px Inter,sans-serif`;
+    ctx.letterSpacing='0.12em';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.fillStyle=G(nameAlpha*.9);
+    ctx.fillText(showName,nx,ny);
+    /* subtle underline */
+    const tw=ctx.measureText(showName).width;
+    ctx.strokeStyle=G(nameAlpha*.4);ctx.lineWidth=.5;
+    ctx.beginPath();ctx.moveTo(nx-tw/2,ny+16);ctx.lineTo(nx+tw/2,ny+16);ctx.stroke();
+    ctx.restore();
+  }
+
+  let dwellScheduled=false;
+  function scheduleDwell(){
+    if(dwellScheduled)return;dwellScheduled=true;
+    dwellTimer=setTimeout(()=>{dwellScheduled=false;if(namePhase===0&&mx>0)triggerCluster();},4000);
+  }
+
+  function init(){resize();pts=[];for(let i=0;i<6;i++)pts.push(new P(true));for(let i=0;i<N;i++)pts.push(new P(false));scheduleDwell();}
+
   function frame(){
     ctx.clearRect(0,0,W,H);
     for(let i=0;i<pts.length;i++){for(let j=i+1;j<pts.length;j++){
@@ -883,10 +943,23 @@ document.querySelectorAll('.fi-fill[data-w]').forEach(b=>{
       ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);
       ctx.strokeStyle=G(Math.min(a,.65));ctx.lineWidth=(pts[i].hub||pts[j].hub)?1:.55;ctx.stroke();}
     }}
-    pts.forEach(p=>{p.step();p.draw();});requestAnimationFrame(frame);
+    pts.forEach(p=>{p.step();p.draw();});
+    drawName();
+    requestAnimationFrame(frame);
   }
-  canvas.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect();mx=e.clientX-r.left;my=e.clientY-r.top;});
-  canvas.addEventListener('mouseleave',()=>{mx=-1;my=-1;});
+
+  canvas.addEventListener('mousemove',e=>{
+    const r=canvas.getBoundingClientRect();
+    const nx=e.clientX-r.left,ny=e.clientY-r.top;
+    const moved=(nx-dwellX)**2+(ny-dwellY)**2>55**2;
+    if(moved&&namePhase===0){
+      dwellX=nx;dwellY=ny;
+      clearTimeout(dwellTimer);dwellScheduled=false;
+      scheduleDwell();
+    }
+    mx=nx;my=ny;
+  });
+  canvas.addEventListener('mouseleave',()=>{mx=-1;my=-1;clearTimeout(dwellTimer);dwellScheduled=false;});
   window.addEventListener('resize',init);
   init();frame();
 })();
