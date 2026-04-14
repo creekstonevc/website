@@ -2,18 +2,19 @@
 set -euo pipefail
 
 PROJECT_DIR="/home/ubuntu/creekstone-website"
+NGINX_ROOT="/var/www/creekstone"
 
 cd "$PROJECT_DIR"
 
 echo "==> Installing dependencies..."
-npm ci
+npm ci --prefer-offline 2>/dev/null || npm install
 
 echo "==> Building for production..."
 npm run build
 
-echo "==> Stopping old PM2 serve process (if any)..."
-pm2 delete creekstone 2>/dev/null || true
-pm2 save 2>/dev/null || true
+echo "==> Deploying to nginx root..."
+sudo mkdir -p "$NGINX_ROOT"
+sudo cp -r dist/* "$NGINX_ROOT/"
 
 echo "==> Testing nginx config..."
 sudo nginx -t
@@ -21,4 +22,4 @@ sudo nginx -t
 echo "==> Reloading nginx..."
 sudo systemctl reload nginx
 
-echo "==> Deploy complete! Site is live at https://creekstone.dev"
+echo "==> Deploy complete! Site is live."

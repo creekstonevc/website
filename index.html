@@ -1,16 +1,1300 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Creekstone Nexus Fund I</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Creekstone Ventures — Building China's Founders Fund</title>
+  <meta name="description" content="Creekstone Ventures backs young, AI-native founders reshaping the world from China. Nexus Fund I.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --gold:        #C9A84C;
+      --gold-light:  #E8C97A;
+      --gold-bright: #FFD700;
+      --gold-dark:   #8B6914;
+      --gold-dim:    #5A4009;
+      --bg:          #060606;
+      --bg-2:        #0C0C0C;
+      --bg-3:        #111111;
+      --bg-4:        #161616;
+      --text:        #EBEBEB;
+      --text-dim:    #888888;
+      --text-dimmer: #444444;
+      --border:      rgba(201,168,76,0.18);
+      --border-hover:rgba(201,168,76,0.45);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    ::selection { background: rgba(201,168,76,0.25); }
+
+    /* ─── SCROLLBAR ─── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 2px; }
+
+    /* ─── NAV ─── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 48px;
+      transition: all 0.4s ease;
+    }
+    nav.solid {
+      background: rgba(6,6,6,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 48px;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 12px;
+      text-decoration: none; color: var(--text);
+    }
+    .nav-logo-img { width: 30px; height: 30px; object-fit: contain; }
+    .nav-logo-name {
+      font-size: 12px; font-weight: 500;
+      letter-spacing: 0.18em; text-transform: uppercase; color: var(--text);
+    }
+    .nav-links { display: flex; gap: 28px; list-style: none; }
+    .nav-links a {
+      color: var(--text-dim); text-decoration: none;
+      font-size: 11px; font-weight: 400;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      transition: color 0.25s;
+    }
+    .nav-links a:hover { color: var(--gold); }
+
+    /* ─── UTILS ─── */
+    .gold-grad {
+      background: linear-gradient(125deg, var(--gold-dim) 0%, var(--gold) 35%, var(--gold-bright) 60%, var(--gold-light) 80%, var(--gold-dark) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .sec-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; color: var(--gold);
+      letter-spacing: 0.45em; text-transform: uppercase;
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 64px;
+    }
+    .sec-label::after {
+      content: ''; display: block; width: 48px; height: 1px;
+      background: linear-gradient(to right, var(--gold), transparent);
+    }
+    .fade-in {
+      opacity: 0; transform: translateY(24px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .fade-in.visible { opacity: 1; transform: translateY(0); }
+    .d1 { transition-delay: 0.1s !important; }
+    .d2 { transition-delay: 0.2s !important; }
+    .d3 { transition-delay: 0.3s !important; }
+    .d4 { transition-delay: 0.4s !important; }
+    .d5 { transition-delay: 0.5s !important; }
+
+    /* ─── §01 HERO ─── */
+    #hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 120px 48px 80px;
+      position: relative; overflow: hidden;
+    }
+    .hero-bg-grid {
+      position: absolute; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(201,168,76,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(201,168,76,0.035) 1px, transparent 1px);
+      background-size: 56px 56px;
+    }
+    .hero-bg-glow {
+      position: absolute; inset: 0; z-index: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(201,168,76,0.06) 0%, transparent 70%);
+    }
+    .hero-content { position: relative; z-index: 1; }
+    .hero-logo-wrap {
+      margin-bottom: 48px;
+      display: inline-block;
+    }
+    .hero-logo-img {
+      width: 96px; height: 96px; object-fit: contain;
+      animation: slowRotate 30s linear infinite;
+      filter: drop-shadow(0 0 20px rgba(201,168,76,0.3));
+    }
+    @keyframes slowRotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .hero-eyebrow {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; color: var(--gold);
+      letter-spacing: 0.4em; text-transform: uppercase;
+      margin-bottom: 28px;
+      opacity: 0; animation: fadeUp 0.8s 0.3s forwards;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .hero-h1 {
+      font-size: clamp(60px, 9vw, 128px);
+      font-weight: 200; line-height: 0.95;
+      letter-spacing: -0.025em;
+      opacity: 0; animation: fadeUp 0.9s 0.5s forwards;
+    }
+    .hero-sep {
+      display: inline-block; color: rgba(201,168,76,0.4);
+      margin: 0 0.2em; font-weight: 100;
+    }
+    .hero-tagline {
+      margin-top: 28px;
+      font-size: 13px; font-weight: 300;
+      color: var(--text-dim); letter-spacing: 0.25em; text-transform: uppercase;
+      opacity: 0; animation: fadeUp 0.9s 0.7s forwards;
+    }
+    .hero-cta {
+      margin-top: 56px; display: flex; gap: 16px; justify-content: center;
+      opacity: 0; animation: fadeUp 0.9s 0.9s forwards;
+    }
+    .btn { 
+      padding: 12px 32px; text-decoration: none;
+      font-size: 11px; font-weight: 500;
+      letter-spacing: 0.15em; text-transform: uppercase;
+      transition: all 0.3s ease; position: relative; overflow: hidden;
+      display: inline-block;
+    }
+    .btn-outline {
+      border: 1px solid var(--gold); color: var(--gold);
+    }
+    .btn-outline::before {
+      content: ''; position: absolute; inset: 0;
+      background: var(--gold); transform: scaleX(0);
+      transform-origin: left; transition: transform 0.3s ease;
+    }
+    .btn-outline:hover::before { transform: scaleX(1); }
+    .btn-outline:hover { color: var(--bg); }
+    .btn-outline span { position: relative; z-index: 1; }
+    .btn-ghost {
+      border: 1px solid rgba(255,255,255,0.1); color: var(--text-dim);
+    }
+    .btn-ghost:hover { border-color: var(--border); color: var(--text); }
+    .btn-ghost span { position: relative; z-index: 1; }
+    .hero-scroll {
+      position: absolute; bottom: 40px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      opacity: 0; animation: fadeUp 0.9s 1.2s forwards;
+    }
+    .scroll-bar {
+      width: 1px; height: 48px;
+      background: linear-gradient(to bottom, var(--gold), transparent);
+      animation: scrollPulse 2.5s ease-in-out infinite;
+    }
+    @keyframes scrollPulse {
+      0%, 100% { opacity: 0.2; transform: scaleY(0.7); }
+      50% { opacity: 1; transform: scaleY(1); }
+    }
+    .scroll-label {
+      font-family: 'Space Mono', monospace; font-size: 8px;
+      color: var(--text-dimmer); letter-spacing: 0.3em; text-transform: uppercase;
+    }
+
+    /* ─── §02 MANIFESTO ─── */
+    #manifesto {
+      background: var(--bg-2);
+      padding: 120px 48px; min-height: 100vh;
+      display: flex; align-items: center;
+    }
+    .manifesto-inner { max-width: 1200px; margin: 0 auto; width: 100%; }
+    .manifesto-big {
+      font-size: clamp(32px, 4.5vw, 60px);
+      font-weight: 200; line-height: 1.15;
+      margin-bottom: 80px; max-width: 860px;
+    }
+    .manifesto-big em {
+      font-style: normal;
+      background: linear-gradient(125deg, var(--gold-dark), var(--gold-bright), var(--gold));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .rules-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      border: 1px solid var(--border);
+    }
+    .rule {
+      padding: 48px 40px;
+      border: 1px solid var(--border);
+      position: relative; overflow: hidden;
+      transition: background 0.35s ease;
+      cursor: default;
+    }
+    .rule::after {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(to right, transparent, var(--gold), transparent);
+      opacity: 0; transition: opacity 0.35s ease;
+    }
+    .rule:hover { background: rgba(201,168,76,0.025); }
+    .rule:hover::after { opacity: 1; }
+    .rule-n {
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      color: var(--gold-dim); letter-spacing: 0.4em;
+      margin-bottom: 20px;
+    }
+    .rule-en {
+      font-size: 20px; font-weight: 300;
+      color: var(--text); line-height: 1.35; margin-bottom: 10px;
+    }
+    .rule-en b { font-weight: 700; color: var(--gold-light); }
+    .rule-cn {
+      font-size: 12px; color: var(--text-dimmer);
+      letter-spacing: 0.05em; font-weight: 300;
+    }
+    .manifesto-note {
+      margin-top: 80px; padding: 32px 40px;
+      border-left: 2px solid var(--gold);
+      background: rgba(201,168,76,0.03);
+    }
+    .manifesto-note p {
+      font-size: 15px; font-weight: 300;
+      color: var(--text-dim); line-height: 1.8;
+      max-width: 720px;
+    }
+    .manifesto-note p em {
+      font-style: normal; color: var(--gold-light);
+    }
+
+    /* ─── §03 THESIS ─── */
+    #thesis { padding: 120px 48px; min-height: 100vh; display: flex; align-items: center; }
+    .thesis-inner { max-width: 1200px; margin: 0 auto; width: 100%; }
+    .thesis-layout {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 80px; margin-top: 0; align-items: start;
+    }
+    .thesis-h2 {
+      font-size: clamp(38px, 5vw, 64px);
+      font-weight: 200; line-height: 1.05; margin-bottom: 28px;
+    }
+    .thesis-body {
+      font-size: 14px; color: var(--text-dim);
+      line-height: 1.85; font-weight: 300; margin-bottom: 24px;
+    }
+    .stats-row {
+      display: flex; gap: 32px; flex-wrap: wrap;
+      margin: 36px 0;
+    }
+    .stat { display: flex; flex-direction: column; gap: 4px; }
+    .stat-n {
+      font-family: 'Space Mono', monospace;
+      font-size: 32px; font-weight: 700; color: var(--gold);
+      line-height: 1;
+    }
+    .stat-l {
+      font-size: 10px; color: var(--text-dimmer);
+      letter-spacing: 0.12em; text-transform: uppercase;
+    }
+    .thesis-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+    .tag {
+      padding: 5px 14px;
+      border: 1px solid var(--border);
+      font-size: 10px; letter-spacing: 0.12em;
+      color: var(--text-dim); text-transform: uppercase;
+    }
+    .tag.g { border-color: var(--gold); color: var(--gold); }
+    .focus-list { display: flex; flex-direction: column; gap: 24px; }
+    .focus-item { }
+    .focus-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .focus-name { font-size: 13px; font-weight: 500; color: var(--text); }
+    .focus-pct {
+      font-family: 'Space Mono', monospace;
+      font-size: 12px; color: var(--gold);
+    }
+    .focus-track {
+      height: 1px; background: rgba(255,255,255,0.06); position: relative;
+    }
+    .focus-fill {
+      position: absolute; top: 0; left: 0; height: 100%;
+      background: linear-gradient(to right, var(--gold-dim), var(--gold-bright));
+      width: 0%; transition: width 1.8s cubic-bezier(0.4,0,0.2,1);
+    }
+    .co-inv-box {
+      margin-top: 52px; padding: 28px 32px;
+      border: 1px solid var(--border);
+    }
+    .co-inv-label {
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      color: var(--gold); letter-spacing: 0.35em;
+      text-transform: uppercase; margin-bottom: 14px;
+    }
+    .co-inv-text {
+      font-size: 13px; color: var(--text-dim); line-height: 1.7;
+    }
+
+    /* ─── §04 QUOTES ─── */
+    #quotes { background: var(--bg-2); padding: 120px 48px; overflow: hidden; }
+    .quotes-inner { max-width: 1200px; margin: 0 auto; }
+    .quotes-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 1px; background: var(--border); margin-top: 64px;
+    }
+    .qcard {
+      background: var(--bg-2); padding: 52px 48px;
+      position: relative; transition: background 0.3s;
+      cursor: default;
+    }
+    .qcard:hover { background: var(--bg-3); }
+    .qmark {
+      font-size: 64px; line-height: 0.5;
+      color: var(--gold); opacity: 0.15;
+      font-family: Georgia, serif;
+      display: block; margin-bottom: 28px;
+    }
+    .qtext {
+      font-size: 15px; font-weight: 300; font-style: italic;
+      line-height: 1.75; color: var(--text);
+      margin-bottom: 32px;
+    }
+    .qauthor { display: flex; align-items: center; gap: 14px; }
+    .qline { width: 20px; height: 1px; background: var(--gold); flex-shrink: 0; }
+    .qname {
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold-light);
+    }
+    .qco { font-size: 10px; color: var(--text-dimmer); letter-spacing: 0.05em; margin-top: 2px; }
+    .qmoic {
+      position: absolute; top: 28px; right: 28px;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px; color: var(--gold); opacity: 0.6;
+    }
+
+    /* ─── §05 PORTFOLIO ─── */
+    #portfolio { padding: 120px 48px; }
+    .portfolio-inner { max-width: 1280px; margin: 0 auto; }
+    .port-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1px; background: var(--border); margin-top: 64px;
+    }
+    .pc {
+      background: var(--bg); padding: 32px 28px;
+      cursor: pointer; position: relative;
+      transition: background 0.3s ease;
+      overflow: hidden;
+    }
+    .pc::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(to right, transparent, var(--gold), transparent);
+      transform: scaleX(0); transition: transform 0.4s ease;
+    }
+    .pc:hover { background: var(--bg-3); }
+    .pc:hover::before { transform: scaleX(1); }
+    .pc.active {
+      background: rgba(201,168,76,0.04);
+      border: 1px solid rgba(201,168,76,0.35);
+    }
+    .pc-idx {
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      color: var(--text-dimmer); letter-spacing: 0.3em;
+      margin-bottom: 16px;
+    }
+    .pc-name { font-size: 17px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+    .pc-aka {
+      font-family: 'Space Mono', monospace; font-size: 10px;
+      color: var(--gold-dim); margin-bottom: 16px; letter-spacing: 0.05em;
+    }
+    .pc-desc {
+      font-size: 12px; color: var(--text-dimmer); line-height: 1.6; margin-bottom: 20px;
+      display: none;
+    }
+    .pc:hover .pc-desc, .pc.active .pc-desc { display: block; }
+    .pc-moic {
+      display: flex; align-items: baseline; gap: 5px;
+    }
+    .pc-mn {
+      font-family: 'Space Mono', monospace;
+      font-size: 18px; font-weight: 700; color: var(--gold);
+    }
+    .pc-ml { font-size: 10px; color: var(--text-dimmer); letter-spacing: 0.08em; }
+    .pc-stage {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px; color: var(--gold-dim); letter-spacing: 0.2em;
+      margin-top: 6px;
+    }
+    .port-filler {
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .port-filler-inner {
+      text-align: center;
+    }
+    .port-filler-n {
+      font-family: 'Space Mono', monospace; font-size: 10px;
+      color: var(--border); letter-spacing: 0.3em; margin-bottom: 8px;
+    }
+    .port-filler-plus { font-size: 28px; color: var(--border); }
+    .port-note {
+      margin-top: 40px; padding: 20px 28px;
+      border: 1px solid var(--border);
+      display: flex; gap: 20px; align-items: center;
+    }
+    .port-note-icon {
+      font-family: 'Space Mono', monospace; font-size: 11px;
+      color: var(--gold); flex-shrink: 0;
+    }
+    .port-note-text { font-size: 12px; color: var(--text-dimmer); line-height: 1.6; }
+
+    /* ─── §06 TEAM ─── */
+    #team { background: var(--bg-2); padding: 120px 48px; }
+    .team-inner { max-width: 1200px; margin: 0 auto; }
+    .team-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 24px; margin-top: 64px;
+    }
+    .tcard {
+      border: 1px solid var(--border); padding: 48px 40px;
+      transition: border-color 0.3s, background 0.3s;
+    }
+    .tcard:hover { border-color: rgba(201,168,76,0.35); background: rgba(201,168,76,0.015); }
+    .tavatar {
+      width: 60px; height: 60px; border-radius: 50%;
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg-3); margin-bottom: 24px;
+    }
+    .tavatar-init {
+      font-family: 'Space Mono', monospace; font-size: 14px;
+      color: var(--gold); font-weight: 700;
+    }
+    .tname { font-size: 22px; font-weight: 300; color: var(--text); margin-bottom: 4px; }
+    .trole {
+      font-size: 10px; color: var(--gold);
+      letter-spacing: 0.22em; text-transform: uppercase; margin-bottom: 24px;
+    }
+    .tdivider { width: 28px; height: 1px; background: var(--border); margin-bottom: 24px; }
+    .tbio {
+      font-size: 13px; color: var(--text-dim); line-height: 1.75;
+      display: none; margin-bottom: 16px;
+    }
+    .tbio.open { display: block; }
+    .tbio p + p { margin-top: 12px; }
+    .tbtn {
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      color: var(--gold-dim); letter-spacing: 0.25em; text-transform: uppercase;
+      background: none; border: none; padding: 0; cursor: pointer;
+      transition: color 0.2s;
+    }
+    .tbtn:hover { color: var(--gold); }
+
+    /* ─── §07 PERSPECTIVES ─── */
+    #perspectives { padding: 120px 48px; }
+    .persp-inner { max-width: 1200px; margin: 0 auto; }
+    .persp-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 48px; margin-top: 64px;
+    }
+    .persp-col-h {
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      color: var(--gold); letter-spacing: 0.4em; text-transform: uppercase;
+      padding-bottom: 16px; border-bottom: 1px solid var(--border);
+      margin-bottom: 28px;
+    }
+    .pitem {
+      padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+      transition: border-color 0.2s; cursor: default;
+    }
+    .pitem:hover { border-bottom-color: var(--border); }
+    .pdate {
+      font-family: 'Space Mono', monospace; font-size: 8px;
+      color: var(--text-dimmer); letter-spacing: 0.2em; margin-bottom: 7px;
+    }
+    .ptitle {
+      font-size: 13px; font-weight: 400; color: var(--text);
+      line-height: 1.5; margin-bottom: 6px;
+      transition: color 0.2s;
+    }
+    .pitem:hover .ptitle { color: var(--gold-light); }
+    .ptag {
+      font-size: 9px; color: var(--text-dimmer);
+      letter-spacing: 0.12em; text-transform: uppercase;
+    }
+    .podcast-box {
+      border: 1px solid var(--border); padding: 28px 24px;
+      margin-top: 24px; display: flex; gap: 20px;
+      cursor: pointer; transition: border-color 0.3s, background 0.3s;
+    }
+    .podcast-box:hover { border-color: var(--gold); background: rgba(201,168,76,0.03); }
+    .podcast-ico {
+      width: 44px; height: 44px; flex-shrink: 0;
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .podcast-info { }
+    .podcast-ttl { font-size: 15px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+    .podcast-sub { font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+    .podcast-ep {
+      margin-top: 10px;
+      font-family: 'Space Mono', monospace; font-size: 9px;
+      color: var(--gold-dim); letter-spacing: 0.2em;
+    }
+
+    /* ─── §08 CONTACT ─── */
+    #contact {
+      background: var(--bg-2); padding: 120px 48px;
+      min-height: 100vh; display: flex; align-items: center;
+    }
+    .contact-inner {
+      max-width: 1200px; margin: 0 auto; width: 100%;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 80px; align-items: center;
+    }
+    .contact-h2 {
+      font-size: clamp(44px, 6vw, 76px);
+      font-weight: 200; line-height: 1.05; margin-bottom: 20px;
+    }
+    .contact-motto {
+      font-family: 'Space Mono', monospace; font-size: 13px;
+      color: var(--gold); padding: 16px 20px;
+      border-left: 2px solid var(--gold);
+      margin: 24px 0 36px; background: rgba(201,168,76,0.03);
+    }
+    .contact-sub {
+      font-size: 14px; color: var(--text-dim);
+      font-weight: 300; line-height: 1.85; margin-bottom: 40px;
+    }
+    .clinks { display: flex; flex-direction: column; gap: 12px; }
+    .clink {
+      display: flex; align-items: center; gap: 16px;
+      padding: 14px 20px; border: 1px solid var(--border);
+      text-decoration: none; color: var(--text);
+      transition: border-color 0.3s, background 0.3s;
+    }
+    .clink:hover { border-color: var(--gold); background: rgba(201,168,76,0.03); }
+    .clink-ico {
+      font-family: 'Space Mono', monospace; font-size: 12px;
+      color: var(--gold); width: 20px; flex-shrink: 0;
+    }
+    .clink-txt { font-size: 13px; color: var(--text-dim); }
+
+    /* TERMINAL */
+    .terminal {
+      background: #040404;
+      border: 1px solid rgba(201,168,76,0.25);
+      overflow: hidden;
+    }
+    .t-bar {
+      background: rgba(201,168,76,0.06);
+      padding: 11px 16px; display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid rgba(201,168,76,0.12);
+    }
+    .t-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .t-dot.r { background: #FF5F57; } .t-dot.y { background: #FEBC2E; } .t-dot.g { background: #28C840; }
+    .t-title { flex: 1; text-align: center; font-size: 9px; color: var(--text-dimmer); letter-spacing: 0.15em; font-family: 'Space Mono', monospace; }
+    .t-body { padding: 24px; font-family: 'Space Mono', monospace; font-size: 11px; line-height: 2; min-height: 280px; }
+    .t-line { }
+    .t-prompt { color: var(--gold); } .t-at { color: #333; } .t-host { color: #555; }
+    .t-cmd { color: #ddd; }
+    .t-out { color: var(--text-dimmer); }
+    .t-out.ok { color: var(--gold-light); }
+    .t-cur { display: inline-block; width: 7px; height: 13px; background: var(--gold); vertical-align: middle; animation: blink 1s step-end infinite; }
+    @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
+    .t-form { padding: 16px 24px; border-top: 1px solid rgba(201,168,76,0.1); }
+    .t-form-row { display: flex; align-items: center; gap: 8px; }
+    .t-form-prompt { color: var(--gold); font-family: 'Space Mono', monospace; font-size: 11px; white-space: nowrap; }
+    .t-input {
+      background: none; border: none; outline: none;
+      color: var(--text); font-family: 'Space Mono', monospace; font-size: 11px;
+      flex: 1; padding: 2px 0;
+    }
+    .t-send {
+      background: none; border: 1px solid var(--border);
+      color: var(--gold); font-family: 'Space Mono', monospace; font-size: 10px;
+      padding: 4px 12px; cursor: pointer; letter-spacing: 0.1em;
+      transition: all 0.2s;
+    }
+    .t-send:hover { border-color: var(--gold); background: rgba(201,168,76,0.1); }
+
+    /* ─── FOOTER ─── */
+    footer {
+      background: var(--bg);
+      padding: 28px 48px;
+      border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .f-copy {
+      font-family: 'Space Mono', monospace; font-size: 10px;
+      color: var(--text-dimmer); letter-spacing: 0.08em;
+    }
+    .f-links { display: flex; gap: 24px; }
+    .f-links a {
+      font-size: 10px; color: var(--text-dimmer);
+      text-decoration: none; letter-spacing: 0.1em; text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .f-links a:hover { color: var(--gold); }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 900px) {
+      nav { padding: 16px 24px; }
+      nav.solid { padding: 12px 24px; }
+      .nav-links { display: none; }
+      #hero, #manifesto, #thesis, #quotes, #portfolio, #team, #perspectives, #contact { padding: 80px 24px; }
+      .rules-grid, .thesis-layout, .quotes-grid, .team-grid, .persp-grid, .contact-inner { grid-template-columns: 1fr; gap: 24px; }
+      .port-grid { grid-template-columns: repeat(2, 1fr); }
+      footer { flex-direction: column; gap: 16px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ NAV ═══ -->
+<nav id="nav">
+  <a href="#hero" class="nav-logo">
+    <img class="nav-logo-img" src="data:image/png;base64,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" alt="Creekstone">
+    <span class="nav-logo-name">Creekstone Ventures</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#manifesto">Manifesto</a></li>
+    <li><a href="#thesis">Thesis</a></li>
+    <li><a href="#quotes">Quotes</a></li>
+    <li><a href="#portfolio">Portfolio</a></li>
+    <li><a href="#team">Team</a></li>
+    <li><a href="#perspectives">Perspectives</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ul>
+</nav>
+
+<!-- ═══ §01 HERO ═══ -->
+<section id="hero">
+  <div class="hero-bg-grid"></div>
+  <div class="hero-bg-glow"></div>
+  <div class="hero-content">
+    <div class="hero-logo-wrap">
+      <img class="hero-logo-img" src="data:image/png;base64,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" alt="Creekstone">
+    </div>
+    <div class="hero-eyebrow">// Creekstone Ventures · Nexus Fund I · BVI</div>
+    <h1 class="hero-h1">
+      <span class="gold-grad">WE CREATE</span>
+      <span class="hero-sep">·</span>
+      <span class="gold-grad">WE SPARK</span>
+    </h1>
+    <p class="hero-tagline">Backing the young and AI-native founders — reshaping the world from China</p>
+    <div class="hero-cta">
+      <a href="#manifesto" class="btn btn-outline"><span>Our Manifesto</span></a>
+      <a href="#portfolio" class="btn btn-ghost"><span>Portfolio →</span></a>
+    </div>
+  </div>
+  <div class="hero-scroll">
+    <div class="scroll-bar"></div>
+    <span class="scroll-label">Scroll</span>
+  </div>
+</section>
+
+<!-- ═══ §02 MANIFESTO ═══ -->
+<section id="manifesto">
+  <div class="manifesto-inner">
+    <div class="sec-label fade-in">02 · Manifesto</div>
+
+    <div class="manifesto-big fade-in d1">
+      We don't bet on <em>experience.</em><br>
+      We bet on <em>native variables.</em>
+    </div>
+
+    <div class="rules-grid">
+      <div class="rule fade-in">
+        <div class="rule-n">// 01</div>
+        <div class="rule-en"><b>Young. Ambitious.</b> Small Ego.</div>
+        <div class="rule-cn">年轻、野心大、Ego 小</div>
+      </div>
+      <div class="rule fade-in d1">
+        <div class="rule-n">// 02</div>
+        <div class="rule-en"><b>Tech-native.</b> AI-native.</div>
+        <div class="rule-cn">技术原生、AI 原生</div>
+      </div>
+      <div class="rule fade-in d2">
+        <div class="rule-n">// 03</div>
+        <div class="rule-en">No <b>internet-era playbook.</b></div>
+        <div class="rule-cn">没有互联网思维</div>
+      </div>
+      <div class="rule fade-in d3">
+        <div class="rule-n">// 04</div>
+        <div class="rule-en"><b>Slightly</b> dangerous.</div>
+        <div class="rule-cn">略微危险，才有意思</div>
+      </div>
+    </div>
+
+    <div class="manifesto-note fade-in d4">
+      <p>
+        We believe the best founders are those who <em>never internalized the old rules</em> —
+        because they arrived after the world had already changed. They don't disrupt industries.
+        They build as if those industries never existed. We call this the <em>native variable advantage.</em>
+        And we've spent years learning how to find it first.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ §03 THESIS ═══ -->
+<section id="thesis">
+  <div class="thesis-inner">
+    <div class="sec-label fade-in">03 · Investment Thesis</div>
+    <div class="thesis-layout">
+      <div>
+        <h2 class="thesis-h2 fade-in">
+          Backing the<br>
+          <span class="gold-grad">AI-native</span><br>
+          generation.
+        </h2>
+        <p class="thesis-body fade-in d1">
+          The next wave of builders aren't iterating on the old stack — they're replacing it.
+          We focus on post-1995 founders: deeply technical, globally ambitious,
+          and natively embedded in the world's most consequential tech ecosystems.
+        </p>
+        <p class="thesis-body fade-in d2">
+          Our edge is proximity. We're deeply embedded in the talent networks emerging from
+          Binance, frontier AI labs, and China's next-generation tech builders.
+          We get to these founders before the market does.
+        </p>
+        <div class="stats-row fade-in d3">
+          <div class="stat">
+            <span class="stat-n">100%</span>
+            <span class="stat-l">Follow-on Rate</span>
+          </div>
+          <div class="stat">
+            <span class="stat-n">70%+</span>
+            <span class="stat-l">2+ Rounds Raised</span>
+          </div>
+          <div class="stat">
+            <span class="stat-n">$50M</span>
+            <span class="stat-l">Nexus Fund I</span>
+          </div>
+        </div>
+        <div class="thesis-tags fade-in d4">
+          <span class="tag g">Seed → Series A</span>
+          <span class="tag">AI Application</span>
+          <span class="tag">Agent OS</span>
+          <span class="tag">Vertical IDE</span>
+          <span class="tag">China → Global</span>
+          <span class="tag">Post-1995</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="focus-list fade-in d2">
+          <div class="focus-item">
+            <div class="focus-head">
+              <span class="focus-name">Vertical IDE / ASI</span>
+              <span class="focus-pct">60%</span>
+            </div>
+            <div class="focus-track"><div class="focus-fill" data-w="60"></div></div>
+          </div>
+          <div class="focus-item">
+            <div class="focus-head">
+              <span class="focus-name">Agent OS & New Hardware</span>
+              <span class="focus-pct">20%</span>
+            </div>
+            <div class="focus-track"><div class="focus-fill" data-w="20"></div></div>
+          </div>
+          <div class="focus-item">
+            <div class="focus-head">
+              <span class="focus-name">Agent Components & Tools</span>
+              <span class="focus-pct">10%</span>
+            </div>
+            <div class="focus-track"><div class="focus-fill" data-w="10"></div></div>
+          </div>
+          <div class="focus-item">
+            <div class="focus-head">
+              <span class="focus-name">AI Infrastructure</span>
+              <span class="focus-pct">10%</span>
+            </div>
+            <div class="focus-track"><div class="focus-fill" data-w="10"></div></div>
+          </div>
+        </div>
+
+        <div class="co-inv-box fade-in d3">
+          <div class="co-inv-label">// Co-Investors</div>
+          <p class="co-inv-text">
+            We consistently invest alongside the best —
+            ZhenFund, IDG Capital, Hillhouse, Tencent,
+            Bluerun, Hongshan (Sequoia China), Ant Group,
+            Linear Capital, and more.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ §04 QUOTES ═══ -->
+<section id="quotes">
+  <div class="quotes-inner">
+    <div class="sec-label fade-in">04 · Standout Quotes</div>
+    <div class="quotes-grid">
+
+      <div class="qcard fade-in">
+        <span class="qmoic">9.33× · IRR 1,120%</span>
+        <span class="qmark">"</span>
+        <p class="qtext">Thank you for believing in us when all we had was a sketch. The best investment isn't money — it's trust.</p>
+        <div class="qauthor">
+          <div class="qline"></div>
+          <div>
+            <div class="qname">Leon Ming</div>
+            <div class="qco">Founder, YouWear</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="qcard fade-in d1">
+        <span class="qmoic">7.8× MOIC</span>
+        <span class="qmark">"</span>
+        <p class="qtext">The team views Creekstone not merely as an investor but as a deeply aligned partner and friend. Creekstone stands out as a pioneer with sharp, native AI investment intelligence.</p>
+        <div class="qauthor">
+          <div class="qline"></div>
+          <div>
+            <div class="qname">Chris Pan</div>
+            <div class="qco">Founder, Trace X</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="qcard fade-in d2">
+        <span class="qmoic">1.9× MOIC</span>
+        <span class="qmark">"</span>
+        <p class="qtext">They are different than every investor I have ever seen. They are more like co-founders for us.</p>
+        <div class="qauthor">
+          <div class="qline"></div>
+          <div>
+            <div class="qname">Leah Wang</div>
+            <div class="qco">Founder, MachinePulse</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="qcard fade-in d3">
+        <span class="qmoic">4.3× · IRR 620%</span>
+        <span class="qmark">"</span>
+        <p class="qtext">Creekstone provided significant assistance throughout the entire process — from idea generation, to fundraising, to team recruitment — working alongside us in co-creation.</p>
+        <div class="qauthor">
+          <div class="qline"></div>
+          <div>
+            <div class="qname">Zhijie</div>
+            <div class="qco">Founder, CodePlus</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══ §05 PORTFOLIO ═══ -->
+<section id="portfolio">
+  <div class="portfolio-inner">
+    <div class="sec-label fade-in">05 · Portfolio Matrix</div>
+    <div class="port-grid">
+
+      <div class="pc fade-in" onclick="togglePC(this)">
+        <div class="pc-idx">01</div>
+        <div class="pc-name">YouWear</div>
+        <div class="pc-aka">// AI Creative Platform</div>
+        <div class="pc-desc">AI-powered fashion and creative platform. One of the fastest-growing AI consumer companies from China. Led by Leon Ming.</div>
+        <div class="pc-moic"><span class="pc-mn">9.33×</span><span class="pc-ml">MOIC · IRR 1,120%</span></div>
+        <div class="pc-stage">SEED → SERIES A</div>
+      </div>
+
+      <div class="pc fade-in d1" onclick="togglePC(this)">
+        <div class="pc-idx">02</div>
+        <div class="pc-name">Trace X</div>
+        <div class="pc-aka">// Oldest Life</div>
+        <div class="pc-desc">Next-gen supply chain intelligence platform, bringing AI-native operations to global logistics. Founded by Chris Pan.</div>
+        <div class="pc-moic"><span class="pc-mn">7.8×</span><span class="pc-ml">MOIC</span></div>
+        <div class="pc-stage">SEED → PRE-A++</div>
+      </div>
+
+      <div class="pc fade-in d2" onclick="togglePC(this)">
+        <div class="pc-idx">03</div>
+        <div class="pc-name">Kaleidoscope</div>
+        <div class="pc-aka">// 大千</div>
+        <div class="pc-desc">Immersive AI experience platform. Redefining how humans interact with intelligence. Founded by Qiuqiu.</div>
+        <div class="pc-moic"><span class="pc-mn">6.6×</span><span class="pc-ml">MOIC · IRR 408%</span></div>
+        <div class="pc-stage">SEED → SERIES A</div>
+      </div>
+
+      <div class="pc fade-in d3" onclick="togglePC(this)">
+        <div class="pc-idx">04</div>
+        <div class="pc-name">CodePlus</div>
+        <div class="pc-aka">// Verdant</div>
+        <div class="pc-desc">AI-native development environment built for the agent era. The IDE that thinks with you. Founded by Zhijie.</div>
+        <div class="pc-moic"><span class="pc-mn">4.3×</span><span class="pc-ml">MOIC · IRR 620%</span></div>
+        <div class="pc-stage">SEED → PRE-A+</div>
+      </div>
+
+      <div class="pc fade-in" onclick="togglePC(this)">
+        <div class="pc-idx">05</div>
+        <div class="pc-name">Mizzen AI</div>
+        <div class="pc-aka">// Enterprise Intelligence</div>
+        <div class="pc-desc">Enterprise AI transformation platform. Connecting frontier AI capability with real business outcomes. Founded by Keqiang.</div>
+        <div class="pc-moic"><span class="pc-mn">3.0×</span><span class="pc-ml">MOIC</span></div>
+        <div class="pc-stage">SEED → PRE-A</div>
+      </div>
+
+      <div class="pc fade-in d1" onclick="togglePC(this)">
+        <div class="pc-idx">06</div>
+        <div class="pc-name">Mem / U-means</div>
+        <div class="pc-aka">// MeMu</div>
+        <div class="pc-desc">Memory-augmented intelligence. Building the persistent memory layer for AI agents and human-AI collaboration. Founded by Peter Chen.</div>
+        <div class="pc-moic"><span class="pc-mn">2.8×</span><span class="pc-ml">MOIC</span></div>
+        <div class="pc-stage">SEED → PRE-A</div>
+      </div>
+
+      <div class="pc fade-in d2" onclick="togglePC(this)">
+        <div class="pc-idx">07</div>
+        <div class="pc-name">AxeMax</div>
+        <div class="pc-aka">// XMAX</div>
+        <div class="pc-desc">Next-generation productivity suite for distributed teams. Rebuilding work infrastructure for the AI era. Founded by Jiaxin.</div>
+        <div class="pc-moic"><span class="pc-mn">2.67×</span><span class="pc-ml">MOIC · IRR 320%</span></div>
+        <div class="pc-stage">SEED → PRE-A+</div>
+      </div>
+
+      <div class="pc fade-in d3" onclick="togglePC(this)">
+        <div class="pc-idx">08</div>
+        <div class="pc-name">Machine Pulse</div>
+        <div class="pc-aka">// Carp0</div>
+        <div class="pc-desc">AI-powered operational intelligence. Turning machine data into strategic decisions in real time. Founded by Leah Wang.</div>
+        <div class="pc-moic"><span class="pc-mn">1.9×</span><span class="pc-ml">MOIC</span></div>
+        <div class="pc-stage">SEED → PRE-A</div>
+      </div>
+
+      <div class="pc fade-in" onclick="togglePC(this)">
+        <div class="pc-idx">09</div>
+        <div class="pc-name">RSI</div>
+        <div class="pc-aka">// Recursive Superintelligence</div>
+        <div class="pc-desc">Frontier AI research lab exploring recursive self-improvement architectures. Co-Founded by Yuandong Tian.</div>
+        <div class="pc-moic" style="margin-top: 4px;">
+          <span class="pc-stage" style="margin: 0; color: var(--gold-dim);">STRATEGIC · FRONTIER</span>
+        </div>
+      </div>
+
+      <div class="pc fade-in d1" onclick="togglePC(this)">
+        <div class="pc-idx">10</div>
+        <div class="pc-name">AirTally</div>
+        <div class="pc-aka">// Low Entropy</div>
+        <div class="pc-desc">AI-native productivity and data intelligence platform. Reducing the entropy in how teams operate. Founded by Baite Huang.</div>
+        <div class="pc-moic" style="margin-top: 4px;">
+          <span class="pc-stage" style="margin: 0; color: var(--gold-dim);">PORTFOLIO · ACTIVE</span>
+        </div>
+      </div>
+
+      <div class="port-filler fade-in d2">
+        <div class="port-filler-inner">
+          <div class="port-filler-n">MORE</div>
+          <div class="port-filler-plus">+</div>
+        </div>
+      </div>
+
+      <div class="port-filler fade-in d3"></div>
+
+    </div>
+
+    <div class="port-note fade-in d3">
+      <span class="port-note-icon">// NOTE</span>
+      <p class="port-note-text">Portfolio names and aliases reflect internal working names and public identities. Specific content is subject to update. We invest at seed stage and grow with our companies over the long term.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ §06 TEAM ═══ -->
+<section id="team">
+  <div class="team-inner">
+    <div class="sec-label fade-in">06 · Team</div>
+    <div class="team-grid">
+
+      <div class="tcard fade-in">
+        <div class="tavatar"><span class="tavatar-init">LZ</span></div>
+        <div class="tname">Luhuan Zhong</div>
+        <div class="trole">Managing Partner</div>
+        <div class="tdivider"></div>
+        <div class="tbio" id="b0">
+          <p>8-year VC veteran with full-cycle investment experience spanning angel to IPO. Lou has built deep roots in China's startup ecosystem, known for identifying and backing the most ambitious founders before the market does.</p>
+          <p>Directly involved in helping founders raise over $150M across the past decade. Founders describe her support as "co-founder level" — quick to decide, relentless in execution.</p>
+        </div>
+        <button class="tbtn" onclick="toggleBio('b0', this)">[ + Read Bio ]</button>
+      </div>
+
+      <div class="tcard fade-in d1">
+        <div class="tavatar"><span class="tavatar-init">YL</span></div>
+        <div class="tname">Yihao Li</div>
+        <div class="trole">Managing Partner</div>
+        <div class="tdivider"></div>
+        <div class="tbio" id="b1">
+          <p>Former founder and active operator deeply embedded in China's entrepreneurial circles. Yihao brings builder intuition to every investment — he understands the founding journey from the inside.</p>
+          <p>Specializes in product discovery, growth strategy, and long-term founder partnerships. Known for spotting the right company-market fit signal before it's obvious to anyone else.</p>
+        </div>
+        <button class="tbtn" onclick="toggleBio('b1', this)">[ + Read Bio ]</button>
+      </div>
+
+      <div class="tcard fade-in d2">
+        <div class="tavatar"><span class="tavatar-init">GZ</span></div>
+        <div class="tname">Gary Zhang</div>
+        <div class="trole">Analyst</div>
+        <div class="tdivider"></div>
+        <div class="tbio" id="b2">
+          <p>Gary drives the intelligence and research layer at Creekstone. Focused on signal detection, founder sourcing, and building the analytical infrastructure that keeps us at the frontier of AI investment intelligence.</p>
+          <p>Builder of Creekstone's proprietary sourcing system, automated research platform, and deal flow infrastructure. Believes the best investments are found before anyone else is even looking.</p>
+        </div>
+        <button class="tbtn" onclick="toggleBio('b2', this)">[ + Read Bio ]</button>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══ §07 PERSPECTIVES ═══ -->
+<section id="perspectives">
+  <div class="persp-inner">
+    <div class="sec-label fade-in">07 · Perspectives</div>
+    <div class="persp-grid">
+
+      <div class="fade-in">
+        <div class="persp-col-h">Research</div>
+        <div class="pitem">
+          <div class="pdate">2026 Q1</div>
+          <div class="ptitle">Vertical Agent Radar 2026 Q1: The Rise of AI-Native Operators</div>
+          <div class="ptag">Intelligence Report</div>
+        </div>
+        <div class="pitem">
+          <div class="pdate">2026.03</div>
+          <div class="ptitle">Why We Bet on Post-1995 Founders: A Data-Driven View</div>
+          <div class="ptag">Thesis Paper</div>
+        </div>
+        <div class="pitem">
+          <div class="pdate">2025.12</div>
+          <div class="ptitle">China's AI Application Boom: Mapping the Next 1000 Days</div>
+          <div class="ptag">Market Analysis</div>
+        </div>
+        <div class="pitem">
+          <div class="pdate">2025.09</div>
+          <div class="ptitle">The Native Variable Theory: How We Identify Founders</div>
+          <div class="ptag">Investment Philosophy</div>
+        </div>
+      </div>
+
+      <div class="fade-in d1">
+        <div class="persp-col-h">Reading List</div>
+        <div class="pitem">
+          <div class="pdate">Recommended</div>
+          <div class="ptitle">Software 2.0 — Andrej Karpathy</div>
+          <div class="ptag">AI / Engineering</div>
+        </div>
+        <div class="pitem">
+          <div class="pdate">Recommended</div>
+          <div class="ptitle">The Sovereign Individual — Davidson & Rees-Mogg</div>
+          <div class="ptag">Macro / Philosophy</div>
+        </div>
+        <div class="pitem">
+          <div class="pdate">Recommended</div>
+          <div class="ptitle">Zero to One — Peter Thiel</div>
+          <div class="ptag">Venture / Startups</div>
+        </div>
+        <div class="pitem">
+          <div class="pdate">Recommended</div>
+          <div class="ptitle">Poor Charlie's Almanack — Charles T. Munger</div>
+          <div class="ptag">Mental Models / Investing</div>
+        </div>
+      </div>
+
+      <div class="fade-in d2">
+        <div class="persp-col-h">Podcast · 投石问溪</div>
+        <div class="podcast-box">
+          <div class="podcast-ico">🎙</div>
+          <div class="podcast-info">
+            <div class="podcast-ttl">《投石问溪》<br><span style="font-size:12px;color:var(--text-dim);font-weight:300;">Through a Stone</span></div>
+            <div class="podcast-sub">A podcast about young founders, native intelligence, and the new rules of building from China. Available on 小宇宙 Xiaoyuzhou.</div>
+            <div class="podcast-ep">Available on 小宇宙 (Xiaoyuzhou)</div>
+          </div>
+        </div>
+        <div class="pitem" style="margin-top: 12px;">
+          <div class="pdate">EP.01 · Latest</div>
+          <div class="ptitle">天元录 × Creekstone — 在 AI 时代，我们如何重新定义创业？</div>
+          <div class="ptag">小宇宙 · Xiaoyuzhou</div>
+        </div>
+        <div class="pitem">
+          <div class="pdate">Coming Soon</div>
+          <div class="ptitle">From ByteDance to the Frontier: Inside the AI-Native Founder Playbook</div>
+          <div class="ptag">EP.02 · In Production</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══ §08 CONTACT ═══ -->
+<section id="contact">
+  <div class="contact-inner">
+
+    <div>
+      <div class="sec-label fade-in">08 · Contact</div>
+      <h2 class="contact-h2 fade-in d1">
+        Get in<br>
+        <span class="gold-grad">Touch.</span>
+      </h2>
+      <div class="contact-motto fade-in d2">
+        We respond fast. We decide faster.
+      </div>
+      <p class="contact-sub fade-in d3">
+        If you're building something that didn't exist before, skip the deck
+        and just tell us what you're building. We're always open to
+        the next native variable.
+      </p>
+      <div class="clinks fade-in d4">
+        <a href="mailto:info@creekstonevc.com" class="clink">
+          <span class="clink-ico">@</span>
+          <span class="clink-txt">info@creekstonevc.com</span>
+        </a>
+        <a href="#" class="clink">
+          <span class="clink-ico">▶</span>
+          <span class="clink-txt">《投石问溪》Podcast — 小宇宙 (Xiaoyuzhou)</span>
+        </a>
+        <a href="https://github.com/creekstonevc" target="_blank" class="clink">
+          <span class="clink-ico">{}</span>
+          <span class="clink-txt">github.com/creekstonevc</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="fade-in d3">
+      <div class="terminal">
+        <div class="t-bar">
+          <div class="t-dot r"></div>
+          <div class="t-dot y"></div>
+          <div class="t-dot g"></div>
+          <span class="t-title">creekstone-agent — connect@nexus-i</span>
+        </div>
+        <div class="t-body">
+          <div class="t-line">
+            <span class="t-prompt">creekstone</span><span class="t-at">@</span><span class="t-host">nexus</span><span style="color:#222">:~$ </span><span class="t-cmd">./connect --mode founder</span>
+          </div>
+          <div class="t-line t-out">Initializing Creekstone Agent...</div>
+          <div class="t-line t-out">▸ Loading investment thesis          ✓</div>
+          <div class="t-line t-out">▸ Authenticating founder profile     ✓</div>
+          <div class="t-line t-out ok">✓ Ready. We're listening.</div>
+          <div class="t-line" style="margin-top:10px;">
+            <span class="t-prompt">creekstone</span><span class="t-at">@</span><span class="t-host">nexus</span><span style="color:#222">:~$ </span><span class="t-cmd">query --fund nexus-i --status open</span>
+          </div>
+          <div class="t-line t-out">Fund         : Nexus Fund I</div>
+          <div class="t-line t-out">Stage        : Seed → Series A</div>
+          <div class="t-line t-out">Focus        : AI Application Layer</div>
+          <div class="t-line t-out">Geography    : China → Global</div>
+          <div class="t-line t-out ok">Status       : ACTIVE — Currently investing</div>
+          <div class="t-line" style="margin-top:10px;">
+            <span class="t-prompt">creekstone</span><span class="t-at">@</span><span class="t-host">nexus</span><span style="color:#222">:~$ </span><span class="t-cur"></span>
+          </div>
+        </div>
+        <div class="t-form">
+          <div class="t-form-row">
+            <span class="t-form-prompt">founder@startup:~$ </span>
+            <input class="t-input" id="termInput" type="text" placeholder="Tell us what you're building..." autocomplete="off">
+            <button class="t-send" onclick="sendTerminal()">SEND →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer>
+  <span class="f-copy">© 2026 Creekstone Ventures · CREEKSTONE VENTURES LTD. · BVI · Building China's Founders Fund</span>
+  <div class="f-links">
+    <a href="#manifesto">Manifesto</a>
+    <a href="#portfolio">Portfolio</a>
+    <a href="#team">Team</a>
+    <a href="#contact">Contact</a>
+  </div>
+</footer>
+
+<script>
+  // NAV scroll solid
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('solid', window.scrollY > 60);
+  });
+
+  // Fade-in observer
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        // animate focus bars
+        e.target.querySelectorAll('.focus-fill[data-w]').forEach(bar => {
+          bar.style.width = bar.getAttribute('data-w') + '%';
+        });
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.fade-in').forEach(el => obs.observe(el));
+
+  // Also observe focus fills directly
+  document.querySelectorAll('.focus-fill[data-w]').forEach(bar => {
+    const o2 = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          setTimeout(() => { e.target.style.width = e.target.getAttribute('data-w') + '%'; }, 300);
+        }
+      });
+    }, { threshold: 0.5 });
+    o2.observe(bar);
+  });
+
+  // Portfolio toggle
+  function togglePC(card) {
+    const wasActive = card.classList.contains('active');
+    document.querySelectorAll('.pc').forEach(c => {
+      c.classList.remove('active');
+      c.style.borderColor = '';
+    });
+    if (!wasActive) {
+      card.classList.add('active');
+    }
+  }
+
+  // Team bio toggle
+  function toggleBio(id, btn) {
+    const bio = document.getElementById(id);
+    const open = bio.classList.toggle('open');
+    btn.textContent = open ? '[ − Close Bio ]' : '[ + Read Bio ]';
+  }
+
+  // Terminal send
+  function sendTerminal() {
+    const input = document.getElementById('termInput');
+    const val = input.value.trim();
+    if (!val) return;
+    const body = document.querySelector('.t-body');
+    const line = document.createElement('div');
+    line.className = 't-line t-out ok';
+    line.textContent = `✓ Message received: "${val}" — We'll be in touch.`;
+    body.appendChild(line);
+    body.scrollTop = body.scrollHeight;
+    input.value = '';
+    input.placeholder = 'Message sent. We respond fast.';
+    input.disabled = true;
+  }
+
+  document.getElementById('termInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendTerminal();
+  });
+</script>
+</body>
 </html>
