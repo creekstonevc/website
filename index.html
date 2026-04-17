@@ -102,7 +102,7 @@
     .t-left{grid-area:left}.t-right{grid-area:right}
     .t-tagrow{grid-area:tags;display:flex;flex-wrap:wrap;gap:10px;padding-top:12px;border-top:1px solid var(--br)}
     .t-h2{font-size:clamp(34px,4.8vw,60px);font-weight:200;line-height:1.05;margin-bottom:22px}
-    .t-body{font-size:16px;color:var(--tx2);line-height:1.85;font-weight:300;margin-bottom:20px}
+    .t-body{font-size:18px;color:var(--tx2);line-height:1.9;font-weight:300;margin-bottom:20px;font-family:'Inter',sans-serif}
     .tag{padding:6px 16px;border:1px solid var(--br);font-size:10px;letter-spacing:.12em;color:var(--tx2);text-transform:uppercase;transition:border-color .2s,color .2s}
     .tag.g{border-color:var(--g);color:var(--g)}.tag:hover{border-color:var(--brh);color:var(--tx)}
     .focus-list{display:flex;flex-direction:column;gap:20px}
@@ -115,8 +115,8 @@
     .flc{display:flex;flex-direction:column}
     .flc-item{display:flex;align-items:baseline;gap:16px;padding:20px 0;border-bottom:1px solid var(--br)}
     .flc-item:first-child{border-top:1px solid var(--br)}
-    .flc-n{font-family:'Space Mono',monospace;font-size:9px;color:var(--gdim);flex-shrink:0;width:20px}
-    .flc-name{font-size:15px;font-weight:300;color:var(--tx);font-family:'Inter',sans-serif}
+    .flc-n{font-family:'Space Mono',monospace;font-size:11px;color:var(--gdim);flex-shrink:0;width:24px}
+    .flc-name{font-size:18px;font-weight:400;color:var(--tx);font-family:'Inter',sans-serif;letter-spacing:.01em}
     .flc-sub{font-size:11px;color:var(--tx3);margin-top:3px;line-height:1.5;font-family:'Inter',sans-serif}
     .t-phi{display:flex;align-items:center;gap:24px;flex-wrap:wrap;width:100%;padding-top:20px;border-top:1px solid var(--br)}
     .t-phi-phrase{font-size:17px;font-weight:300;color:var(--tx);letter-spacing:.02em}
@@ -269,22 +269,20 @@
     .di-cosmos-bg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
     .di-cosmos-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
       z-index:2;text-align:center;pointer-events:none;white-space:nowrap}
-    .di-cc-word{font-family:'Space Mono',monospace;font-size:9px;color:var(--g);
-      letter-spacing:.32em;line-height:1.7;text-transform:uppercase;opacity:.85}
-    .di-cc-sub{font-family:'Space Mono',monospace;font-size:7px;color:var(--gdim);
-      letter-spacing:.22em;text-transform:uppercase;opacity:.55}
+    .di-cc-word{font-family:'Space Mono',monospace;font-size:15px;color:var(--g);
+      letter-spacing:.3em;line-height:1.8;text-transform:uppercase;opacity:.92;font-weight:700}
+    .di-cc-sub{font-family:'Space Mono',monospace;font-size:15px;color:var(--g);
+      letter-spacing:.3em;text-transform:uppercase;opacity:.92;font-weight:700}
     .di-planet{position:absolute;width:140px;text-align:center;
       display:flex;flex-direction:column;align-items:center;cursor:default;z-index:3}
     .di-planet:hover .di-dot{border-color:var(--g);background:rgba(201,168,76,.18);
       box-shadow:0 0 20px rgba(201,168,76,.18)}
     .di-planet:hover .di-p-title{color:var(--gl)}
-    .di-dot{width:36px;height:36px;border-radius:50%;border:1px solid rgba(201,168,76,.4);
-      display:flex;align-items:center;justify-content:center;margin-bottom:8px;
-      background:rgba(201,168,76,.03);transition:all .35s;flex-shrink:0}
-    .di-dot-core{width:6px;height:6px;border-radius:50%;background:rgba(201,168,76,.6)}
-    .di-p-title{font-size:13px;font-weight:500;color:var(--tx);line-height:1.3;
+    .di-dot{display:none}
+    .di-dot-core{display:none}
+    .di-p-title{font-size:15px;font-weight:600;color:var(--tx);line-height:1.3;
       margin-bottom:5px;transition:color .3s;font-family:'Inter',sans-serif}
-    .di-p-sub{font-size:11px;color:var(--tx3);line-height:1.55;font-family:'Inter',sans-serif}
+    .di-p-sub{font-size:12px;color:var(--tx3);line-height:1.55;font-family:'Inter',sans-serif}
     @media(max-width:900px){
       .di-cosmos{aspect-ratio:unset;height:auto;display:flex;flex-wrap:wrap;
         justify-content:center;gap:24px;padding:20px 0}
@@ -468,7 +466,7 @@
           </div>
           <div class="flc-item">
             <span class="flc-n">↯</span>
-            <div><div class="flc-name">Wildcard &mdash; <span style="font-weight:200;color:var(--tx2)">anything radically disruptive</span></div></div>
+            <div><div class="flc-name">Wildcard &mdash; <span style="font-weight:500;color:var(--tx)">anything radically disruptive</span></div></div>
           </div>
         </div>
       </div>
@@ -500,33 +498,33 @@
     <div class="di-cosmos fi d2">
       <svg class="di-cosmos-bg" viewBox="0 0 680 680">
         <!-- static connector lines from center to each planet -->
-        <line x1="340" y1="340" x2="340" y2="110" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="520" y2="197" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="564" y2="391" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="440" y2="547" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="240" y2="547" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="116" y2="391" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="160" y2="197" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="340" y2="110" stroke="rgba(201,168,76,.12)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="520" y2="197" stroke="rgba(201,168,76,.12)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="564" y2="391" stroke="rgba(201,168,76,.12)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="440" y2="547" stroke="rgba(201,168,76,.12)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="240" y2="547" stroke="rgba(201,168,76,.12)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="116" y2="391" stroke="rgba(201,168,76,.12)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="160" y2="197" stroke="rgba(201,168,76,.12)" stroke-width="0.5"/>
         <!-- outer ring (rotating CW) -->
-        <circle cx="340" cy="340" r="230" stroke="rgba(201,168,76,.12)" fill="none"
-          stroke-width="1" stroke-dasharray="4 10">
+        <circle cx="340" cy="340" r="230" stroke="rgba(201,168,76,.42)" fill="none"
+          stroke-width="1.2" stroke-dasharray="4 9">
           <animateTransform attributeName="transform" type="rotate"
             from="0 340 340" to="360 340 340" dur="28s" repeatCount="indefinite"/>
         </circle>
         <!-- inner ring (rotating CCW) -->
-        <circle cx="340" cy="340" r="155" stroke="rgba(201,168,76,.05)" fill="none"
-          stroke-width="0.5" stroke-dasharray="1 8">
+        <circle cx="340" cy="340" r="155" stroke="rgba(201,168,76,.2)" fill="none"
+          stroke-width="0.8" stroke-dasharray="2 8">
           <animateTransform attributeName="transform" type="rotate"
             from="360 340 340" to="0 340 340" dur="42s" repeatCount="indefinite"/>
         </circle>
         <!-- star markers at planet positions (static, on orbit circumference) -->
-        <circle cx="340" cy="110" r="2.5" fill="rgba(201,168,76,.55)"/>
-        <circle cx="520" cy="197" r="2.5" fill="rgba(201,168,76,.55)"/>
-        <circle cx="564" cy="391" r="2.5" fill="rgba(201,168,76,.55)"/>
-        <circle cx="440" cy="547" r="2.5" fill="rgba(201,168,76,.55)"/>
-        <circle cx="240" cy="547" r="2.5" fill="rgba(201,168,76,.55)"/>
-        <circle cx="116" cy="391" r="2.5" fill="rgba(201,168,76,.55)"/>
-        <circle cx="160" cy="197" r="2.5" fill="rgba(201,168,76,.55)"/>
+        <circle cx="340" cy="110" r="3.5" fill="rgba(201,168,76,.8)"/>
+        <circle cx="520" cy="197" r="3.5" fill="rgba(201,168,76,.8)"/>
+        <circle cx="564" cy="391" r="3.5" fill="rgba(201,168,76,.8)"/>
+        <circle cx="440" cy="547" r="3.5" fill="rgba(201,168,76,.8)"/>
+        <circle cx="240" cy="547" r="3.5" fill="rgba(201,168,76,.8)"/>
+        <circle cx="116" cy="391" r="3.5" fill="rgba(201,168,76,.8)"/>
+        <circle cx="160" cy="197" r="3.5" fill="rgba(201,168,76,.8)"/>
       </svg>
       <div class="di-cosmos-center"><div class="di-cc-word">Creekstone</div><div class="di-cc-sub">Ventures</div></div>
       <div class="di-planet"><div class="di-dot"><div class="di-dot-core"></div></div><div class="di-p-title">Global Resources</div><div class="di-p-sub">Cross-border networks &amp; market access from day one</div></div>
