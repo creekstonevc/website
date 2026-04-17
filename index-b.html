@@ -62,11 +62,11 @@
     .hero-word{font-size:clamp(70px,10.5vw,144px);font-weight:200;line-height:.88;letter-spacing:-.03em;display:block;opacity:0}
     .hw1{animation:fup .9s .52s forwards}.hw2{animation:fup .9s .78s forwards}
     .hero-gap{height:22px}
-    .hero-tag{font-size:16px;font-weight:300;color:var(--tx2);letter-spacing:.18em;text-transform:uppercase;margin-top:22px;opacity:0;animation:fup .9s .92s forwards}
-    .hero-term{margin-top:16px;display:flex;align-items:center;justify-content:center;opacity:0;animation:fup .9s 1.08s forwards;min-height:22px}
-    .ht-p{font-family:'Space Mono',monospace;font-size:13px;color:var(--g)}
-    .ht-t{font-family:'Space Mono',monospace;font-size:13px;color:rgba(201,168,76,.65);letter-spacing:.03em}
-    .ht-c{font-family:'Space Mono',monospace;font-size:13px;color:var(--g);animation:blink .75s step-end infinite;margin-left:1px}
+    .hero-tag{display:none}
+    .hero-term{margin-top:30px;display:flex;align-items:center;justify-content:center;opacity:0;animation:fup .9s .92s forwards;min-height:28px}
+    .ht-p{font-family:'Space Mono',monospace;font-size:16px;color:var(--g)}
+    .ht-t{font-family:'Space Mono',monospace;font-size:16px;color:rgba(201,168,76,.65);letter-spacing:.03em}
+    .ht-c{font-family:'Space Mono',monospace;font-size:16px;color:var(--g);animation:blink .75s step-end infinite;margin-left:1px}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
     .hero-cta{display:flex;gap:14px;justify-content:center;margin-top:48px;opacity:0;animation:fup .9s 1.22s forwards}
     .btn{padding:11px 28px;text-decoration:none;font-size:10px;font-weight:500;letter-spacing:.15em;text-transform:uppercase;transition:all .3s;position:relative;overflow:hidden;display:inline-block}
@@ -88,6 +88,7 @@
     .rule::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(to right,transparent,var(--g),transparent);opacity:0;transition:opacity .35s}
     .rule:hover{background:rgba(201,168,76,.022)}.rule:hover::after{opacity:1}
     .r-n{font-family:'Space Mono',monospace;font-size:9px;color:var(--gdim);letter-spacing:.4em;margin-bottom:14px}
+    .r-dim{font-family:'Space Mono',monospace;font-size:8px;color:var(--tx3);letter-spacing:.28em;text-transform:uppercase;margin-bottom:10px;opacity:.7}
     .r-en{font-size:22px;font-weight:300;line-height:1.35}
     .r-en b{font-weight:700;color:var(--gl)}
     .m-note{margin-top:64px;padding:26px 34px;border-left:2px solid var(--g);background:rgba(201,168,76,.03)}
@@ -110,7 +111,17 @@
     .fi-pct{font-family:'Space Mono',monospace;font-size:11px;color:var(--g)}
     .fi-track{height:1px;background:rgba(255,255,255,.05);position:relative}
     .fi-fill{position:absolute;top:0;left:0;height:100%;background:linear-gradient(to right,var(--gdim),var(--gb));width:0%;transition:width 1.8s cubic-bezier(.4,0,.2,1)}
-    .eco-box{margin-top:44px;padding:26px 24px;border:1px solid var(--br)}
+    .eco-box{display:none}
+    .flc{display:flex;flex-direction:column}
+    .flc-item{display:flex;align-items:baseline;gap:16px;padding:20px 0;border-bottom:1px solid var(--br)}
+    .flc-item:first-child{border-top:1px solid var(--br)}
+    .flc-n{font-family:'Space Mono',monospace;font-size:9px;color:var(--gdim);flex-shrink:0;width:20px}
+    .flc-name{font-size:16px;font-weight:300;color:var(--tx)}
+    .flc-sub{font-size:11px;color:var(--tx3);margin-top:3px;line-height:1.5}
+    .t-phi{display:flex;align-items:center;gap:24px;flex-wrap:wrap;width:100%;padding-top:20px;border-top:1px solid var(--br)}
+    .t-phi-phrase{font-size:17px;font-weight:300;color:var(--tx);letter-spacing:.02em}
+    .t-phi-phrase b{font-weight:500;color:var(--gl)}
+    .t-phi-sep{color:var(--tx3);font-size:22px;font-weight:100}
     .eco-label{font-family:'Space Mono',monospace;font-size:9px;color:var(--g);letter-spacing:.35em;text-transform:uppercase;margin-bottom:16px}
     .eco-three{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid rgba(201,168,76,.1)}
     .eco-phrase{font-size:13px;font-weight:500;color:var(--tx);letter-spacing:.04em}
@@ -221,6 +232,23 @@
     .pod-sub{font-size:11px;color:var(--tx2);line-height:1.6}
     .pod-ep{margin-top:8px;font-family:'Space Mono',monospace;font-size:8px;color:var(--gdim);letter-spacing:.2em}
 
+
+    /* ── §04 FOUNDER FRIENDLY ── */
+    #founder-friendly{padding:120px 48px;min-height:100vh;display:flex;align-items:center;background:var(--bg)}
+    .ff-inner{max-width:1200px;margin:0 auto;width:100%}
+    .ff-top{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:end;margin-bottom:64px}
+    .ff-h2{font-size:clamp(34px,4.8vw,60px);font-weight:200;line-height:1.05}
+    .ff-intro{font-size:16px;color:var(--tx2);font-weight:300;line-height:1.85}
+    .ff-list{display:flex;flex-direction:column;gap:0}
+    .ff-item{display:grid;grid-template-columns:52px 1fr;gap:24px;padding:28px 0;border-bottom:1px solid var(--br);align-items:start;transition:background .3s;cursor:default}
+    .ff-item:first-child{border-top:1px solid var(--br)}
+    .ff-item:hover{background:rgba(201,168,76,.012)}
+    .ff-num{font-family:'Space Mono',monospace;font-size:9px;color:var(--gdim);letter-spacing:.3em;padding-top:4px}
+    .ff-content{}
+    .ff-title{font-size:19px;font-weight:300;color:var(--tx);margin-bottom:8px;letter-spacing:.01em}
+    .ff-title b{font-weight:500;color:var(--gl)}
+    .ff-desc{font-size:13px;color:var(--tx2);line-height:1.75}
+    .ff-tag{display:inline-block;margin-top:10px;font-family:'Space Mono',monospace;font-size:8px;color:var(--gdim);letter-spacing:.2em;border:1px solid rgba(201,168,76,.15);padding:3px 10px}
     /* ── §07 TEAM ── */
     #team{padding:120px 48px}
     .tm-inner{max-width:1200px;margin:0 auto}
@@ -294,6 +322,7 @@
   <ul class="nr">
     <li><a href="#manifesto">Manifesto</a></li>
     <li><a href="#thesis">Thesis</a></li>
+    <li><a href="#founder-friendly">Founder Friendly</a></li>
     <li><a href="#portfolio">Portfolio</a></li>
     <li><a href="#quotes">Voices</a></li>
     <li><a href="#perspectives">Perspectives</a></li>
@@ -341,24 +370,28 @@
     <div class="m-big fi d1">We don't bet on <em>experience.</em><br>We bet on <em>native variables.</em></div>
     <div class="rules">
       <div class="rule fi">
+        <div class="r-dim">// 看人 · People</div>
         <div class="r-n">// 01</div>
         <div class="r-en"><b>Young. Ambitious.</b> Small Ego.</div>
       </div>
       <div class="rule fi d1">
+        <div class="r-dim">// 看人 · People</div>
         <div class="r-n">// 02</div>
-        <div class="r-en"><b>Agent-native.</b> AI-native.</div>
+        <div class="r-en"><b>Broad Karma.</b> Underdog Empathy.</div>
       </div>
       <div class="rule fi d2">
+        <div class="r-dim">// 看事 · Mission</div>
         <div class="r-n">// 03</div>
-        <div class="r-en">No <b>internet-era playbook.</b></div>
+        <div class="r-en">For <b>Agents.</b> For the <b>top&nbsp;1%</b> of humans.</div>
       </div>
       <div class="rule fi d3">
+        <div class="r-dim">// 看事 · Mission</div>
         <div class="r-n">// 04</div>
-        <div class="r-en"><b>Slightly</b> dangerous.</div>
+        <div class="r-en"><b>Self-Evolving.</b> Recursively native.</div>
       </div>
     </div>
     <div class="m-note fi d4">
-      <p>We are <em>China's most aggressive early-stage AI Native investor.</em>
+      <p>We are <em>China's most radical early-stage AI Native investor.</em>
       The best founders arrive after the old rules were written —
       they build as if the prior world never existed.
       We call this the <em>native variable advantage.</em>
@@ -377,45 +410,97 @@
         <p class="t-body fi d1">The next wave of builders aren't iterating on the old stack — they're replacing it with agents. We are <b style="color:var(--tx);font-weight:500">100% agent-native</b> in conviction: every company we back is either building agent infrastructure, operating as an agent-first product, or using agents as its core competitive moat.</p>
       </div>
       <div class="t-right fi d2">
-        <div class="focus-list">
-          <div>
-            <div class="fi-head"><span class="fi-name">Agent OS + New Hardware</span><span class="fi-pct">60%</span></div>
-            <div class="fi-track"><div class="fi-fill" data-w="60"></div></div>
+        <div class="flc">
+          <div class="flc-item">
+            <span class="flc-n">01</span>
+            <div><div class="flc-name">Agent OS + New Hardware</div></div>
           </div>
-          <div>
-            <div class="fi-head"><span class="fi-name">Agent-Native Applications</span><span class="fi-pct">30%</span></div>
-            <div class="fi-track"><div class="fi-fill" data-w="30"></div></div>
+          <div class="flc-item">
+            <span class="flc-n">02</span>
+            <div><div class="flc-name">Agent-Native Applications</div><div class="flc-sub">incl. Vertical Agents</div></div>
           </div>
-          <div>
-            <div class="fi-head"><span class="fi-name">Agent Infrastructure</span><span class="fi-pct">10%</span></div>
-            <div class="fi-track"><div class="fi-fill" data-w="10"></div></div>
+          <div class="flc-item">
+            <span class="flc-n">03</span>
+            <div><div class="flc-name">Agent Infrastructure</div></div>
           </div>
-        </div>
-        <div class="eco-box">
-          <div class="eco-label">// Ecosystem &amp; Deep Coverage</div>
-          <div class="eco-three">
-            <div class="eco-phrase"><span>Earliest</span> Discovery.</div>
-            <div class="eco-phrase"><span>Deepest</span> Exploration.</div>
-            <div class="eco-phrase"><span>Longest</span> Partnership.</div>
-          </div>
-          <p class="eco-txt">Deep coverage across the ByteDance talent network, China's frontier AI labs, and the next generation of global tech builders. From core product teams to young talents on the business frontline — we are embedded, not just invested. Hands-on incubation is our only mode.</p>
         </div>
       </div>
       <div class="t-tagrow fi d3">
-        <span class="tag g">Agent Native</span>
-        <span class="tag g">Founder Friendly</span>
-        <span class="tag g">China → Global</span>
-        <span class="tag">Pre-Seed &amp; Incubation</span>
-        <span class="tag">First Two Rounds</span>
+        <div class="t-phi">
+          <span class="t-phi-phrase"><b>Earliest</b> Discovery.</span>
+          <span class="t-phi-sep">·</span>
+          <span class="t-phi-phrase"><b>Deepest</b> Exploration.</span>
+          <span class="t-phi-sep">·</span>
+          <span class="t-phi-phrase"><b>Longest</b> Partnership.</span>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══ §04 PORTFOLIO ═══ -->
+<!-- ═══ §04 FOUNDER FRIENDLY ═══ -->
+<section id="founder-friendly">
+  <div class="ff-inner">
+    <div class="sl fi">04 · Founder Friendly</div>
+    <div class="ff-top fi d1">
+      <h2 class="ff-h2">Why founders<br><span class="gg">choose us.</span></h2>
+      <p class="ff-intro">We are not your typical VC. We become an extension of your founding team — from the first signal to the most critical inflection points. Capital is the baseline. Everything else is the real work.</p>
+    </div>
+    <div class="ff-list">
+
+      <div class="ff-item fi">
+        <div class="ff-num">// 01</div>
+        <div class="ff-content">
+          <div class="ff-title"><b>Inspire Co-creation</b></div>
+          <div class="ff-desc">We don't just validate ideas — we co-build them. From product architecture to go-to-market logic, we sit in the room as thinking partners, not observers. Expect intellectual provocation, not polite nodding.</div>
+          <span class="ff-tag">启发式共创</span>
+        </div>
+      </div>
+
+      <div class="ff-item fi d1">
+        <div class="ff-num">// 02</div>
+        <div class="ff-content">
+          <div class="ff-title"><b>Long-term Companionship</b></div>
+          <div class="ff-desc">We measure our relationship in years, not quarters. We are here for the pivots, the dark months, the second wind. When other investors write their memos and move on, we stay embedded.</div>
+          <span class="ff-tag">长期陪伴</span>
+        </div>
+      </div>
+
+      <div class="ff-item fi d2">
+        <div class="ff-num">// 03</div>
+        <div class="ff-content">
+          <div class="ff-title"><b>Dynamic Strategy</b></div>
+          <div class="ff-desc">The frontier moves faster than any roadmap. We provide real-time cognitive supplements — translating the latest model capabilities, agentic architecture shifts, and market signals into actionable strategy for your specific company.</div>
+          <span class="ff-tag">动态战略补充</span>
+        </div>
+      </div>
+
+      <div class="ff-item fi d3">
+        <div class="ff-num">// 04</div>
+        <div class="ff-content">
+          <div class="ff-title"><b>Team &amp; Fundraising</b></div>
+          <div class="ff-desc">Access to Creekstone's talent pipeline for critical hires. Warm introductions to strategic co-investors and follow-on capital. We treat your fundraising as our own — because your success compounds ours.</div>
+          <span class="ff-tag">团队招募 · Fundraising</span>
+        </div>
+      </div>
+
+      <div class="ff-item fi d4">
+        <div class="ff-num">// 05</div>
+        <div class="ff-content">
+          <div class="ff-title"><b>Experts Network</b></div>
+          <div class="ff-desc">Direct access to a curated network of frontier AI researchers, engineering leads, product operators, and domain experts. When you face a hard problem, we find the right person — not a generic advisor list.</div>
+          <span class="ff-tag">专家网络</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══ §05 PORTFOLIO ═══ -->
 <section id="portfolio">
   <div class="port-inner">
-    <div class="sl fi">04 · Portfolio</div>
+    <div class="sl fi">05 · Portfolio</div>
     <div class="port-grid">
 
       <a href="#" target="_blank" class="pc fi">
@@ -508,10 +593,10 @@
   </div>
 </section>
 
-<!-- ═══ §05 VOICES ═══ -->
+<!-- ═══ §06 VOICES ═══ -->
 <section id="quotes">
   <div class="q-inner">
-    <div class="sl fi">05 · Voices</div>
+    <div class="sl fi">06 · Voices</div>
 
     <div class="qa-label fi d1">FOUNDERS SAY</div>
     <div class="qa-grid fi d2">
@@ -699,10 +784,10 @@
   </div>
 </section>
 
-<!-- ═══ §06 PERSPECTIVES ═══ -->
+<!-- ═══ §07 PERSPECTIVES ═══ -->
 <section id="perspectives">
   <div class="pv-inner">
-    <div class="sl fi">06 · Perspectives</div>
+    <div class="sl fi">07 · Perspectives</div>
     <div class="pv-grid">
       <div class="fi">
         <div class="pv-ch">Research</div>
@@ -735,10 +820,10 @@
   </div>
 </section>
 
-<!-- ═══ §07 TEAM ═══ -->
+<!-- ═══ §08 TEAM ═══ -->
 <section id="team">
   <div class="tm-inner">
-    <div class="sl fi">07 · Team</div>
+    <div class="sl fi">08 · Team</div>
     <div class="tm-grid">
       <div class="tcard fi">
         <span class="tc-htag">HOVER</span>
@@ -777,11 +862,11 @@
   </div>
 </section>
 
-<!-- ═══ §08 CONTACT ═══ -->
+<!-- ═══ §09 CONTACT ═══ -->
 <section id="contact">
   <div class="ct-inner">
     <div>
-      <div class="sl fi">08 · Contact</div>
+      <div class="sl fi">09 · Contact</div>
       <h2 class="ct-h2 fi d1">Get in<br><span class="gg">Touch.</span></h2>
       <div class="ct-motto fi d2">We respond fast. We decide faster.</div>
       <p class="ct-sub fi d3">If you're building something that didn't exist before, skip the deck and tell us what you're building. We're always open to the next native variable.</p>
@@ -896,7 +981,7 @@ document.querySelectorAll('.fi-fill[data-w]').forEach(b=>{
 (function(){
   /* Set tagline for this version */
   const sub=document.querySelector('.hero-brand-sub');
-  if(sub) sub.textContent='// Not a fund. A species filter.';
+  if(sub) sub.textContent='// Not a fund. A new species radar.';
 
   const canvas=document.getElementById('heroCanvas');if(!canvas)return;
   const ctx=canvas.getContext('2d');
@@ -912,7 +997,7 @@ document.querySelectorAll('.fi-fill[data-w]').forEach(b=>{
   let dwellTimer=null,lastIdx=-1,prevMx=-1,prevMy=-1;
 
   function resize(){W=canvas.width=canvas.offsetWidth||window.innerWidth;H=canvas.height=canvas.offsetHeight||window.innerHeight;}
-  function pick(){let i;do{i=Math.floor(Math.random()*PORTFOLIO.length);}while(i===lastIdx);lastIdx=i;return PORTFOLIO[i];}
+  function pick(){return PORTFOLIO[Math.floor(Math.random()*PORTFOLIO.length)];}
 
   class P{
     constructor(hub){this.hub=hub;this.init();}
