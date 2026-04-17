@@ -116,8 +116,8 @@
     .flc-item{display:flex;align-items:baseline;gap:16px;padding:20px 0;border-bottom:1px solid var(--br)}
     .flc-item:first-child{border-top:1px solid var(--br)}
     .flc-n{font-family:'Space Mono',monospace;font-size:9px;color:var(--gdim);flex-shrink:0;width:20px}
-    .flc-name{font-size:16px;font-weight:300;color:var(--tx)}
-    .flc-sub{font-size:11px;color:var(--tx3);margin-top:3px;line-height:1.5}
+    .flc-name{font-size:15px;font-weight:300;color:var(--tx);font-family:'Inter',sans-serif}
+    .flc-sub{font-size:11px;color:var(--tx3);margin-top:3px;line-height:1.5;font-family:'Inter',sans-serif}
     .t-phi{display:flex;align-items:center;gap:24px;flex-wrap:wrap;width:100%;padding-top:20px;border-top:1px solid var(--br)}
     .t-phi-phrase{font-size:17px;font-weight:300;color:var(--tx);letter-spacing:.02em}
     .t-phi-phrase b{font-weight:500;color:var(--gl)}
@@ -263,16 +263,16 @@
     .di-seal-ring img{width:54px;height:54px;object-fit:contain;
       filter:drop-shadow(0 0 12px rgba(201,168,76,.28));animation:slowspin 28s linear infinite}
     .di-h2{font-size:clamp(32px,4.5vw,56px);font-weight:200;text-align:center;line-height:1.05;margin-bottom:10px}
-    .di-motto{font-family:'Space Mono',monospace;font-size:9px;color:var(--g);
-      letter-spacing:.4em;text-align:center;opacity:.7;text-transform:uppercase}
+    .di-motto{font-family:'Space Mono',monospace;font-size:10px;color:var(--g);
+      letter-spacing:.35em;text-align:center;opacity:.7;text-transform:uppercase}
     .di-cosmos{position:relative;width:min(680px,100%);aspect-ratio:1;margin:0 auto}
     .di-cosmos-bg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
     .di-cosmos-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:96px;height:96px;border-radius:50%;border:1px solid var(--br);
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      background:rgba(201,168,76,.05);z-index:2;text-align:center}
-    .di-cc-word{font-family:'Space Mono',monospace;font-size:7px;color:var(--g);
-      letter-spacing:.2em;line-height:1.5;text-transform:uppercase}
+      z-index:2;text-align:center;pointer-events:none;white-space:nowrap}
+    .di-cc-word{font-family:'Space Mono',monospace;font-size:9px;color:var(--g);
+      letter-spacing:.32em;line-height:1.7;text-transform:uppercase;opacity:.85}
+    .di-cc-sub{font-family:'Space Mono',monospace;font-size:7px;color:var(--gdim);
+      letter-spacing:.22em;text-transform:uppercase;opacity:.55}
     .di-planet{position:absolute;width:140px;text-align:center;
       display:flex;flex-direction:column;align-items:center;cursor:default;z-index:3}
     .di-planet:hover .di-dot{border-color:var(--g);background:rgba(201,168,76,.18);
@@ -282,9 +282,9 @@
       display:flex;align-items:center;justify-content:center;margin-bottom:8px;
       background:rgba(201,168,76,.03);transition:all .35s;flex-shrink:0}
     .di-dot-core{width:6px;height:6px;border-radius:50%;background:rgba(201,168,76,.6)}
-    .di-p-title{font-size:11px;font-weight:500;color:var(--tx);line-height:1.3;
-      margin-bottom:4px;transition:color .3s}
-    .di-p-sub{font-size:9px;color:var(--tx3);line-height:1.5}
+    .di-p-title{font-size:13px;font-weight:500;color:var(--tx);line-height:1.3;
+      margin-bottom:5px;transition:color .3s;font-family:'Inter',sans-serif}
+    .di-p-sub{font-size:11px;color:var(--tx3);line-height:1.55;font-family:'Inter',sans-serif}
     @media(max-width:900px){
       .di-cosmos{aspect-ratio:unset;height:auto;display:flex;flex-wrap:wrap;
         justify-content:center;gap:24px;padding:20px 0}
@@ -420,7 +420,7 @@
       <div class="rule fi d1">
         <div class="r-dim">// 看人 · People</div>
         <div class="r-n">// 02</div>
-        <div class="r-en"><b>Broad Karma.</b> Zero Arrogance. A Complete Worldview.</div>
+        <div class="r-en"><b>Broad Karma.</b> A Complete Worldview.</div>
       </div>
       <div class="rule fi d2">
         <div class="r-dim">// 看事 · Mission</div>
@@ -460,7 +460,7 @@
           </div>
           <div class="flc-item">
             <span class="flc-n">02</span>
-            <div><div class="flc-name">Agent-Native Applications</div><div class="flc-sub">incl. Vertical Agents</div></div>
+            <div><div class="flc-name">Agent-Native Applications + Vertical Agents</div></div>
           </div>
           <div class="flc-item">
             <span class="flc-n">03</span>
@@ -468,7 +468,7 @@
           </div>
           <div class="flc-item">
             <span class="flc-n">↯</span>
-            <div><div class="flc-name">Wildcard</div><div class="flc-sub">Contrarian bets outside the map — anything radically disruptive and category-defining.</div></div>
+            <div><div class="flc-name">Wildcard &mdash; <span style="font-weight:200;color:var(--tx2)">anything radically disruptive</span></div></div>
           </div>
         </div>
       </div>
@@ -499,17 +499,36 @@
     </div>
     <div class="di-cosmos fi d2">
       <svg class="di-cosmos-bg" viewBox="0 0 680 680">
-        <circle cx="340" cy="340" r="230" stroke="rgba(201,168,76,.08)" fill="none" stroke-width="1" stroke-dasharray="3 7"/>
-        <circle cx="340" cy="340" r="155" stroke="rgba(201,168,76,.04)" fill="none" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="340" y2="110" stroke="rgba(201,168,76,.055)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="558" y2="175" stroke="rgba(201,168,76,.055)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="558" y2="505" stroke="rgba(201,168,76,.055)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="340" y2="570" stroke="rgba(201,168,76,.055)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="122" y2="505" stroke="rgba(201,168,76,.055)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="122" y2="175" stroke="rgba(201,168,76,.055)" stroke-width="0.5"/>
-        <line x1="340" y1="340" x2="200" y2="120" stroke="rgba(201,168,76,.03)" stroke-width="0.5"/>
+        <!-- static connector lines from center to each planet -->
+        <line x1="340" y1="340" x2="340" y2="110" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="520" y2="197" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="564" y2="391" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="440" y2="547" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="240" y2="547" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="116" y2="391" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
+        <line x1="340" y1="340" x2="160" y2="197" stroke="rgba(201,168,76,.07)" stroke-width="0.5"/>
+        <!-- outer ring (rotating CW) -->
+        <circle cx="340" cy="340" r="230" stroke="rgba(201,168,76,.12)" fill="none"
+          stroke-width="1" stroke-dasharray="4 10">
+          <animateTransform attributeName="transform" type="rotate"
+            from="0 340 340" to="360 340 340" dur="28s" repeatCount="indefinite"/>
+        </circle>
+        <!-- inner ring (rotating CCW) -->
+        <circle cx="340" cy="340" r="155" stroke="rgba(201,168,76,.05)" fill="none"
+          stroke-width="0.5" stroke-dasharray="1 8">
+          <animateTransform attributeName="transform" type="rotate"
+            from="360 340 340" to="0 340 340" dur="42s" repeatCount="indefinite"/>
+        </circle>
+        <!-- star markers at planet positions (static, on orbit circumference) -->
+        <circle cx="340" cy="110" r="2.5" fill="rgba(201,168,76,.55)"/>
+        <circle cx="520" cy="197" r="2.5" fill="rgba(201,168,76,.55)"/>
+        <circle cx="564" cy="391" r="2.5" fill="rgba(201,168,76,.55)"/>
+        <circle cx="440" cy="547" r="2.5" fill="rgba(201,168,76,.55)"/>
+        <circle cx="240" cy="547" r="2.5" fill="rgba(201,168,76,.55)"/>
+        <circle cx="116" cy="391" r="2.5" fill="rgba(201,168,76,.55)"/>
+        <circle cx="160" cy="197" r="2.5" fill="rgba(201,168,76,.55)"/>
       </svg>
-      <div class="di-cosmos-center"><div class="di-cc-word">Creek<br>stone</div></div>
+      <div class="di-cosmos-center"><div class="di-cc-word">Creekstone</div><div class="di-cc-sub">Ventures</div></div>
       <div class="di-planet"><div class="di-dot"><div class="di-dot-core"></div></div><div class="di-p-title">Global Resources</div><div class="di-p-sub">Cross-border networks &amp; market access from day one</div></div>
       <div class="di-planet"><div class="di-dot"><div class="di-dot-core"></div></div><div class="di-p-title">Team Recruitment</div><div class="di-p-sub">Talent pipeline for critical early hires</div></div>
       <div class="di-planet"><div class="di-dot"><div class="di-dot-core"></div></div><div class="di-p-title">Dynamic Strategy</div><div class="di-p-sub">Frontier intelligence into actionable decisions</div></div>
