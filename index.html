@@ -137,6 +137,12 @@
     .pc:hover{background:var(--bg3)}.pc:hover::before{transform:scaleX(1)}
     .pc-arr{position:absolute;top:14px;right:14px;font-size:11px;color:var(--g);opacity:0;transition:opacity .2s}
     .pc:hover .pc-arr{opacity:.7}
+
+    .pc-logo{width:40px;height:40px;border:1px solid var(--br);border-radius:4px;
+      display:flex;align-items:center;justify-content:center;margin-bottom:14px;
+      background:var(--bg3);overflow:hidden;flex-shrink:0}
+    .pc-logo img{width:100%;height:100%;object-fit:contain}
+    .pc-logo-ph{font-size:16px;color:var(--tx4);pointer-events:none}
     .pc-idx{font-family:'Space Mono',monospace;font-size:8px;color:var(--tx3);letter-spacing:.3em;margin-bottom:12px}
     .pc-name{font-size:20px;font-weight:500;color:var(--tx);margin-bottom:4px}
     .pc-cat{font-size:13px;color:var(--tx3);margin-bottom:14px;line-height:1.4}
@@ -160,9 +166,15 @@
     .qmark{font-size:52px;line-height:.5;color:var(--g);opacity:.13;font-family:Georgia,serif;display:block;margin-bottom:22px}
     .qtext{font-size:15px;font-weight:300;font-style:italic;line-height:1.78;color:var(--tx);margin-bottom:26px}
     .qauth{display:flex;align-items:center;gap:12px}
-    .qline{width:16px;height:1px;background:var(--g);flex-shrink:0}
+    .qline{display:none}
     .qname{font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--gl)}
     .qco{font-size:10px;color:var(--tx3);margin-top:2px}
+    .q-av{width:48px;height:48px;border-radius:50%;border:1px solid var(--br);
+      background:var(--bg3);display:flex;align-items:center;justify-content:center;
+      font-family:'Space Mono',monospace;font-size:10px;color:var(--g);flex-shrink:0;
+      overflow:hidden;position:relative}
+    .q-av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}
+    .q-av-ph{font-size:10px;color:var(--g);pointer-events:none}
 
     /* ── ECHO section ── */
     .echo-label{font-family:'Space Mono',monospace;font-size:9px;color:var(--g);letter-spacing:.4em;text-transform:uppercase;margin-bottom:8px;padding-bottom:12px;border-bottom:1px solid var(--br);display:flex;align-items:baseline;gap:12px}
@@ -176,25 +188,25 @@
       box-shadow:0 20px 60px rgba(0,0,0,.72),0 0 0 1px rgba(201,168,76,.22);
       border-color:rgba(201,168,76,.22)}
     /* header */
-    .ec-hdr{background:rgba(201,168,76,.05);padding:9px 18px;display:flex;align-items:center;
+    .ec-hdr{background:rgba(201,168,76,.05);padding:11px 20px;display:flex;align-items:center;
       justify-content:space-between;font-family:'Space Mono',monospace}
-    .ec-sig{font-size:8px;color:var(--g);letter-spacing:.3em}
-    .ec-tag{font-size:8px;color:var(--tx3);letter-spacing:.2em;text-transform:uppercase}
+    .ec-sig{font-size:11px;color:var(--g);letter-spacing:.3em}
+    .ec-tag{font-size:11px;color:var(--tx3);letter-spacing:.2em;text-transform:uppercase}
     /* CS — code/terminal panel */
     .ec-code{background:#020202;padding:16px 20px 18px;border-bottom:1px solid rgba(201,168,76,.07)}
     .ec-code-bar{display:flex;align-items:center;gap:5px;margin-bottom:12px}
     .ec-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
     .ec-dot.r{background:#FF5F57}.ec-dot.y{background:#FEBC2E}.ec-dot.gg{background:#28C840}
-    .ec-code-title{font-family:'Space Mono',monospace;font-size:8px;color:rgba(201,168,76,.82);
+    .ec-code-title{font-family:'Space Mono',monospace;font-size:11px;color:rgba(201,168,76,.82);
       letter-spacing:.18em;margin-left:6px;font-weight:700}
     /* code quote body — two-line style: prompt + quote */
     .ec-code-inner{padding-left:2px}
-    .ec-code-prompt{font-family:'Space Mono',monospace;font-size:8px;color:rgba(201,168,76,.38);
+    .ec-code-prompt{font-family:'Space Mono',monospace;font-size:11px;color:rgba(201,168,76,.38);
       letter-spacing:.08em;margin-bottom:6px}
-    .ec-code-q{font-family:'Space Mono',monospace;font-size:11px;line-height:1.9;
+    .ec-code-q{font-family:'Space Mono',monospace;font-size:13px;line-height:1.9;
       color:#EDD98A;padding-left:10px;border-left:2px solid rgba(201,168,76,.2)}
     .ec-code-q em{font-style:normal;color:rgba(201,168,76,.9)}
-    .ec-code-foot{font-family:'Space Mono',monospace;font-size:8px;
+    .ec-code-foot{font-family:'Space Mono',monospace;font-size:11px;
       color:rgba(201,168,76,.65);text-align:right;margin-top:10px;letter-spacing:.1em}
     /* Master — handwriting on parchment */
     .ec-scroll{background:linear-gradient(160deg,#F8EDD0 0%,#F3E5B8 60%,#EEE0AE 100%);
@@ -204,10 +216,10 @@
         radial-gradient(ellipse at 8% 92%,rgba(110,80,10,.07) 0%,transparent 50%),
         radial-gradient(ellipse at 92% 8%,rgba(110,80,10,.05) 0%,transparent 40%);
       pointer-events:none}
-    .ec-scroll-q{font-family:'Caveat',cursive;font-size:18px;line-height:1.58;
+    .ec-scroll-q{font-family:'Caveat',cursive;font-size:21px;line-height:1.58;
       color:#1E1206;font-weight:500;position:relative;z-index:1;
       padding-bottom:14px;border-bottom:1px solid rgba(100,70,10,.12)}
-    .ec-scroll-attr{font-family:'Space Mono',monospace;font-size:8px;
+    .ec-scroll-attr{font-family:'Space Mono',monospace;font-size:11px;
       color:rgba(42,22,4,.8);letter-spacing:.14em;text-align:right;font-weight:600;
       margin-top:10px;position:relative;z-index:1}
     .ec-cur{display:inline-block;width:6px;height:11px;
@@ -233,22 +245,51 @@
     .pod-ep{margin-top:8px;font-family:'Space Mono',monospace;font-size:8px;color:var(--gdim);letter-spacing:.2em}
 
 
-    /* ── §04 FOUNDER FRIENDLY ── */
-    #founder-friendly{padding:120px 48px;min-height:100vh;display:flex;align-items:center;background:var(--bg)}
-    .ff-inner{max-width:1200px;margin:0 auto;width:100%}
-    .ff-top{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:end;margin-bottom:64px}
-    .ff-h2{font-size:clamp(34px,4.8vw,60px);font-weight:200;line-height:1.05}
-    .ff-intro{font-size:16px;color:var(--tx2);font-weight:300;line-height:1.85}
-    .ff-list{display:flex;flex-direction:column;gap:0}
-    .ff-item{display:grid;grid-template-columns:52px 1fr;gap:24px;padding:28px 0;border-bottom:1px solid var(--br);align-items:start;transition:background .3s;cursor:default}
-    .ff-item:first-child{border-top:1px solid var(--br)}
-    .ff-item:hover{background:rgba(201,168,76,.012)}
-    .ff-num{font-family:'Space Mono',monospace;font-size:9px;color:var(--gdim);letter-spacing:.3em;padding-top:4px}
-    .ff-content{}
-    .ff-title{font-size:19px;font-weight:300;color:var(--tx);margin-bottom:8px;letter-spacing:.01em}
-    .ff-title b{font-weight:500;color:var(--gl)}
-    .ff-desc{font-size:13px;color:var(--tx2);line-height:1.75}
-    .ff-tag{display:inline-block;margin-top:10px;font-family:'Space Mono',monospace;font-size:8px;color:var(--gdim);letter-spacing:.2em;border:1px solid rgba(201,168,76,.15);padding:3px 10px}
+    /* ── §04 深度孵化 DEEP INCUBATION ── */
+    #deep-incubation{
+      padding:120px 48px;
+      background:radial-gradient(ellipse at 50% 0%,rgba(201,168,76,.06) 0%,transparent 52%),#060402;
+    }
+    .di-inner{max-width:1200px;margin:0 auto}
+    /* Central seal */
+    .di-seal{display:flex;flex-direction:column;align-items:center;margin-bottom:72px}
+    .di-seal-wrap{position:relative;width:90px;height:90px;margin-bottom:28px}
+    .di-seal-wrap::before{content:'';position:absolute;inset:-10px;border-radius:50%;
+      border:1px solid rgba(201,168,76,.18);animation:slowspin 20s linear infinite reverse}
+    .di-seal-wrap::after{content:'';position:absolute;inset:-22px;border-radius:50%;
+      border:1px solid rgba(201,168,76,.07);animation:slowspin 32s linear infinite}
+    .di-seal-ring{width:90px;height:90px;border-radius:50%;border:1px solid var(--br);
+      display:flex;align-items:center;justify-content:center;background:rgba(201,168,76,.04)}
+    .di-seal-ring img{width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 0 12px rgba(201,168,76,.28))}
+    .di-h2{font-size:clamp(34px,4.8vw,60px);font-weight:200;text-align:center;line-height:1.05;margin-bottom:10px}
+    .di-motto{font-family:'Space Mono',monospace;font-size:9px;color:var(--g);
+      letter-spacing:.45em;text-align:center;text-transform:uppercase;opacity:.7}
+    /* 7-item flex grid — 4+3 wrap */
+    .di-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:28px 24px}
+    .di-item{width:calc(25% - 18px);min-width:200px;display:flex;flex-direction:column;
+      align-items:center;text-align:center;padding:32px 20px;
+      border:1px solid rgba(201,168,76,.1);
+      transition:border-color .35s,background .35s,transform .35s;cursor:default;
+      position:relative}
+    .di-item:hover{border-color:rgba(201,168,76,.35);background:rgba(201,168,76,.022);transform:translateY(-4px)}
+    /* outer ring on hover */
+    .di-item::before{content:'';position:absolute;inset:-8px;border-radius:2px;
+      border:1px solid rgba(201,168,76,.0);transition:border-color .35s;pointer-events:none}
+    .di-item:hover::before{border-color:rgba(201,168,76,.1)}
+    /* circle badge */
+    .di-circle{width:64px;height:64px;border-radius:50%;border:1px solid rgba(201,168,76,.5);
+      display:flex;align-items:center;justify-content:center;margin-bottom:18px;
+      font-family:'Space Mono',monospace;font-size:12px;color:var(--g);
+      position:relative;transition:all .35s;background:rgba(201,168,76,.03)}
+    .di-circle::after{content:'';position:absolute;inset:-7px;border-radius:50%;
+      border:1px solid rgba(201,168,76,.0);transition:border-color .35s}
+    .di-item:hover .di-circle{background:rgba(201,168,76,.1);border-color:var(--g)}
+    .di-item:hover .di-circle::after{border-color:rgba(201,168,76,.2)}
+    .di-title{font-size:14px;font-weight:400;color:var(--tx);margin-bottom:7px;letter-spacing:.03em}
+    .di-title b{font-weight:600;color:var(--gl)}
+    .di-sub{font-size:11px;color:var(--tx3);line-height:1.65}
+    .di-tag{font-family:'Space Mono',monospace;font-size:8px;color:var(--gdim);
+      letter-spacing:.2em;margin-top:10px;opacity:.7}
     /* ── §07 TEAM ── */
     #team{padding:120px 48px}
     .tm-inner{max-width:1200px;margin:0 auto}
@@ -322,7 +363,7 @@
   <ul class="nr">
     <li><a href="#manifesto">Manifesto</a></li>
     <li><a href="#thesis">Thesis</a></li>
-    <li><a href="#founder-friendly">Founder Friendly</a></li>
+    <li><a href="#deep-incubation">深度孵化</a></li>
     <li><a href="#portfolio">Portfolio</a></li>
     <li><a href="#quotes">Voices</a></li>
     <li><a href="#perspectives">Perspectives</a></li>
@@ -438,59 +479,66 @@
   </div>
 </section>
 
-<!-- ═══ §04 FOUNDER FRIENDLY ═══ -->
-<section id="founder-friendly">
-  <div class="ff-inner">
-    <div class="sl fi">04 · Founder Friendly</div>
-    <div class="ff-top fi d1">
-      <h2 class="ff-h2">Why founders<br><span class="gg">choose us.</span></h2>
-      <p class="ff-intro">We are not your typical VC. We become an extension of your founding team — from the first signal to the most critical inflection points. Capital is the baseline. Everything else is the real work.</p>
+<!-- ═══ §04 深度孵化 DEEP INCUBATION ═══ -->
+<section id="deep-incubation">
+  <div class="di-inner">
+    <div class="sl fi">04 · 深度孵化</div>
+    <div class="di-seal fi d1">
+      <div class="di-seal-wrap">
+        <div class="di-seal-ring"><img src="data:image/png;base64,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" alt="Creekstone"></div>
+      </div>
+      <h2 class="di-h2">We don't just invest.<br><span class="gg">We co-build.</span></h2>
+      <p class="di-motto">// Deep Incubation · Founder Friendly · Inner Circle</p>
     </div>
-    <div class="ff-list">
+    <div class="di-grid">
 
-      <div class="ff-item fi">
-        <div class="ff-num">// 01</div>
-        <div class="ff-content">
-          <div class="ff-title"><b>Inspire Co-creation</b></div>
-          <div class="ff-desc">We don't just validate ideas — we co-build them. From product architecture to go-to-market logic, we sit in the room as thinking partners, not observers. Expect intellectual provocation, not polite nodding.</div>
-          <span class="ff-tag">启发式共创</span>
-        </div>
+      <div class="di-item fi">
+        <div class="di-circle">I</div>
+        <div class="di-title"><b>全球化资源</b></div>
+        <div class="di-sub">Global networks, cross-border connections, and market access from day one.</div>
+        <span class="di-tag">GLOBAL RESOURCES</span>
       </div>
 
-      <div class="ff-item fi d1">
-        <div class="ff-num">// 02</div>
-        <div class="ff-content">
-          <div class="ff-title"><b>Long-term Companionship</b></div>
-          <div class="ff-desc">We measure our relationship in years, not quarters. We are here for the pivots, the dark months, the second wind. When other investors write their memos and move on, we stay embedded.</div>
-          <span class="ff-tag">长期陪伴</span>
-        </div>
+      <div class="di-item fi d1">
+        <div class="di-circle">II</div>
+        <div class="di-title"><b>团队人才招募</b></div>
+        <div class="di-sub">Curated talent pipeline for critical early hires across engineering, product, and GTM.</div>
+        <span class="di-tag">TEAM RECRUITMENT</span>
       </div>
 
-      <div class="ff-item fi d2">
-        <div class="ff-num">// 03</div>
-        <div class="ff-content">
-          <div class="ff-title"><b>Dynamic Strategy</b></div>
-          <div class="ff-desc">The frontier moves faster than any roadmap. We provide real-time cognitive supplements — translating the latest model capabilities, agentic architecture shifts, and market signals into actionable strategy for your specific company.</div>
-          <span class="ff-tag">动态战略补充</span>
-        </div>
+      <div class="di-item fi d2">
+        <div class="di-circle">III</div>
+        <div class="di-title"><b>动态战略补充</b></div>
+        <div class="di-sub">Real-time frontier intelligence translated into actionable strategy for your specific stage.</div>
+        <span class="di-tag">DYNAMIC STRATEGY</span>
       </div>
 
-      <div class="ff-item fi d3">
-        <div class="ff-num">// 04</div>
-        <div class="ff-content">
-          <div class="ff-title"><b>Team &amp; Fundraising</b></div>
-          <div class="ff-desc">Access to Creekstone's talent pipeline for critical hires. Warm introductions to strategic co-investors and follow-on capital. We treat your fundraising as our own — because your success compounds ours.</div>
-          <span class="ff-tag">团队招募 · Fundraising</span>
-        </div>
+      <div class="di-item fi d3">
+        <div class="di-circle">IV</div>
+        <div class="di-title"><b>Fundraising</b></div>
+        <div class="di-sub">Warm intros to strategic co-investors and follow-on capital. We treat your raise as our own.</div>
+        <span class="di-tag">FUNDRAISING</span>
       </div>
 
-      <div class="ff-item fi d4">
-        <div class="ff-num">// 05</div>
-        <div class="ff-content">
-          <div class="ff-title"><b>Experts Network</b></div>
-          <div class="ff-desc">Direct access to a curated network of frontier AI researchers, engineering leads, product operators, and domain experts. When you face a hard problem, we find the right person — not a generic advisor list.</div>
-          <span class="ff-tag">专家网络</span>
-        </div>
+      <div class="di-item fi">
+        <div class="di-circle">V</div>
+        <div class="di-title"><b>Inspire Co-creation</b></div>
+        <div class="di-sub">We don't just validate — we ideate, challenge, and build alongside you from the earliest signal.</div>
+        <span class="di-tag">启发式共创</span>
+      </div>
+
+      <div class="di-item fi d1">
+        <div class="di-circle">VI</div>
+        <div class="di-title"><b>Long-term Companionship</b></div>
+        <div class="di-sub">We are here for the pivots, the dark months, the second wind. Measured in years, not quarters.</div>
+        <span class="di-tag">长期陪伴</span>
+      </div>
+
+      <div class="di-item fi d2">
+        <div class="di-circle">VII</div>
+        <div class="di-title"><b>Expert Network</b></div>
+        <div class="di-sub">Direct access to frontier AI researchers, engineering leads, and domain experts when it matters most.</div>
+        <span class="di-tag">专家网络</span>
       </div>
 
     </div>
@@ -505,6 +553,7 @@
 
       <a href="#" target="_blank" class="pc fi">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-youware"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">01</div><div class="pc-name">Youware</div>
         <div class="pc-cat">AI Creative Platform</div>
         <div class="pc-desc">AI-powered fashion & creative platform. One of the fastest-growing AI consumer companies from China.</div>
@@ -513,6 +562,7 @@
 
       <a href="#" target="_blank" class="pc fi d1">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-odysslife"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">02</div><div class="pc-name">Odysslife</div>
         <div class="pc-cat">Supply Chain Intelligence</div>
         <div class="pc-desc">Next-gen AI-powered supply chain platform. Deep tech meets global operations excellence.</div>
@@ -521,6 +571,7 @@
 
       <a href="#" target="_blank" class="pc fi d2">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-kaleidoscope"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">03</div><div class="pc-name">Kaleidoscope</div>
         <div class="pc-cat">Immersive AI Experience</div>
         <div class="pc-desc">Redefining human-intelligence interaction through immersive AI platforms.</div>
@@ -529,6 +580,7 @@
 
       <a href="#" target="_blank" class="pc fi d3">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-verdent"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">04</div><div class="pc-name">Verdent</div>
         <div class="pc-cat">Agent-Native IDE</div>
         <div class="pc-desc">The development environment built natively for the agent era. Code with intelligence.</div>
@@ -537,6 +589,7 @@
 
       <a href="#" target="_blank" class="pc fi">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-mizzen"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">05</div><div class="pc-name">Mizzen AI</div>
         <div class="pc-cat">Enterprise Intelligence</div>
         <div class="pc-desc">Connecting frontier AI capability with real enterprise transformation outcomes.</div>
@@ -545,6 +598,7 @@
 
       <a href="#" target="_blank" class="pc fi d1">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-memu"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">06</div><div class="pc-name">Mem-U</div>
         <div class="pc-cat">Memory-Augmented AI</div>
         <div class="pc-desc">Building the persistent memory layer for AI agents and human-AI collaboration.</div>
@@ -553,6 +607,7 @@
 
       <a href="#" target="_blank" class="pc fi d2">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-xmax"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">07</div><div class="pc-name">Xmax</div>
         <div class="pc-cat">Productivity Suite</div>
         <div class="pc-desc">Next-generation productivity infrastructure rebuilt for the distributed AI era.</div>
@@ -561,6 +616,7 @@
 
       <a href="#" target="_blank" class="pc fi d3">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-machinepulse"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">08</div><div class="pc-name">Machine Pulse</div>
         <div class="pc-cat">Operational Intelligence</div>
         <div class="pc-desc">Turning machine data into strategic decisions in real time. AI at the operational layer.</div>
@@ -569,6 +625,7 @@
 
       <a href="#" target="_blank" class="pc fi">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-rsi"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">09</div><div class="pc-name">RSI</div>
         <div class="pc-cat">Frontier AI Research</div>
         <div class="pc-desc">Recursive self-improvement architectures at the frontier of AGI research.</div>
@@ -577,6 +634,7 @@
 
       <a href="#" target="_blank" class="pc fi d1">
         <span class="pc-arr">↗</span>
+        <div class="pc-logo" id="logo-airjelly"><span class="pc-logo-ph">◈</span></div>
         <div class="pc-idx">10</div><div class="pc-name">AirJelly</div>
         <div class="pc-cat">AI-Native Productivity</div>
         <div class="pc-desc">Always watching, always learning. AI that lives on your desktop and remembers everything.</div>
@@ -603,22 +661,22 @@
       <div class="qcard">
         <span class="qmark">"</span>
         <p class="qtext">They are different than every investor I have ever seen. They are more like co-founders for us.</p>
-        <div class="qauth"><div class="qline"></div><div><div class="qname">Leah Wang</div><div class="qco">Founder, Machine Pulse</div></div></div>
+        <div class="qauth"><div class="q-av" id="av-lw"><span class="q-av-ph">LW</span></div><div><div class="qname">Leah Wang</div><div class="qco">Founder, Machine Pulse</div></div></div>
       </div>
       <div class="qcard">
         <span class="qmark">"</span>
         <p class="qtext">If I had to choose one institution to have on my board, Creekstone would unequivocally be the one and only answer.</p>
-        <div class="qauth"><div class="qline"></div><div><div class="qname">Leon Ming</div><div class="qco">Founder, Youware</div></div></div>
+        <div class="qauth"><div class="q-av" id="av-lm"><span class="q-av-ph">LM</span></div><div><div class="qname">Leon Ming</div><div class="qco">Founder, Youware</div></div></div>
       </div>
       <div class="qcard">
         <span class="qmark">"</span>
         <p class="qtext">Creekstone stands out as a pioneer with sharp, native AI investment intelligence. Poised to become a leading force in the AI revolution.</p>
-        <div class="qauth"><div class="qline"></div><div><div class="qname">Chris Pan</div><div class="qco">Founder, Odysslife</div></div></div>
+        <div class="qauth"><div class="q-av" id="av-cp"><span class="q-av-ph">CP</span></div><div><div class="qname">Chris Pan</div><div class="qco">Founder, Odysslife</div></div></div>
       </div>
       <div class="qcard">
         <span class="qmark">"</span>
         <p class="qtext">Not just a check, but a true partner. When I felt lost, they helped me find my bearings. It's rare to find investors who genuinely roll up their sleeves alongside you.</p>
-        <div class="qauth"><div class="qline"></div><div><div class="qname">Peter Chen</div><div class="qco">Founder, Mem-U</div></div></div>
+        <div class="qauth"><div class="q-av" id="av-pc"><span class="q-av-ph">PC</span></div><div><div class="qname">Peter Chen</div><div class="qco">Founder, Mem-U</div></div></div>
       </div>
     </div>
 
@@ -829,7 +887,7 @@
         <span class="tc-htag">HOVER</span>
         <div class="tc-hdr">
           <div class="tavtr"><span class="tavtr-i">LZ</span></div>
-          <div class="tname">Luhuan Zhong</div><div class="trole">Founding Partner</div><div class="tdiv"></div>
+          <div class="tname">Luhuan Zhong</div><div class="trole">Investor</div><div class="tdiv"></div>
         </div>
         <div class="tbio">
           <p>Former founder and active operator deeply embedded in China's entrepreneurial circles. Yihao brings builder intuition to every investment — he understands the founding journey from the inside.</p>
@@ -840,7 +898,7 @@
         <span class="tc-htag">HOVER</span>
         <div class="tc-hdr">
           <div class="tavtr"><span class="tavtr-i">YL</span></div>
-          <div class="tname">Yihao Li</div><div class="trole">Founding Partner</div><div class="tdiv"></div>
+          <div class="tname">Yihao Li</div><div class="trole">Investor</div><div class="tdiv"></div>
         </div>
         <div class="tbio">
           <p>8-year VC veteran with full-cycle investment experience spanning angel to IPO. Deep roots in China's startup ecosystem — known for finding the most ambitious founders before the market does.</p>
@@ -851,7 +909,7 @@
         <span class="tc-htag">HOVER</span>
         <div class="tc-hdr">
           <div class="tavtr"><span class="tavtr-i">GZ</span></div>
-          <div class="tname">Gary Zhang</div><div class="trole">Analyst</div><div class="tdiv"></div>
+          <div class="tname">Gary Zhang</div><div class="trole">Investor</div><div class="tdiv"></div>
         </div>
         <div class="tbio">
           <p>Drives the intelligence and research layer at Creekstone. Focused on signal detection, founder sourcing, and the analytical infrastructure that keeps us at the frontier of AI investment intelligence.</p>
