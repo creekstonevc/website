@@ -23,6 +23,7 @@
     .sl::after{content:'';display:block;width:44px;height:1px;background:linear-gradient(to right,var(--g),transparent)}
     .fi{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
     .fi.v{opacity:1;transform:none}
+    #hero .fi{opacity:1;transform:none}
     .d1{transition-delay:.1s!important}.d2{transition-delay:.2s!important}
     .d3{transition-delay:.3s!important}.d4{transition-delay:.4s!important}
 
@@ -1046,7 +1047,7 @@ const obs=new IntersectionObserver(e=>{
       x.target.querySelectorAll('.fi-fill[data-w]').forEach(b=>b.style.width=b.dataset.w+'%');
     }
   });
-},{threshold:.1});
+},{threshold:0,rootMargin:"0px 0px -40px 0px"});
 document.querySelectorAll('.fi').forEach(el=>obs.observe(el));
 document.querySelectorAll('.fi-fill[data-w]').forEach(b=>{
   const o=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting)setTimeout(()=>x.target.style.width=x.target.dataset.w+'%',200)})},{threshold:.5});
@@ -1082,6 +1083,18 @@ document.querySelectorAll('.fi-fill[data-w]').forEach(b=>{
   setTimeout(tick,1300);
 })();
 
+
+/* ── FALLBACK: ensure all content visible ── */
+window.addEventListener('load',function(){
+  setTimeout(function(){
+    document.querySelectorAll('.fi').forEach(function(el){el.classList.add('v');});
+  },400);
+});
+document.addEventListener('DOMContentLoaded',function(){
+  setTimeout(function(){
+    document.querySelectorAll('.fi').forEach(function(el){el.classList.add('v');});
+  },800);
+});
 /* ── CANVAS ── */
 (function(){
   /* Set tagline for this version */
