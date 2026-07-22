@@ -33,7 +33,7 @@ export default function Team() {
               <span className="tc-htag">HOVER</span>
               <div className="tc-hdr">
                 <div className="tavtr" id={m.id}>
-                  <img src={`/images/extracted/${m.img}`} className="loaded" alt="" />
+                  <img src={`/images/extracted/${m.img}`} className="loaded" alt="" loading="lazy" decoding="async" />
                   <span className="tavtr-i">{m.initials}</span>
                 </div>
                 <div className="tname">{m.name}</div>

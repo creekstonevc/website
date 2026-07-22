@@ -42,7 +42,7 @@ export default function Hero() {
       <div className="hero-c">
         <div className="hero-brand-stack">
           <div className="hero-logo-wrap">
-            <img className="hero-logo" src="/images/extracted/nav.png" alt="Creekstone" />
+            <img className="hero-logo" src="/images/extracted/nav.png" alt="Creekstone" fetchPriority="high" />
           </div>
           <div className="hero-brand-txt">
             <div className="hero-brandname">Creekstone Ventures</div>

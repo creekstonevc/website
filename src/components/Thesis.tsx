@@ -62,7 +62,7 @@ function Cosmos() {
       </svg>
       <div className="di-cosmos-center">
         <div className="di-cl-wrap">
-          <div className="di-cl-ring"><img src="/images/extracted/nav.png" alt="Creekstone" /></div>
+          <div className="di-cl-ring"><img src="/images/extracted/nav.png" alt="Creekstone" loading="lazy" decoding="async" /></div>
         </div>
       </div>
       {PLANETS.map((p) => (

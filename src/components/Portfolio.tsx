@@ -21,7 +21,7 @@ export default function Portfolio() {
             <a href={c.href} target="_blank" rel="noreferrer" className={`pc fi ${c.d}`} key={c.name}>
               <span className="pc-arr">↗</span>
               <div className="pc-logo" id={c.logo}>
-                <img src={`/images/extracted/${c.logo}.png`} alt={c.name.toLowerCase()} />
+                <img src={`/images/extracted/${c.logo}.png`} alt={c.name.toLowerCase()} loading="lazy" decoding="async" />
               </div>
               <div className="pc-name">{c.name}</div>
               <div className="pc-cat">{c.cat}</div>

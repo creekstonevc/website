@@ -11,7 +11,7 @@ export default function AgentTeaser() {
         <div className="agt-row fi d3">
           <a href="/agent/" className="agt-card">
             <div className="agt-av">
-              <img src="/images/extracted/tavtr-yl.jpg" alt="Yihao Li" />
+              <img src="/images/extracted/tavtr-yl.jpg" alt="Yihao Li" loading="lazy" decoding="async" />
               <span className="agt-av-dot"></span>
             </div>
             <div className="agt-meta">

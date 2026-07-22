@@ -32,7 +32,7 @@ export default function Voices() {
               <StaggeredText text={q.text} as="p" className="qtext" segmentBy="words" delay={26} blur />
               <div className="qauth">
                 <div className="q-av" id={q.av}>
-                  <img src={`/images/extracted/${q.av}.png`} alt="" style={{ objectPosition: "center top" }} />
+                  <img src={`/images/extracted/${q.av}.png`} alt="" style={{ objectPosition: "center top" }} loading="lazy" decoding="async" />
                   <span className="q-av-ph">{q.ph}</span>
                 </div>
                 <div>
