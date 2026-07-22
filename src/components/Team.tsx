@@ -26,7 +26,7 @@ export default function Team() {
   return (
     <section id="team">
       <div className="tm-inner">
-        <div className="sl fi">07 · Team</div>
+        <div className="sl fi">08 · Team</div>
         <div className="tm-grid">
           {TEAM.map((m) => (
             <div className={`tcard fi ${m.d}`} key={m.id}>

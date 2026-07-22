@@ -22,7 +22,7 @@ export default function Voices() {
   return (
     <section id="quotes">
       <div className="q-inner">
-        <div className="sl fi">05 · Voices</div>
+        <div className="sl fi">06 · Voices</div>
 
         <div className="qa-label fi d1">FOUNDERS SAY</div>
         <div className="qa-grid fi d2">

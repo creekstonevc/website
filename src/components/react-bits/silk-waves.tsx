@@ -176,7 +176,9 @@ const SilkWaves: React.FC<SilkWavesProps> = ({
     });
     renderer.setClearColor(0x000000, 0);
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // A soft background gradient doesn't need retina resolution; DPR 1
+    // quarters the fragment-shader load on high-density screens.
+    renderer.setPixelRatio(1);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -216,14 +218,29 @@ const SilkWaves: React.FC<SilkWavesProps> = ({
     scene.add(mesh);
 
     const clock = new THREE.Clock();
+    let running = false;
     const animate = () => {
+      if (!running) return;
       const elapsedTime = clock.getElapsedTime();
       material.uniforms.uTime.value = elapsedTime;
 
       renderer.render(scene, camera);
       animationFrameRef.current = requestAnimationFrame(animate);
     };
-    animate();
+
+    // Only render while the container is on screen.
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        if (!running) {
+          running = true;
+          animationFrameRef.current = requestAnimationFrame(animate);
+        }
+      } else {
+        running = false;
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      }
+    });
+    io.observe(container);
 
     const handleResize = () => {
       const newWidth = container.clientWidth;
@@ -237,9 +254,11 @@ const SilkWaves: React.FC<SilkWavesProps> = ({
     resizeObserver.observe(container);
 
     return () => {
+      running = false;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+      io.disconnect();
       resizeObserver.disconnect();
 
       renderer.dispose();

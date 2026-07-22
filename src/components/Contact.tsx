@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import StaggeredText from "@/components/react-bits/staggered-text";
 
 const SilkWaves = lazy(() => import("@/components/react-bits/silk-waves"));
@@ -9,6 +9,26 @@ export default function Contact() {
   const [value, setValue] = useState("");
   const [placeholder, setPlaceholder] = useState("Tell us what you're building...");
   const [sent, setSent] = useState(false);
+  // Defer the WebGL background (547KB chunk + shader compile) until the
+  // section approaches the viewport.
+  const [showWaves, setShowWaves] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setShowWaves(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: "600px 0px" }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   const sendTerm = () => {
     const v = value.trim();
@@ -20,9 +40,9 @@ export default function Contact() {
   };
 
   return (
-    <section id="contact">
+    <section id="contact" ref={sectionRef}>
       <div className="contact-bg">
-        <Suspense fallback={null}>
+        {showWaves && <Suspense fallback={null}>
         <SilkWaves
           speed={0.45}
           scale={2.2}
@@ -30,11 +50,11 @@ export default function Contact() {
           brightness={0.85}
           colors={["#060606", "#0c0a05", "#191307", "#2a1f0c", "#3c2d10", "#5a4009", "#8b6914", "#c9a84c"]}
         />
-        </Suspense>
+        </Suspense>}
       </div>
       <div className="ct-inner">
         <div>
-          <div className="sl fi">08 · Contact</div>
+          <div className="sl fi">09 · Contact</div>
           <h2 className="ct-h2 fi d1">Get in<br /><span className="gg">Touch.</span></h2>
           <div className="ct-motto fi d2">
             <StaggeredText text="We respond fast. We decide faster." as="span" segmentBy="words" delay={90} blur />

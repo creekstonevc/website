@@ -79,7 +79,7 @@ export default function Thesis() {
   return (
     <section id="thesis">
       <div className="t-inner">
-        <div className="sl fi">03 · Investment Thesis</div>
+        <div className="sl fi">04 · Investment Thesis</div>
         <div className="t-layout">
           <div className="t-left">
             <h2 className="t-h2 fi">Betting on<br /><span className="gg">the Edge.</span></h2>

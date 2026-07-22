@@ -9,7 +9,7 @@ export default function Manifesto() {
   return (
     <section id="manifesto">
       <div className="m-inner">
-        <div className="sl fi">02 · Manifesto</div>
+        <div className="sl fi">03 · Manifesto</div>
         <div className="m-big fi d1">
           We don't bet on <em>experience.</em><br />We bet on <em>native variables.</em>
         </div>

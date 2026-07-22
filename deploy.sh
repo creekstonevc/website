@@ -25,6 +25,32 @@ echo "==> Deploying to nginx root..."
 $SUDO mkdir -p "$NGINX_ROOT"
 $SUDO cp -r dist/* "$NGINX_ROOT/"
 
+echo "==> Configuring agent API proxy..."
+# The AI agent chat calls /api/agent/* same-origin; nginx forwards it to the
+# Boids API and injects the key server-side so it never reaches the browser.
+BOIDS_API_KEY="$(grep -oP '^BOIDS_API_KEY=\K.*' "$PROJECT_DIR/.env.local" 2>/dev/null || true)"
+SITE_CONF="/etc/nginx/sites-enabled/creekstone"
+if [ -n "$BOIDS_API_KEY" ] && [ -f "$SITE_CONF" ]; then
+    $SUDO mkdir -p /etc/nginx/snippets
+    $SUDO tee /etc/nginx/snippets/creekstone-agent.conf >/dev/null <<EOF
+location /api/agent/ {
+    proxy_pass https://staging-api.boids.so/v1/;
+    proxy_http_version 1.1;
+    proxy_set_header Host staging-api.boids.so;
+    proxy_set_header Authorization "Bearer $BOIDS_API_KEY";
+    proxy_set_header Connection "";
+    proxy_ssl_server_name on;
+    proxy_buffering off;
+    proxy_read_timeout 300s;
+}
+EOF
+    if ! grep -q "creekstone-agent.conf" "$SITE_CONF"; then
+        $SUDO sed -i '/root \/var\/www\/creekstone;/a\    include snippets/creekstone-agent.conf;' "$SITE_CONF"
+    fi
+else
+    echo "    (skipped: BOIDS_API_KEY missing from .env.local or site config not found)"
+fi
+
 echo "==> Testing nginx config..."
 $SUDO nginx -t
 

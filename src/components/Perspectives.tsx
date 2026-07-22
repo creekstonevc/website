@@ -32,7 +32,7 @@ export default function Perspectives() {
   return (
     <section id="perspectives">
       <div className="pv-inner">
-        <div className="sl fi">06 · Perspectives</div>
+        <div className="sl fi">07 · Perspectives</div>
         <div className="pv-grid">
           <div className="fi">
             <div className="pv-ch">Portfolio News</div>

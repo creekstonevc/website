@@ -1,5 +1,6 @@
 import Nav from "./components/Nav";
 import Hero from "./components/Hero";
+import AgentTeaser from "./components/AgentTeaser";
 import Manifesto from "./components/Manifesto";
 import Thesis from "./components/Thesis";
 import Portfolio from "./components/Portfolio";
@@ -16,6 +17,7 @@ export default function App() {
     <>
       <Nav />
       <Hero />
+      <AgentTeaser />
       <Manifesto />
       <Thesis />
       <Portfolio />

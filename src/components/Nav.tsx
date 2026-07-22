@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 const LINKS = [
+  ["/agent/", "Agent"],
   ["#manifesto", "Manifesto"],
   ["#thesis", "Thesis"],
   ["#portfolio", "Portfolio"],

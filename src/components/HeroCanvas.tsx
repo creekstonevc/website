@@ -24,6 +24,7 @@ export default function HeroCanvas() {
     let nameAlpha = 0, showName: string | null = null, nameX = 0, nameY = 0;
     let dwellTimer: number | undefined, prevMx = -1, prevMy = -1;
     let raf = 0;
+    let running = false;
 
     function resize() {
       W = canvas!.width = canvas!.offsetWidth || window.innerWidth;
@@ -122,6 +123,7 @@ export default function HeroCanvas() {
     }
 
     function frame() {
+      if (!running) return;
       const c = ctx!;
       c.clearRect(0, 0, W, H);
       for (let i = 0; i < pts.length; i++) {
@@ -162,9 +164,21 @@ export default function HeroCanvas() {
     canvas.addEventListener("mouseleave", onLeave);
     window.addEventListener("resize", init);
     init();
-    frame();
+
+    // Only animate while the hero is actually on screen.
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        if (!running) { running = true; raf = requestAnimationFrame(frame); }
+      } else {
+        running = false;
+        cancelAnimationFrame(raf);
+      }
+    });
+    io.observe(canvas);
 
     return () => {
+      io.disconnect();
+      running = false;
       cancelAnimationFrame(raf);
       window.clearTimeout(dwellTimer);
       canvas.removeEventListener("mousemove", onMove);

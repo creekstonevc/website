@@ -15,7 +15,7 @@ export default function Portfolio() {
   return (
     <section id="portfolio">
       <div className="port-inner">
-        <div className="sl fi">04 · Portfolio</div>
+        <div className="sl fi">05 · Portfolio</div>
         <div className="port-grid">
           {COMPANIES.map((c) => (
             <a href={c.href} target="_blank" rel="noreferrer" className={`pc fi ${c.d}`} key={c.name}>
