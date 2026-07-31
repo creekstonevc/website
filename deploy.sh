@@ -2,37 +2,62 @@
 set -euo pipefail
 
 PROJECT_DIR="/root/creekstone-website"
-NGINX_ROOT="/var/www/creekstone"
-DOMAIN="creekstonevc.com"
-# Set CERTBOT_EMAIL to receive Let's Encrypt expiry notices; renewal is
-# automatic via certbot's systemd timer either way.
-CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
+WEB_ROOT="/var/www/creekstone"
+NEXT_WEB_ROOT="/var/www/creekstone.next"
+BACKUP_ROOT="/root/creekstone-deploy-backups"
+SITE_CONF="/etc/nginx/sites-enabled/creekstone"
+AGENT_SNIPPET="/etc/nginx/snippets/creekstone-agent.conf"
+DEPLOY_STAMP="$(date +%Y%m%d-%H%M%S)"
+DEPLOY_BACKUP="$BACKUP_ROOT/$DEPLOY_STAMP"
 
-SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
-    SUDO="sudo"
+  echo "deploy.sh must run as root on the Creekstone server." >&2
+  exit 1
+fi
+
+if [ ! -d "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/package.json" ]; then
+  echo "Project directory is missing: $PROJECT_DIR" >&2
+  exit 1
 fi
 
 cd "$PROJECT_DIR"
 
-echo "==> Installing dependencies..."
-npm ci --prefer-offline 2>/dev/null || npm install
+echo "==> Installing locked dependencies"
+npm ci --prefer-offline
 
-echo "==> Building for production..."
+echo "==> Building static Next.js export"
 npm run build
 
-echo "==> Deploying to nginx root..."
-$SUDO mkdir -p "$NGINX_ROOT"
-$SUDO cp -r dist/* "$NGINX_ROOT/"
+if [ ! -f "$PROJECT_DIR/out/index.html" ] || [ ! -f "$PROJECT_DIR/out/agent/index.html" ]; then
+  echo "Static export is incomplete; expected homepage and /agent/ output." >&2
+  exit 1
+fi
 
-echo "==> Configuring agent API proxy..."
-# The AI agent chat calls /api/agent/* same-origin; nginx forwards it to the
-# Boids API and injects the key server-side so it never reaches the browser.
-BOIDS_API_KEY="$(grep -oP '^BOIDS_API_KEY=\K.*' "$PROJECT_DIR/.env.local" 2>/dev/null || true)"
-SITE_CONF="/etc/nginx/sites-enabled/creekstone"
-if [ -n "$BOIDS_API_KEY" ] && [ -f "$SITE_CONF" ]; then
-    $SUDO mkdir -p /etc/nginx/snippets
-    $SUDO tee /etc/nginx/snippets/creekstone-agent.conf >/dev/null <<EOF
+echo "==> Preserving current web root and Nginx configuration"
+mkdir -p "$DEPLOY_BACKUP"
+if [ -d "$WEB_ROOT" ]; then
+  cp -a "$WEB_ROOT" "$DEPLOY_BACKUP/webroot"
+fi
+if [ -f "$SITE_CONF" ]; then
+  cp -a "$SITE_CONF" "$DEPLOY_BACKUP/creekstone.nginx.conf"
+fi
+if [ -f "$AGENT_SNIPPET" ]; then
+  cp -a "$AGENT_SNIPPET" "$DEPLOY_BACKUP/creekstone-agent.conf"
+fi
+
+echo "==> Refreshing same-origin Agent API proxy"
+BOIDS_API_KEY=""
+if [ -f "$PROJECT_DIR/.env.local" ]; then
+  BOIDS_API_KEY="$(sed -n 's/^BOIDS_API_KEY=//p' "$PROJECT_DIR/.env.local" | tail -n 1)"
+fi
+
+if [ -z "$BOIDS_API_KEY" ]; then
+  echo "BOIDS_API_KEY is missing from $PROJECT_DIR/.env.local" >&2
+  exit 1
+fi
+
+mkdir -p /etc/nginx/snippets
+cat > "$AGENT_SNIPPET" <<EOF
 location /api/agent/ {
     proxy_pass https://staging-api.boids.so/v1/;
     proxy_http_version 1.1;
@@ -41,39 +66,54 @@ location /api/agent/ {
     proxy_set_header Connection "";
     proxy_ssl_server_name on;
     proxy_buffering off;
+    proxy_cache off;
     proxy_read_timeout 300s;
+    add_header X-Accel-Buffering no;
 }
 EOF
-    if ! grep -q "creekstone-agent.conf" "$SITE_CONF"; then
-        $SUDO sed -i '/root \/var\/www\/creekstone;/a\    include snippets/creekstone-agent.conf;' "$SITE_CONF"
-    fi
-else
-    echo "    (skipped: BOIDS_API_KEY missing from .env.local or site config not found)"
+chmod 600 "$AGENT_SNIPPET"
+
+echo "==> Staging exported site"
+if [ -e "$NEXT_WEB_ROOT" ]; then
+  rm -rf -- "$NEXT_WEB_ROOT"
 fi
+mkdir -p "$NEXT_WEB_ROOT"
+cp -a "$PROJECT_DIR/out/." "$NEXT_WEB_ROOT/"
+chown -R www-data:www-data "$NEXT_WEB_ROOT"
 
-echo "==> Testing nginx config..."
-$SUDO nginx -t
+echo "==> Updating Nginx static entry point"
+python3 - "$SITE_CONF" <<'PY'
+from pathlib import Path
+import sys
 
-echo "==> Reloading nginx..."
-$SUDO systemctl reload nginx
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("index index-b.html index.html;", "index index.html;")
+text = text.replace("try_files $uri $uri/ /index-b.html;", "try_files $uri $uri/ $uri.html /index.html;")
+text = text.replace("try_files $uri $uri/ /index.html;", "try_files $uri $uri/ $uri.html /index.html;")
+if "location = /index-b.html" not in text:
+    legacy_entry = """    location = /index-b.html {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache";
+    }
 
-if ! command -v certbot >/dev/null 2>&1; then
-    echo "==> Installing certbot..."
-    $SUDO apt-get update -qq
-    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq certbot python3-certbot-nginx
+"""
+    text = text.replace("    location / {\n", legacy_entry + "    location / {\n", 1)
+path.write_text(text)
+PY
+
+nginx -t
+
+echo "==> Activating release"
+if [ -d "$WEB_ROOT" ]; then
+  rm -rf -- "$WEB_ROOT"
 fi
+mv "$NEXT_WEB_ROOT" "$WEB_ROOT"
 
-if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-    echo "==> Obtaining HTTPS certificate for $DOMAIN..."
-    if [ -n "$CERTBOT_EMAIL" ]; then
-        EMAIL_ARGS=(--email "$CERTBOT_EMAIL")
-    else
-        EMAIL_ARGS=(--register-unsafely-without-email)
-    fi
-    $SUDO certbot --nginx --non-interactive --agree-tos "${EMAIL_ARGS[@]}" \
-        --redirect -d "$DOMAIN" -d "www.$DOMAIN"
-else
-    echo "==> Certificate already present; certbot's timer handles renewal."
-fi
+nginx -t
+systemctl reload nginx
 
-echo "==> Deploy complete! Site is live at https://$DOMAIN"
+echo "==> Deployment complete"
+echo "    Site: https://creekstonevc.com/"
+echo "    Agent: https://creekstonevc.com/agent/"
+echo "    Rollback snapshot: $DEPLOY_BACKUP"

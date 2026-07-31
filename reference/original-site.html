@@ -1,0 +1,1779 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THOMAS DENG | AI Researcher & Full-Stack</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- GSAP & ScrollTrigger -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Lenis for Smooth Scroll -->
+    <script src="https://cdn.jsdelivr.net/gh/studio-freight/lenis@1.0.19/bundled/lenis.min.js"></script>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;900&family=Space+Grotesk:wght@300;500;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --text-color: #000000;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            color: var(--text-color);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            cursor: none;
+        }
+
+        /* Subtle Noise Overlay */
+        .noise-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 9999; opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        /* Custom Cursor */
+        .cursor-dot {
+            position: fixed; top: 0; left: 0; width: 6px; height: 6px;
+            background: #ffffff; border-radius: 50%;
+            pointer-events: none; z-index: 10000;
+            transform: translate(-50%, -50%); transition: width 0.2s, height 0.2s;
+            mix-blend-mode: difference;
+        }
+        .cursor-ring {
+            position: fixed; top: 0; left: 0; width: 40px; height: 40px;
+            border: 1px solid rgba(255,255,255,0.9); border-radius: 50%;
+            pointer-events: none; z-index: 9999;
+            transform: translate(-50%, -50%); transition: width 0.3s, height 0.3s, background-color 0.3s;
+            mix-blend-mode: difference;
+        }
+
+        .font-space { font-family: 'Space Grotesk', sans-serif; }
+
+        /* 3D Canvas */
+        #webgl-container {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: -10; pointer-events: none;
+        }
+
+        /* Loader */
+        #loader {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #fff; z-index: 99999;
+            display: flex; justify-content: center; align-items: center;
+            font-family: 'Space Grotesk', sans-serif; font-size: 3vw; font-weight: 900; letter-spacing: -0.05em;
+        }
+        .loader-inner { display: inline-block; transform: translateY(100%); }
+
+        .hover-underline::after {
+            content: ''; position: absolute; width: 100%; transform: scaleX(0);
+            height: 2px; bottom: -2px; left: 0; background-color: currentColor;
+            transform-origin: bottom right; transition: transform 0.4s cubic-bezier(0.86, 0, 0.07, 1);
+        }
+        .hover-underline:hover::after { transform: scaleX(1); transform-origin: bottom left; }
+
+        .bg-grid {
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, currentColor 1px, transparent 1px),
+                linear-gradient(to bottom, currentColor 1px, transparent 1px);
+            opacity: 0.03;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+        }
+
+        /* Apple Watch Ecosystem Grid */
+        .aw-bubble { will-change: transform, opacity; user-select: none; }
+        .aw-bubble .aw-title { font-size: 0.7rem; line-height: 1.15; }
+        @media (min-width: 768px) {
+            .aw-bubble .aw-title { font-size: 0.8125rem; }
+        }
+        .aw-bubble.aw-bubble--long .aw-title { font-size: 0.65rem; line-height: 1.1; }
+        @media (min-width: 768px) {
+            .aw-bubble.aw-bubble--long .aw-title { font-size: 0.75rem; }
+        }
+
+        /* CARD GAME SECTION STYLES */
+        #projects-section {
+            background-image: radial-gradient(#222 1px, transparent 1px);
+            background-size: 10px 10px;
+        }
+        
+        .crt-scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.3));
+            background-size: 100% 4px; pointer-events: none; z-index: 10;
+        }
+
+        .pixel-card {
+            background-color: #000;
+            border: 2px solid #fff;
+            box-shadow: 4px 4px 0px rgba(255, 255, 255, 0.8);
+            image-rendering: pixelated;
+            display: flex; flex-direction: column; justify-content: space-between;
+            transition: box-shadow 0.2s;
+            transform-origin: bottom center;
+        }
+        .pixel-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-image: repeating-linear-gradient(45deg, #111 0, #111 2px, transparent 2px, transparent 4px);
+            opacity: 0.5; pointer-events: none; z-index: 0;
+        }
+        .card-content { position: relative; z-index: 1; }
+        
+        #play-slot {
+            box-shadow: inset 0 0 20px rgba(255,255,255,0);
+            transition: box-shadow 0.2s, background-color 0.1s;
+        }
+        #play-slot.active {
+            box-shadow: inset 0 0 40px rgba(255,255,255,0.2);
+            background-color: rgba(255,255,255,0.05);
+            border-color: #fff;
+            border-style: solid;
+        }
+
+        .glitch-reveal {
+            animation: glitch-anim 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
+        }
+        @keyframes glitch-anim {
+            0% { transform: translate(0) }
+            20% { transform: translate(-2px, 2px) }
+            40% { transform: translate(-2px, -2px) }
+            60% { transform: translate(2px, 2px) }
+            80% { transform: translate(2px, -2px) }
+            100% { transform: translate(0) }
+        }
+
+        .verify-chip {
+            border: 2px solid #fff;
+            background: #000;
+            color: #fff;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            font-size: 10px;
+            padding: 10px 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.25s ease;
+        }
+        .verify-chip[disabled] {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+        .verify-chip:not([disabled]):hover {
+            background: #fff;
+            color: #000;
+            box-shadow: 0 0 18px rgba(255,255,255,0.6);
+        }
+        .verify-chip-light {
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            box-shadow: 0 0 10px #4ade80;
+            animation: chip-pulse 1.1s ease-in-out infinite;
+        }
+        @keyframes chip-pulse {
+            0%, 100% { opacity: 0.25; }
+            50% { opacity: 1; }
+        }
+
+        #detail-glass-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 45;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .detail-glass-backdrop {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(120deg, rgba(240,240,240,0.08), rgba(0,0,0,0.55) 45%, rgba(255,255,255,0.12));
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-top: 1px solid rgba(255,255,255,0.2);
+            border-bottom: 1px solid rgba(255,255,255,0.12);
+        }
+        .detail-glass-noise {
+            position: absolute;
+            inset: 0;
+            background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 3px);
+            mix-blend-mode: screen;
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .detail-scan-beam {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: -32%;
+            width: 28%;
+            background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.22), rgba(255,255,255,0));
+            filter: blur(1px);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 46;
+        }
+        #detail-pulse-field {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 46;
+            overflow: hidden;
+        }
+        .detail-pulse-node {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            border: 1px solid rgba(255,255,255,0.7);
+            background: rgba(255,255,255,0.08);
+            box-shadow: 0 0 12px rgba(255,255,255,0.35);
+        }
+        #detail-grid {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 20px;
+            padding: 8vh 5vw 6vh 34vw;
+            opacity: 0;
+        }
+        .detail-panel {
+            border: 2px solid rgba(255,255,255,0.65);
+            background: rgba(0,0,0,0.56);
+            box-shadow: 6px 6px 0 rgba(255,255,255,0.28);
+            padding: 20px;
+            overflow: hidden;
+        }
+        .detail-label {
+            font-size: 10px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            opacity: 0.8;
+            margin-bottom: 10px;
+        }
+        
+        /* Interactive accomplishment stack card styles */
+        .folder-card {
+            position: absolute;
+            inset: 16px 24px 24px 0;
+            background: rgba(20, 20, 20, 0.45); /* Lower transparency */
+            border: 1px solid rgba(255,255,255,0.4);
+            border-top: none;
+            padding: 16px;
+            cursor: grab;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(8px); /* Stronger frosted-glass blur */
+            -webkit-backdrop-filter: blur(8px);
+            transform-origin: center bottom;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        .folder-card:active {
+            cursor: grabbing;
+        }
+        .folder-top-bar {
+            position: absolute;
+            top: -16px; left: -1px; right: -1px;
+            height: 16px;
+            display: flex;
+        }
+        .folder-tab {
+            width: 80px;
+            height: 100%;
+            background: rgba(20, 20, 20, 0.45); /* Match card background */
+            border: 1px solid rgba(255,255,255,0.4);
+            border-bottom: none;
+            clip-path: polygon(0 0, 80% 0, 100% 100%, 0 100%);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .folder-top-line {
+            flex: 1;
+            border-bottom: 1px solid rgba(255,255,255,0.4);
+        }
+        .folder-card:hover {
+            border-color: #fff;
+        }
+        .folder-card:hover .folder-tab, .folder-card:hover .folder-top-line {
+            border-color: #fff;
+        }
+
+        /* Custom scrollbar inside accomplishment cards */
+        .folder-desc {
+            touch-action: pan-y; /* Enable vertical scroll on mobile */
+            overscroll-behavior-y: contain;
+        }
+        .folder-desc::-webkit-scrollbar {
+            width: 4px;
+        }
+        .folder-desc::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 2px;
+        }
+        .folder-desc::-webkit-scrollbar-thumb {
+            background: rgba(255, 204, 0, 0.6); 
+            border-radius: 2px;
+        }
+        .folder-desc::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 204, 0, 1);
+        }
+
+        /* Swipe animation hint */
+        @keyframes swipe-hint {
+            0% { transform: translateX(0) rotate(-15deg); }
+            50% { transform: translateX(6px) rotate(-15deg); }
+            100% { transform: translateX(0) rotate(-15deg); }
+        }
+        .animate-swipe {
+            animation: swipe-hint 1.5s ease-in-out infinite;
+            display: inline-block;
+        }
+
+        .detail-ghost-card {
+            position: fixed;
+            margin: 0;
+            pointer-events: none;
+            z-index: 55;
+            box-shadow: 10px 10px 0 rgba(255,255,255,0.85);
+            overflow: hidden;
+            --mx: 50%;
+            --my: 50%;
+        }
+        .detail-ghost-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at var(--mx) var(--my), rgba(255,255,255,0.36), rgba(255,255,255,0) 45%);
+            mix-blend-mode: screen;
+            opacity: 0.85;
+            pointer-events: none;
+        }
+        .detail-hand-sweep {
+            position: fixed;
+            border-radius: 999px;
+            background: linear-gradient(115deg, rgba(255,255,255,0.14), rgba(255,255,255,0.03));
+            border: 1px solid rgba(255,255,255,0.3);
+            filter: blur(1px);
+            z-index: 54;
+            pointer-events: none;
+            transform-origin: center;
+        }
+        .detail-trail-card {
+            position: fixed;
+            margin: 0;
+            pointer-events: none;
+            z-index: 52;
+            opacity: 0.5;
+            mix-blend-mode: screen;
+        }
+        #close-detail-btn {
+            border: 2px solid #fff;
+            background: #000;
+            color: #fff;
+            font-size: 11px;
+            letter-spacing: 0.22em;
+            padding: 10px 14px;
+            text-transform: uppercase;
+            font-weight: 700;
+            transition: all 0.25s ease;
+        }
+        #close-detail-btn:hover {
+            background: #fff;
+            color: #000;
+            box-shadow: 0 0 20px rgba(255,255,255,0.6);
+        }
+        @media (max-width: 768px) {
+            #detail-grid {
+                grid-template-columns: 1fr;
+                padding: 18vh 5vw 5vw 5vw;
+                gap: 12px;
+                overflow-y: auto;
+            }
+            .detail-panel {
+                padding: 14px;
+                box-shadow: 4px 4px 0 rgba(255,255,255,0.28);
+            }
+            .folder-card {
+                inset: 16px 16px 16px 0;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-black selection:text-white">
+    <!--
+      THESIS: Preserve the public Thomas Deng portfolio as an exact computational experience, refusing reinterpretation.
+      OWN-WORLD: Black-and-white technical field, Space Grotesk display type, particles, timelines, dossiers, and a node graph.
+      STORY: Visitors move from identity through chronology and working process into projects and collaborators.
+      FIRST VIEWPORT: Full white field, centered name, tracking eye, corner telemetry, manifesto, stack chips, and scroll cue.
+      FORM: Binding incumbent reference at https://jianyuanthomasdeng.com/; seed key: exact-reference-copy.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
+
+    <div id="global-bg" class="fixed top-0 left-0 w-full h-full" style="z-index: -20; background-color: #ffffff;"></div>
+
+    <div id="loader">
+        <div class="overflow-hidden"><span class="loader-inner">SYNCING_DATA(MR.MAI)</span></div>
+    </div>
+
+    <div class="noise-overlay"></div>
+    <div class="cursor-dot" id="cursor-dot"></div>
+    <div class="cursor-ring" id="cursor-ring"></div>
+
+    <div id="webgl-container"></div>
+
+    <!-- MAIN CONTENT -->
+    <main class="relative z-10">
+        
+        <!-- HERO SECTION -->
+        <section class="relative h-screen w-full box-border hero-section">
+            <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-20 w-full flex flex-col items-center justify-center text-black drop-shadow-[0_0_20px_rgba(255,255,255,1)]">
+                <h1 class="text-[12vw] md:text-[8vw] font-black leading-none tracking-tighter uppercase font-space">
+                    Thomas Deng
+                </h1>
+                <span class="text-[6vw] md:text-[3vw] tracking-[0.3em] mt-2 md:mt-4 font-bold block">
+                    Jianyuan Deng
+                </span>
+            </div>
+
+            <header class="absolute top-8 left-8 right-8 flex justify-between items-start font-space text-xs tracking-widest uppercase font-bold text-black z-20">
+                <div class="flex flex-col gap-1">
+                    <span>AI Researcher / Developer</span>
+                    <span class="text-gray-500">ALIAS: MR.MAI</span>
+                </div>
+                <div class="text-right flex flex-col gap-1">
+                    <span>STATUS: ONLINE</span>
+                    <span class="text-gray-500">UPTIME: 16 YEARS</span>
+                </div>
+            </header>
+
+            <div class="absolute bottom-8 left-8 right-8 flex justify-between items-end font-space text-xs font-bold uppercase tracking-widest text-black z-20">
+                <div class="flex flex-col gap-2 max-w-sm pointer-events-auto">
+                    <p class="normal-case tracking-normal text-sm md:text-base font-light leading-relaxed mb-4">
+                        "From Grade 3 logic foundations to a national TV broadcast stage in Grade 11.<br>I engineer reality in code and prototype the future in hardware."
+                    </p>
+                    <div class="flex gap-4 text-[10px]">
+                        <span class="border border-black/20 px-3 py-1 rounded-full">Python / C++</span>
+                        <span class="border border-black/20 px-3 py-1 rounded-full">Node.js</span>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="animate-pulse block mb-2">SCROLL TO NAVIGATE ↓</span>
+                    <span class="text-gray-500">NCA / Grade 11</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- INTRO TRANSITION -->
+        <section class="h-[30vh] w-full flex items-center justify-center relative z-20 border-t border-black/10 transition-section">
+            <h2 class="text-3xl md:text-5xl font-bold font-space text-center max-w-4xl px-4 leading-tight">
+                From logical origins to <br><span class="italic font-light text-gray-500">championship peaks.</span>
+            </h2>
+        </section>
+
+        <!-- CONTINUOUS TIMELINE SECTION -->
+        <div class="overflow-hidden relative z-20 will-change-transform" id="timeline-container" style="color: #000000;">
+            
+            <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-[30vw] md:text-[22vw] font-black font-space pointer-events-none z-0 whitespace-nowrap tracking-tighter text-current" style="opacity: 0.04;" id="bg-age-display">
+                08.000<span class="text-[12vw] md:text-[8vw] ml-2 md:ml-4">YRS</span>
+            </div>
+
+            <div class="bg-grid"></div>
+            
+            <div class="absolute top-1/2 left-0 w-[800vw] h-[1px] bg-current opacity-20 transform -translate-y-1/2 z-0 pointer-events-none"></div>
+
+            <div class="flex flex-nowrap items-center h-screen px-[10vw] relative z-10 w-max gap-[8vw] md:gap-[6vw]" id="horizontal-wrap">
+                
+                <div class="flex-shrink-0 w-[40vw] text-4xl md:text-7xl font-black font-space tracking-tighter text-black">
+                    TIMELINE.<br>
+                    <span class="text-xl md:text-3xl font-light tracking-normal opacity-50 italic normal-case block mt-4 text-black">The Evolution of Mr.Mai</span>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform -translate-y-[18vh] relative group timeline-node" data-timeline-date="2018-06-01">
+                    <div class="absolute -bottom-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -bottom-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-50 mb-2">2018</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">National Youth Programming Championship</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Won Third Prize in Beijing and opened the door to serious computational thinking.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform translate-y-[18vh] relative group timeline-node" data-timeline-start="2019-01-01" data-timeline-end="2020-12-31">
+                    <div class="absolute -top-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -top-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 -translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-50 mb-2">2019 - 2020</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">Editor-in-Chief, Student Magazine</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Served as Visual Director; selected works were featured by Sanlian Lifeweek Youth.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform -translate-y-[18vh] relative group timeline-node" data-timeline-start="2020-01-01" data-timeline-end="2022-12-31">
+                    <div class="absolute -bottom-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -bottom-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-50 mb-2">2020 - 2022</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">Custom Mechanical Keyboard Build</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Led STEAM initiatives and independently delivered KiCad PCB design plus firmware.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform translate-y-[18vh] relative group timeline-node" data-timeline-start="2021-01-01" data-timeline-end="2025-12-31">
+                    <div class="absolute -top-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -top-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 -translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-50 mb-2">2021 - 2025</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">Deep IoT Architecture Focus</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Advanced Python/C++ capabilities and built core technical depth in hardware interaction systems.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform -translate-y-[18vh] relative group timeline-node" data-timeline-start="2025-07-01" data-timeline-end="2025-08-31">
+                    <div class="absolute -bottom-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -bottom-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-50 mb-2">2025.07 - 2025.08</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">University of Toronto Summer Program</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Completed an intensive web architecture track.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform translate-y-[18vh] relative group timeline-node" data-timeline-start="2025-10-01" data-timeline-end="2025-12-31">
+                    <div class="absolute -top-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -top-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 -translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-50 mb-2">2025.10 - 2025.12</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">Independent AI Custom Services</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Anticipated AI frontend demand before Gemini 3 and captured the wave early; with only three evening hours per day, generated 100+ qualified inbound inquiries and converted them into paid custom projects.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform -translate-y-[18vh] relative group timeline-node" data-timeline-start="2025-12-01" data-timeline-end="2026-01-31">
+                    <div class="absolute -bottom-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -bottom-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-50 mb-2">2025.12 - 2026.01</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">NFC Dormitory Management System</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Designed a web AI-agent workflow for campus operations and delivered NCA's hardware attendance system plus analytics dashboard, later formalized as an official school deployment.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform translate-y-[18vh] relative group timeline-node" data-timeline-start="2026-02-05" data-timeline-end="2026-02-14">
+                    <div class="absolute -top-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -top-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 -translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-50 mb-2">2026.02.05 - 2026.02.14</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">Beijing Tangquan Hackathon</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Competed as team lead in the StepFun-hosted hackathon, launched the Are You Sure AI Agent mind-mapping project, and secured 3rd place overall across Beijing finalists.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform -translate-y-[18vh] relative group timeline-node" data-timeline-date="2026-02-17">
+                    <div class="absolute -bottom-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -bottom-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-50 mb-2">2026.02.17</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">Service Hour Volunteer Platform</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Following the successful NFC rollout, the school principal directly commissioned a dedicated Service Hour volunteer management system.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform translate-y-[18vh] relative group timeline-node" data-timeline-date="2026-02-20">
+                    <div class="absolute -top-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -top-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 -translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-80 mb-2 text-[#ffcc00]">2026.02 — PRE-IGNITION</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">Shanghai DIIS Hardware Hackathon</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Won the Most Incubation Potential Award and formally joined the AI SAID Incorrect development group.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[280px] md:w-[350px] transform -translate-y-[18vh] relative group timeline-node" data-timeline-date="2026-03-07">
+                    <div class="absolute -bottom-[18vh] left-[6px] w-[1px] h-[18vh] bg-current opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -bottom-[18vh] left-[6px] w-3 h-3 bg-current rounded-full transform -translate-x-1/2 translate-y-1/2 shadow-[0_0_15px_currentColor]"></div>
+                    <p class="font-space text-xs font-bold uppercase opacity-80 mb-2 text-[#ffcc00]">2026.03.07 — SUMMIT MOMENT</p>
+                    <h4 class="text-2xl font-bold mb-2 relative inline-block hover-underline">AI HACKATHON TOUR</h4>
+                    <p class="text-sm opacity-80 leading-relaxed mt-2">Nanjing semifinal champion, ranked #1 across the field.</p>
+                </div>
+
+                <div class="flex-shrink-0 w-[350px] md:w-[500px] transform -translate-y-[15vh] relative group ml-[5vw] timeline-node" data-timeline-start="2026-03-15" data-timeline-end="2026-03-20">
+                    <div class="absolute -bottom-[15vh] left-[6px] w-[2px] h-[15vh] bg-current opacity-60"></div>
+                    <div class="absolute -bottom-[15vh] left-[6px] w-5 h-5 bg-current rounded-full transform -translate-x-1/2 translate-y-1/2 shadow-[0_0_30px_currentColor] animate-pulse"></div>
+                    <p class="font-space text-sm font-bold uppercase mb-3 text-[#ff3333]">2026.03.15 ~ 03.20 — HIGHLIGHT</p>
+                    <h4 class="text-4xl md:text-5xl font-black mb-4 tracking-tight">C9 Finals & CCTV Live Broadcast</h4>
+                    <p class="text-base opacity-90 leading-relaxed">
+                        Secured the #1 audience vote (Crowd Favorite Award) and won direct qualification for CCTV selection.<br><br>
+                        Represented the next generation of builders at China's national AI talent summit on live broadcast.
+                    </p>
+                </div>
+
+                <div class="flex-shrink-0 w-[20vw]"></div>
+            </div>
+        </div>
+
+        <!-- PROJECTS CARD GAME SECTION -->
+        <section id="projects-section" class="relative h-screen w-full z-20 overflow-hidden font-space text-white border-t-2 border-white/20" style="perspective: 1200px;">
+            <div class="crt-scanlines"></div>
+            
+            <div class="absolute top-8 left-8 z-10 pointer-events-none">
+                <h2 class="text-3xl md:text-5xl font-black tracking-tighter uppercase drop-shadow-[2px_2px_0_#fff] text-black">PROCESSES</h2>
+                <p class="text-white text-sm mt-2 tracking-widest uppercase bg-black px-2 inline-block">SELECT A CARD TO DEPLOY</p>
+            </div>
+
+            <div id="game-board" class="absolute top-[40%] md:top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl h-auto md:h-[60vh] flex flex-col md:flex-row items-center justify-center gap-12 z-20 px-8">
+                
+                <div id="play-slot" class="w-[200px] h-[280px] md:w-[240px] md:h-[340px] border-4 border-dashed border-white/30 flex items-center justify-center relative flex-shrink-0">
+                    <span class="text-white/30 text-xs md:text-sm tracking-[0.2em] font-bold uppercase animate-pulse drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">PLAY HERE</span>
+                </div>
+                
+                <div id="card-details" class="flex-1 max-w-xl flex flex-col justify-center opacity-0 pointer-events-none -translate-x-10 transform-gpu relative">
+                    <div class="absolute -left-6 top-0 bottom-0 w-[2px] bg-white/30"></div>
+                    <span id="detail-tag" class="text-[10px] md:text-xs border-2 border-white bg-black px-3 py-1 mb-4 w-max font-bold uppercase tracking-widest"></span>
+                    <h3 id="detail-title" class="text-4xl md:text-6xl font-black mb-6 uppercase drop-shadow-[2px_2px_0px_#fff] text-black leading-none"></h3>
+                    <p id="detail-desc" class="text-sm md:text-base text-gray-300 leading-relaxed font-light font-sans"></p>
+                    <div class="mt-6 flex items-center gap-3">
+                        <button id="check-detail-btn" class="verify-chip cursor-pointer pointer-events-auto" disabled>
+                            <span class="verify-chip-light"></span>
+                            <span id="check-detail-label">CHECK</span>
+                        </button>
+                        <span class="text-[10px] md:text-xs text-gray-400 tracking-[0.15em] uppercase">Forensic Detail View</span>
+                    </div>
+                    
+                    <button id="return-btn" class="mt-8 border-2 border-white bg-black px-6 py-3 uppercase tracking-[0.2em] font-bold text-xs hover:bg-white hover:text-black hover:shadow-[0_0_20px_rgba(255,255,255,0.8)] transition-all duration-300 w-max cursor-pointer pointer-events-auto flex items-center gap-2">
+                        <span class="text-lg">↺</span> RETURN TO HAND
+                    </button>
+                </div>
+            </div>
+
+            <div id="detail-glass-overlay">
+                <div class="detail-glass-backdrop"></div>
+                <div class="detail-glass-noise"></div>
+                <div class="detail-scan-beam" id="detail-scan-beam"></div>
+                <div id="detail-pulse-field"></div>
+                <div id="detail-ghost-layer"></div>
+                <div id="detail-grid">
+                    <div class="detail-panel flex flex-col">
+                        <div class="detail-label">Narrative Log</div>
+                        <h3 id="dg-title" class="text-3xl md:text-5xl font-black uppercase leading-none mb-4 drop-shadow-[2px_2px_0px_#fff] text-black"></h3>
+                        <p id="dg-story" class="text-sm md:text-base leading-relaxed text-gray-200 font-sans mb-5"></p>
+                        <div class="detail-label">Key Highlights</div>
+                        <ul id="dg-highlights" class="text-sm leading-relaxed text-gray-200 space-y-2 font-sans flex-1"></ul>
+                    </div>
+                    <div class="flex flex-col gap-4">
+                        <div class="detail-panel">
+                            <div class="detail-label">Tech Stack</div>
+                            <div id="dg-stack" class="flex flex-wrap gap-2"></div>
+                        </div>
+                        
+                        <!-- Replaced previous Metrics and Timeline with stacked folders -->
+                        <div class="detail-panel flex-1 flex flex-col">
+                            <div class="detail-label">Accomplishments & Milestones</div>
+                            <div id="dg-accomplishments" class="relative flex-1 min-h-[280px] md:min-h-[350px] mt-4">
+                                <!-- Stacked accomplishment cards are rendered by JS -->
+                            </div>
+                        </div>
+
+                        <div class="flex justify-start">
+                            <button id="close-detail-btn" class="cursor-pointer">Close Detail Mode</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ECOSYSTEM SECTION -->
+        <footer id="ecosystem-section" class="h-screen flex flex-col relative z-20 border-t border-black/10 overflow-hidden">
+            
+            <div class="text-center mt-[10vh] z-20 relative pointer-events-none">
+                <h2 class="text-5xl md:text-7xl font-black tracking-tighter mb-4 text-black">ECOSYSTEM.</h2>
+                <p class="font-space text-sm text-gray-500 uppercase tracking-widest">My Friends & Technical Nodes</p>
+                <p class="font-space text-[10px] text-gray-400 mt-2 animate-pulse">MOVE MOUSE TO EXPLORE</p>
+            </div>
+
+            <div id="aw-container" class="absolute top-0 left-0 w-full h-full z-10 cursor-crosshair">
+                <div id="aw-wrapper" class="absolute top-1/2 left-1/2 w-0 h-0 pointer-events-auto">
+                </div>
+            </div>
+
+            <div class="absolute bottom-10 left-10 font-space text-[10px] font-bold uppercase tracking-widest text-gray-400 z-30 pointer-events-none">
+                © 2026 MR.MAI PORTFOLIO.<br>COMMISSION VER. 7804W
+            </div>
+            <div class="absolute bottom-10 right-10 font-space text-[10px] text-right font-bold uppercase tracking-widest cursor-pointer hover:text-black text-gray-400 transition-colors z-30" onclick="window.scrollTo({top:0, behavior:'smooth'})">
+                BACK TO TOP ↗
+            </div>
+        </footer>
+
+    </main>
+
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        const targetEye = {
+            x: 0, y: 0,              
+            scale: 0.85,             
+            r: 0, g: 0, b: 0,        
+            rotIntensity: 0.05       
+        };
+        let forceEyeBlink = () => {}; 
+
+        window.addEventListener("load", () => {
+            const tlLoader = gsap.timeline();
+            tlLoader.to(".loader-inner", { y: 0, duration: 0.8, ease: "power4.out" })
+                    .to(".loader-inner", { y: "-100%", duration: 0.6, ease: "power4.in", delay: 0.4 })
+                    .to("#loader", { yPercent: -100, duration: 0.8, ease: "power4.inOut" }, "-=0.2");
+        });
+
+        const lenis = new Lenis({ duration: 1.2, smooth: true });
+        function raf(time) { lenis.raf(time); requestAnimationFrame(raf); }
+        requestAnimationFrame(raf);
+        lenis.on('scroll', ScrollTrigger.update);
+        gsap.ticker.add((time)=>{ lenis.raf(time * 1000) });
+        gsap.ticker.lagSmoothing(0, 0);
+
+        const cursorDot = document.getElementById('cursor-dot');
+        const cursorRing = document.getElementById('cursor-ring');
+        let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
+        let ringX = mouseX, ringY = mouseY;
+
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX; mouseY = e.clientY;
+            cursorDot.style.left = mouseX + 'px'; cursorDot.style.top = mouseY + 'px';
+            
+            if(e.target.closest('a') || e.target.closest('button') || e.target.closest('.hover-underline') || e.target.closest('.hover-card') || e.target.closest('.aw-bubble') || e.target.closest('.pixel-card') || e.target.closest('.folder-card')) {
+                cursorRing.style.width = '50px'; cursorRing.style.height = '50px';
+                cursorRing.style.backgroundColor = 'rgba(255,255,255,0.1)';
+                if(e.target.closest('#aw-container')) cursorRing.style.backgroundColor = 'rgba(0,0,0,0.05)';
+            } else {
+                cursorRing.style.width = '40px'; cursorRing.style.height = '40px';
+                cursorRing.style.backgroundColor = 'transparent';
+            }
+        });
+
+        gsap.ticker.add(() => {
+            ringX += (mouseX - ringX) * 0.15; ringY += (mouseY - ringY) * 0.15;
+            cursorRing.style.left = ringX + 'px'; cursorRing.style.top = ringY + 'px';
+        });
+
+        // 3D Eye Logic 
+        const container = document.getElementById('webgl-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 150; 
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+        
+        const particleCount = 18000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = []; const randoms = []; const types = [];
+        const R = 45; const eyeHalfWidth = 40; const maxLidY = 20;
+        
+        function getLidY(x) { let normX = Math.max(-1.0, Math.min(1.0, x / eyeHalfWidth)); return Math.cos(normX * (Math.PI / 2)) * maxLidY; }
+        
+        for(let i=0; i<3000; i++) {
+            let x = (Math.random() - 0.5) * 2 * eyeHalfWidth; let y = getLidY(x) + (Math.random() - 0.5) * 1.5; let z = Math.sqrt(Math.max(0, R*R - x*x - y*y)) + 1;
+            positions.push(x, y, z); randoms.push(Math.random()); types.push(1.0); 
+            x = (Math.random() - 0.5) * 2 * eyeHalfWidth; y = -getLidY(x) + (Math.random() - 0.5) * 1.5; z = Math.sqrt(Math.max(0, R*R - x*x - y*y)) + 1;
+            positions.push(x, y, z); randoms.push(Math.random()); types.push(-1.0); 
+        }
+        let generated = 0;
+        while(generated < 12000) {
+            let r_disk = R * Math.sqrt(Math.random()); let theta = Math.random() * Math.PI * 2; let x = r_disk * Math.cos(theta); let y = r_disk * Math.sin(theta);
+            if (y > getLidY(x) || y < -getLidY(x)) continue; 
+            let z = Math.sqrt(Math.max(0, R*R - x*x - y*y)); let r_xy = Math.sqrt(x*x + y*y); let type = 0.0;
+            if (r_xy < 10) type = 3.0; else if (r_xy < 22) { type = 2.0; if(Math.random() > 0.5) continue; } else { type = 0.0; if(Math.random() > 0.08) continue; }
+            positions.push(x, y, z); randoms.push(Math.random()); types.push(type); generated++;
+        }
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
+        geometry.setAttribute('aType', new THREE.Float32BufferAttribute(types, 1));
+        
+        const material = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color('#000000') }, uBlinkScale: { value: 1.0 } },
+            vertexShader: `uniform float uTime; uniform float uBlinkScale; attribute float aRandom; attribute float aType; varying float vAlpha; varying float vDepth; void main() { vec3 pos = position; vAlpha = 1.0; float normX = clamp(pos.x / 40.0, -1.0, 1.0); float lidCurve = cos(normX * 1.570796) * 20.0; float currentMaxY = lidCurve * uBlinkScale; float currentMinY = -lidCurve * uBlinkScale; if (aType == 1.0) { pos.y = currentMaxY + (pos.y - lidCurve); } else if (aType == -1.0) { pos.y = currentMinY + (pos.y - (-lidCurve)); } else { if (pos.y > currentMaxY || pos.y < currentMinY) { vAlpha = 0.0; } if (aType == 2.0) { float angle = atan(pos.y, pos.x); float radius = length(pos.xy); angle += sin(uTime * 0.3 + radius * 0.1) * 0.15; pos.x = cos(angle) * radius; pos.y = sin(angle) * radius; } } pos.x += sin(uTime * aRandom * 2.0) * 0.2; pos.y += cos(uTime * aRandom * 2.0) * 0.2; vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0); vDepth = -mvPosition.z; gl_PointSize = (0.8 + aRandom * 1.5) * (150.0 / vDepth); if (vAlpha == 0.0) gl_PointSize = 0.0; gl_Position = projectionMatrix * mvPosition; }`,
+            fragmentShader: `uniform vec3 uColor; varying float vAlpha; varying float vDepth; void main() { if (vAlpha <= 0.0) discard; float dist = distance(gl_PointCoord, vec2(0.5)); if (dist > 0.5) discard; float alpha = smoothstep(0.5, 0.2, dist) * vAlpha; float depthFactor = smoothstep(200.0, 80.0, vDepth); alpha *= mix(0.3, 1.0, depthFactor); gl_FragColor = vec4(uColor, alpha * 0.65); }`,
+            transparent: true, depthWrite: false, blending: THREE.NormalBlending
+        });
+        
+        const eyeMesh = new THREE.Points(geometry, material);
+        eyeMesh.scale.set(0.85, 0.85, 0.85); scene.add(eyeMesh);
+        
+        let targetRotX = 0, targetRotY = 0;
+        const pointerNDC = new THREE.Vector2(0, 0);
+        document.addEventListener('mousemove', (e) => {
+            pointerNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+            pointerNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        let isBlinking = false;
+        function autoBlink() {
+            if(isBlinking) return;
+            isBlinking = true;
+            gsap.to(material.uniforms.uBlinkScale, { 
+                value: 0.0, duration: 0.1, ease: "power2.in", yoyo: true, repeat: 1, 
+                onComplete: () => { 
+                    isBlinking = false;
+                    gsap.delayedCall(2 + Math.random() * 5, autoBlink); 
+                } 
+            }); 
+        }
+        gsap.delayedCall(1.5, autoBlink);
+
+        forceEyeBlink = () => {
+            if(!isBlinking) {
+                gsap.killTweensOf(autoBlink);
+                autoBlink();
+            }
+        };
+
+        const clock = new THREE.Clock();
+        const rayPoint = new THREE.Vector3();
+        const rayDir = new THREE.Vector3();
+        const targetPoint = new THREE.Vector3();
+        const eyeWorldPos = new THREE.Vector3();
+        const cameraForward = new THREE.Vector3();
+        const pointerPlane = new THREE.Plane();
+        const pointerRay = new THREE.Ray();
+        const lookAhead = 70;
+        function animate() { 
+            requestAnimationFrame(animate); 
+            material.uniforms.uTime.value = clock.getElapsedTime(); 
+            
+            eyeMesh.position.x += (targetEye.x - eyeMesh.position.x) * 0.05;
+            eyeMesh.position.y += (targetEye.y - eyeMesh.position.y) * 0.05;
+            
+            let cs = eyeMesh.scale.x + (targetEye.scale - eyeMesh.scale.x) * 0.08;
+            eyeMesh.scale.set(cs, cs, cs);
+            
+            let tc = new THREE.Color(targetEye.r/255, targetEye.g/255, targetEye.b/255);
+            material.uniforms.uColor.value.lerp(tc, 0.08);
+
+            rayPoint.set(pointerNDC.x, pointerNDC.y, 0.5).unproject(camera);
+            rayDir.copy(rayPoint).sub(camera.position).normalize();
+            eyeMesh.getWorldPosition(eyeWorldPos);
+            camera.getWorldDirection(cameraForward);
+            pointerPlane.setFromNormalAndCoplanarPoint(
+                cameraForward,
+                targetPoint.copy(eyeWorldPos).addScaledVector(cameraForward, -lookAhead)
+            );
+            pointerRay.set(camera.position, rayDir);
+            if (pointerRay.intersectPlane(pointerPlane, targetPoint)) {
+                const dx = targetPoint.x - eyeWorldPos.x;
+                const dy = targetPoint.y - eyeWorldPos.y;
+                targetRotY = THREE.MathUtils.clamp(Math.atan2(dx, lookAhead), -0.35, 0.35);
+                targetRotX = THREE.MathUtils.clamp(-Math.atan2(dy, lookAhead), -0.35, 0.35);
+            }
+
+            eyeMesh.rotation.y += (targetRotY - eyeMesh.rotation.y) * targetEye.rotIntensity; 
+            eyeMesh.rotation.x += (targetRotX - eyeMesh.rotation.x) * targetEye.rotIntensity; 
+
+            renderer.render(scene, camera); 
+        }
+        animate();
+        
+        window.addEventListener('resize', () => { 
+            camera.aspect = window.innerWidth / window.innerHeight; 
+            camera.updateProjectionMatrix(); 
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+        });
+
+        // EYE SCROLL TRIGGERS
+        ScrollTrigger.create({
+            trigger: ".hero-section",
+            start: "top center",
+            onEnter: () => gsap.to(targetEye, { x: 0, y: 0, scale: 0.85, r: 0, g: 0, b: 0, rotIntensity: 0.05, duration: 1 }),
+            onEnterBack: () => gsap.to(targetEye, { x: 0, y: 0, scale: 0.85, r: 0, g: 0, b: 0, rotIntensity: 0.05, duration: 1 })
+        });
+
+        const timelineEyeConfig = {
+            baseX: 72, baseY: 40, radiusX: 24, radiusY: 14, turns: 2.6,
+            jitterX: 3.2, jitterY: 2.4, jitterFreq: 12, curiosityWindow: 0.05, curiosityPush: 9,
+            baseRot: 0.022, curiosityRot: 0.07
+        };
+        let isTimelineEyeActive = false;
+        let timelineNodeProgresses = []; let timelineMotionTime = 0;
+        let timelineLastProgress = 0; let timelineLastBlinkNode = -1;
+
+        function setTimelineEyeActive(active) {
+            if (active === isTimelineEyeActive) return;
+            isTimelineEyeActive = active;
+            gsap.killTweensOf(targetEye, "x,y,rotIntensity");
+            if (active) {
+                timelineMotionTime = 0; timelineLastBlinkNode = -1;
+                targetEye.x = timelineEyeConfig.baseX; targetEye.y = timelineEyeConfig.baseY;
+                gsap.to(targetEye, { scale: 0.45, rotIntensity: timelineEyeConfig.baseRot, duration: 0.9, ease: "power2.out" });
+                return;
+            }
+            timelineLastBlinkNode = -1;
+        }
+
+        function getNearestTimelineNode(progress) {
+            if (!timelineNodeProgresses.length) return { index: -1, distance: 1 };
+            let nearestIndex = -1; let nearestDistance = Infinity;
+            for (let i = 0; i < timelineNodeProgresses.length; i += 1) {
+                const distance = Math.abs(progress - timelineNodeProgresses[i]);
+                if (distance < nearestDistance) { nearestDistance = distance; nearestIndex = i; }
+            }
+            return { index: nearestIndex, distance: nearestDistance };
+        }
+
+        function updateTimelineEyeMotion(progress) {
+            if (!isTimelineEyeActive) return;
+            const delta = Math.abs(progress - timelineLastProgress);
+            timelineLastProgress = progress; timelineMotionTime += delta * 12 + 0.004;
+
+            const orbitPhase = progress * timelineEyeConfig.turns * Math.PI * 2;
+            const orbitX = timelineEyeConfig.baseX + Math.cos(orbitPhase) * timelineEyeConfig.radiusX;
+            const orbitY = timelineEyeConfig.baseY + Math.sin(orbitPhase + Math.PI / 3) * timelineEyeConfig.radiusY;
+
+            const jitterX = Math.sin((timelineMotionTime + progress) * timelineEyeConfig.jitterFreq) * timelineEyeConfig.jitterX;
+            const jitterY = Math.cos((timelineMotionTime * 0.9 + progress) * (timelineEyeConfig.jitterFreq * 0.85)) * timelineEyeConfig.jitterY;
+
+            const nearestNode = getNearestTimelineNode(progress);
+            const curiosityStrength = Math.max(0, 1 - nearestNode.distance / timelineEyeConfig.curiosityWindow);
+            const curiosityPhase = progress * 30 + timelineMotionTime * 4;
+            const curiosityX = Math.cos(curiosityPhase) * timelineEyeConfig.curiosityPush * curiosityStrength;
+            const curiosityY = Math.sin(curiosityPhase * 1.1) * timelineEyeConfig.curiosityPush * 0.45 * curiosityStrength;
+
+            targetEye.x = orbitX + jitterX + curiosityX;
+            targetEye.y = orbitY + jitterY + curiosityY;
+
+            const targetRotIntensity = timelineEyeConfig.baseRot + (timelineEyeConfig.curiosityRot - timelineEyeConfig.baseRot) * curiosityStrength;
+            targetEye.rotIntensity += (targetRotIntensity - targetEye.rotIntensity) * 0.12;
+
+            if (curiosityStrength > 0.92 && nearestNode.index !== -1 && nearestNode.index !== timelineLastBlinkNode) {
+                timelineLastBlinkNode = nearestNode.index;
+                if (Math.random() < 0.65) forceEyeBlink();
+            } else if (curiosityStrength < 0.2 && nearestNode.index === timelineLastBlinkNode) {
+                timelineLastBlinkNode = -1;
+            }
+        }
+
+        ScrollTrigger.create({
+            trigger: "#timeline-container",
+            start: "top center",
+            onEnter: () => setTimelineEyeActive(true),
+            onEnterBack: () => setTimelineEyeActive(true),
+            onLeave: () => setTimelineEyeActive(false),
+            onLeaveBack: () => {
+                setTimelineEyeActive(false);
+                gsap.to(targetEye, { x: 0, y: 0, scale: 0.85, rotIntensity: 0.05, duration: 1.5, ease: "power2.out" });
+            }
+        });
+
+        const tlContainer = document.getElementById('timeline-container');
+        const hWrap = document.getElementById('horizontal-wrap');
+        const bgAgeDisplay = document.getElementById('bg-age-display');
+        let scrollWidth = hWrap.scrollWidth - window.innerWidth;
+        const BIRTH_DATE = new Date('2009-08-02T00:00:00');
+        const TIMELINE_START = new Date('2018-01-01T00:00:00');
+        const TIMELINE_END = new Date('2026-03-20T00:00:00');
+        const TIMELINE_START_TIME = TIMELINE_START.getTime();
+        const TIMELINE_END_TIME = TIMELINE_END.getTime();
+        const timelineNodes = Array.from(hWrap.querySelectorAll('.timeline-node'));
+        let timelineAnchors = [];
+
+        function ageAtDate(birthDate, atDate) {
+            if (atDate <= birthDate) return 0;
+            const birthMonth = birthDate.getMonth(); const birthDay = birthDate.getDate();
+            let fullYears = atDate.getFullYear() - birthDate.getFullYear();
+            const birthdayThisYear = new Date(atDate.getFullYear(), birthMonth, birthDay);
+            if (atDate < birthdayThisYear) fullYears -= 1;
+            if (fullYears < 0) return 0;
+            const lastBirthday = new Date(birthDate.getFullYear() + fullYears, birthMonth, birthDay);
+            const nextBirthday = new Date(birthDate.getFullYear() + fullYears + 1, birthMonth, birthDay);
+            const yearSpan = nextBirthday.getTime() - lastBirthday.getTime();
+            const elapsed = atDate.getTime() - lastBirthday.getTime();
+            const fractional = yearSpan > 0 ? Math.min(Math.max(elapsed / yearSpan, 0), 1) : 0;
+            return fullYears + fractional;
+        }
+        function renderTimelineAge(timestamp) {
+            if (!bgAgeDisplay) return;
+            const age = ageAtDate(BIRTH_DATE, new Date(timestamp));
+            const ageStr = age.toFixed(3).padStart(6, '0');
+            bgAgeDisplay.innerHTML = ageStr + '<span class="text-[12vw] md:text-[8vw] ml-2 md:ml-4">YRS</span>';
+        }
+        function parseTimelineDateToTime(value) {
+            if (!value) return null;
+            const date = new Date(value + 'T00:00:00');
+            return Number.isNaN(date.getTime()) ? null : date.getTime();
+        }
+        function resolveNodeTimestamp(node) {
+            const exact = parseTimelineDateToTime(node.dataset.timelineDate);
+            if (exact !== null) return exact;
+            const start = parseTimelineDateToTime(node.dataset.timelineStart);
+            const end = parseTimelineDateToTime(node.dataset.timelineEnd);
+            if (start !== null && end !== null) return start + (end - start) / 2;
+            if (start !== null) return start;
+            if (end !== null) return end;
+            return null;
+        }
+        function buildTimelineAnchors() {
+            scrollWidth = hWrap.scrollWidth - window.innerWidth;
+            const safeScrollWidth = Math.max(scrollWidth, 1);
+            const viewportCenter = window.innerWidth / 2;
+            const nodeAnchors = timelineNodes.map((node) => {
+                const timestamp = resolveNodeTimestamp(node);
+                if (timestamp === null) return null;
+                const nodeCenter = node.offsetLeft + node.offsetWidth / 2;
+                const rawProgress = (nodeCenter - viewportCenter) / safeScrollWidth;
+                const progress = Math.min(Math.max(rawProgress, 0), 1);
+                return { progress, timestamp };
+            }).filter(Boolean);
+            nodeAnchors.sort((a, b) => a.progress - b.progress);
+            timelineNodeProgresses = nodeAnchors.map((anchor) => anchor.progress);
+            timelineAnchors = [{ progress: 0, timestamp: TIMELINE_START_TIME }, ...nodeAnchors, { progress: 1, timestamp: TIMELINE_END_TIME }];
+        }
+        function getTimelineTimestampByProgress(progress) {
+            const normalized = Math.min(Math.max(progress, 0), 1);
+            if (!timelineAnchors.length) return TIMELINE_START_TIME + (TIMELINE_END_TIME - TIMELINE_START_TIME) * normalized;
+            for (let i = 1; i < timelineAnchors.length; i += 1) {
+                const left = timelineAnchors[i - 1]; const right = timelineAnchors[i];
+                if (normalized <= right.progress) {
+                    const segment = right.progress - left.progress;
+                    if (segment <= 0) return right.timestamp;
+                    const localProgress = (normalized - left.progress) / segment;
+                    return left.timestamp + (right.timestamp - left.timestamp) * localProgress;
+                }
+            }
+            return timelineAnchors[timelineAnchors.length - 1].timestamp;
+        }
+        
+        const AGE_OPACITY_LIGHT_BG = 0.04; const AGE_OPACITY_DARK_BG = 0.14;
+        if (bgAgeDisplay) bgAgeDisplay.style.opacity = AGE_OPACITY_LIGHT_BG;
+        buildTimelineAnchors(); renderTimelineAge(TIMELINE_START_TIME);
+        
+        let tlTimeline = gsap.timeline({
+            scrollTrigger: {
+                trigger: tlContainer, pin: true, scrub: 1, end: () => "+=" + scrollWidth,
+                onUpdate: (self) => {
+                    const progress = Math.min(Math.max(self.progress, 0), 1);
+                    const currentTime = getTimelineTimestampByProgress(progress);
+                    renderTimelineAge(currentTime);
+                    updateTimelineEyeMotion(progress);
+                }
+            }
+        });
+        tlTimeline.to(hWrap, { x: -scrollWidth, ease: "none", duration: 1 }, 0);
+        
+        tlTimeline.to("#global-bg", { backgroundColor: "#050505", ease: "power1.inOut", duration: 0.15 }, 0.4);
+        tlTimeline.to(tlContainer, { color: "#ffffff", ease: "power1.inOut", duration: 0.15 }, 0.4);
+        tlTimeline.to(bgAgeDisplay, { opacity: AGE_OPACITY_DARK_BG, ease: "power1.inOut", duration: 0.15 }, 0.4);
+        tlTimeline.to(targetEye, { r: 255, g: 255, b: 255, ease: "power1.inOut", duration: 0.15 }, 0.4);
+        tlTimeline.to(bgAgeDisplay, { opacity: 0, ease: "power1.inOut", duration: 0.1 }, 0.9);
+        window.addEventListener('resize', () => { buildTimelineAnchors(); ScrollTrigger.refresh(); });
+
+        ScrollTrigger.create({
+            trigger: "#projects-section",
+            start: "top center",
+            onEnter: () => {
+                gsap.to("#global-bg", { backgroundColor: "#030303", duration: 1 });
+                gsap.to(targetEye, { x: 0, y: 40, scale: 0.7, r: 255, g: 50, b: 50, rotIntensity: 0.08, duration: 1.5, ease: "power3.out" });
+            },
+            onLeaveBack: () => {
+                gsap.to("#global-bg", { backgroundColor: "#050505", duration: 1 });
+                gsap.to(targetEye, { x: 80, y: 45, scale: 0.45, r: 255, g: 255, b: 255, rotIntensity: 0.02, duration: 1.5, ease: "power3.out" });
+            }
+        });
+
+        ScrollTrigger.create({
+            trigger: "#ecosystem-section",
+            start: "top 60%", 
+            onEnter: () => {
+                gsap.to("#global-bg", { backgroundColor: "#ffffff", duration: 1 });
+                gsap.to(targetEye, { x: 0, y: 10, scale: 2.8, r: 242, g: 242, b: 242, rotIntensity: 0.01, duration: 2, ease: "power2.out" });
+            },
+            onLeaveBack: () => {
+                gsap.to("#global-bg", { backgroundColor: "#030303", duration: 1 });
+                gsap.to(targetEye, { x: 0, y: 40, scale: 0.7, r: 255, g: 50, b: 50, rotIntensity: 0.08, duration: 1.5, ease: "power2.out" });
+            }
+        });
+
+        // CARD GAME DATA & LOGIC WITH NEW ACCOMPLISHMENTS ARRAY
+        const projectsData = [
+            {
+                tag: "AIoT / AI Agent / Automation / Smart Hardware / Productivity",
+                title: "Lumina AI Notebook",
+                desc: "A wish-to-execution AI notebook that unifies software and hardware agents, turning raw ideas into deployable projects across brands and ecosystems.",
+                status: "BUILDING",
+                details: {
+                    story: "Lumina AI Notebook is positioned as a wish-to-execution system built on a proprietary OpenClaw-like AI agent architecture. It fuses AIoT hardware orchestration with software intelligence to convert daily tasks and fragmented ideas into executable projects, then autonomously track, pipeline, and execute them end to end. On the software side, agents can directly operate connected devices. On the hardware side, microcontrollers and Arduino modules provide resilient actuation. The core moat is cross-brand API orchestration that breaks vendor silos and delivers a unified automation entry point for full-home intelligence.",
+                    stack: ["Python", "C++", "WebSocket", "Expo", "LLM Fine-Tuning", "Arduino"],
+                    highlights: [
+                        "Built a proprietary OpenClaw-style architecture for full-stack AI agent orchestration",
+                        "Transforms inspirations and notes into projects with end-to-end autonomous execution",
+                        "Enables cross-brand smart-home API orchestration beyond vendor lock-in"
+                    ],
+                    accomplishments: [
+                        { year: "2026.02", title: "DIIS Hardware Hackathon Award", desc: "Competed at Shanghai DIIS Hardware Hackathon (Feb 27-Mar 1), won the Most Incubation Potential Award, and secured a CNY 10,000 prize." },
+                        { year: "2026.03", title: "Live Smart-Control Demo", desc: "Executed a one-touch notebook-controlled lighting demo during the roadshow and gained strong investor attention." },
+                        { year: "2026.03", title: "World-First Full-Scenario AIoT Scheduler", desc: "Developed a 4B AIoT Agent model capable of unified scheduling across daily life, SMB operations, and integrated industrial pipelines." }
+                    ]
+                }
+            },
+            {
+                tag: "AI Fact-Checking / Browser Extension / Information Safety / Search AI",
+                title: "ISITTRUE",
+                desc: "A screenshot-native fact-checking extension that traces claims across the web and returns a confidence probability score in one action.",
+                status: "PLANNING",
+                details: {
+                    story: "ISITTRUE originated in December 2025 as a daily-use fact-checking product concept. Users capture any web content with a screenshot-like selection, and the system automatically retrieves and cross-validates information at web scale. It surfaces 10 authoritative sources with independent credibility scoring and outputs a final truth probability score. The product replaces manual verification workflows with near-zero friction. The MVP targets Chrome and Edge first, then expands to mobile for ubiquitous fact verification.",
+                    stack: ["Browser Extension", "Web Search API", "AI Scoring", "Frontend", "Source Credibility Evaluation"],
+                    highlights: [
+                        "Screenshot-first interaction that dramatically lowers fact-checking friction",
+                        "Automated multi-source aggregation with independent credibility scoring",
+                        "Clear truth-probability output for faster information judgment"
+                    ],
+                    accomplishments: [
+                        { year: "2025.12", title: "Product Blueprint Finalized", desc: "Completed full-scope design from interaction flow and source logic to the credibility scoring framework." },
+                        { year: "2025.12", title: "Architecture Feasibility Validated", desc: "Validated browser extension runtime, screenshot recognition path, and web search interface feasibility." },
+                        { year: "2026.01", title: "MVP Scope Locked", desc: "Defined minimum browser feature scope and produced a development-ready requirement spec." }
+                    ]
+                }
+            },
+            {
+                tag: "Productivity / Knowledge",
+                title: "Are You Sure AI Mind Map",
+                desc: "An AI decision intelligence system that breaks ambiguous ideas into structured nodes, risk branches, and executable tasks.",
+                status: "PLANNING",
+                details: {
+                    story: "Are You Sure AI Mind Map productizes the thinking process itself. It takes a question-centric input, auto-generates decision nodes, branching hypotheses, and action recommendations, then continuously iterates during collaboration. The result is a system that pushes projects beyond conceptual discussion into operational execution.",
+                    stack: ["TypeScript", "Graph Engine", "Prompt Orchestration", "Task Runtime"],
+                    highlights: [
+                        "Expands nodes into executable tasks automatically",
+                        "Supports risk tagging and branch priority reordering",
+                        "Translates abstract discussion into concrete execution paths"
+                    ],
+                    accomplishments: [
+                        { year: "2026.03", title: "Qualified for CCTV Selection", desc: "Recognized as a next-generation developer representative at a national AI talent summit and qualified for CCTV selection." },
+                        { year: "2026.02", title: "Core Output at Beijing Tangquan Hackathon", desc: "Converted AI node divergence into deployable dynamic strategy trees and feedback loops, earning 3rd place overall." },
+                        { year: "2025.10", title: "Commercial Validation", desc: "Leveraged strong engineering and rapid frontend delivery to generate 100+ inquiries in a single evening and validate revenue conversion." }
+                    ]
+                }
+            },
+            {
+                tag: "HealthTech / AIoT / Smart Medication / Elderly Care / Home Health",
+                title: "CareBox Smart Medication Hub",
+                desc: "An integrated AI + hardware medication hub for seniors and chronic-care users, designed as the command center of home health management.",
+                status: "BUILDING",
+                details: {
+                    story: "CareBox targets critical medication safety failures: missed doses, incorrect doses, fragmented records, and lack of remote family oversight. It combines intelligent hardware with an AI health platform powered by AIoT orchestration, medication OCR recognition, senior-friendly voice/light alerts, and large-model health analytics. The system automates medication intake setup, reminder scheduling, and adherence logging while enabling remote monitoring for families and healthcare staff, with real-time anomaly alerts and full process traceability. The product is designed for both domestic eldercare demand and premium North American home/institutional markets.",
+                    stack: ["AIoT", "Embedded Systems", "OCR Image Recognition", "Large-Model Applications", "Cloud Computing", "Mobile Development"],
+                    highlights: [
+                        "Senior-first interaction design with large text, voice guidance, and multimodal alerts",
+                        "Medication OCR automation that reduces missed, incorrect, and duplicate dose risks",
+                        "Unified hardware-mobile-cloud data loop enabling real-time remote monitoring",
+                        "Built for dual-market deployment with region-aware care and compliance requirements"
+                    ],
+                    accomplishments: [
+                        { year: "2026.03", title: "AI Hackathon Tour Global University League Finalist", desc: "Selected as an official finalist project and advanced through the competition evaluation pipeline." },
+                        { year: "2026.03", title: "Nanjing Regional Champion", desc: "Won first place in the Nanjing regional round and advanced to the global finals." },
+                        { year: "2026.03", title: "Crowd Favorite Award", desc: "Ranked #1 in audience voting at the global finals and received the Crowd Favorite Award." }
+                    ]
+                }
+            },
+            {
+                tag: "Storage / Personal AI",
+                title: "AI NAS",
+                desc: "An intelligent private storage command center for individuals and small teams, combining local knowledge, AI retrieval, and workflow automation.",
+                status: "ITERATING",
+                details: {
+                    story: "AI NAS upgrades traditional network storage into a system that understands context, supports collaboration, and automates execution. Built on local-first deployment, it unifies file indexing, semantic retrieval, knowledge Q&A, and automation workflows in one entry point. The design maximizes information throughput without compromising data sovereignty or control.",
+                    stack: ["Linux", "Docker", "Vector DB", "RAG Pipeline", "Local LLM"],
+                    highlights: [
+                        "Built local knowledge indexing and semantic retrieval across directories with natural language queries",
+                        "Delivers document Q&A and summary generation to accelerate learning and project retrospectives",
+                        "Supports automated tagging, archiving, and backup orchestration to cut maintenance cost"
+                    ],
+                    accomplishments: [
+                        { year: "2025.09", title: "Personal Deployment Launched", desc: "Completed first local deployment and enabled full-path indexing plus semantic retrieval for cross-directory knowledge queries." },
+                        { year: "2025.11", title: "RAG Q&A Integrated", desc: "Integrated local LLM runtime with a RAG pipeline for private-document Q&A and summarization." },
+                        { year: "2026.01", title: "Automated Archiving Online", desc: "Launched auto-tagging classification and backup orchestration modules with major gains in file-management efficiency." }
+                    ]
+                }
+            }
+        ];
+
+        const projSection = document.getElementById('projects-section');
+        const playSlot = document.getElementById('play-slot');
+        const cardDetails = document.getElementById('card-details');
+        const checkDetailBtn = document.getElementById('check-detail-btn');
+        const detailOverlay = document.getElementById('detail-glass-overlay');
+        const detailGrid = document.getElementById('detail-grid');
+        const closeDetailBtn = document.getElementById('close-detail-btn');
+        const detailGhostLayer = document.getElementById('detail-ghost-layer');
+        const detailScanBeam = document.getElementById('detail-scan-beam');
+        const detailPulseField = document.getElementById('detail-pulse-field');
+        const checkDetailLabel = document.getElementById('check-detail-label');
+        const detailPanels = Array.from(detailGrid.querySelectorAll('.detail-panel'));
+        
+        let activeCardIndex = -1;
+        let cardElements = [];
+        let isDetailMode = false;
+        let detailTimeline = null;
+        let ghostCardEl = null;
+        let detailHandEl = null;
+        let detailTrailTick = 0;
+        let pulseNodes = [];
+
+        function escapeHtml(text) {
+            return String(text || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function setCheckButtonState(enabled) {
+            if (!checkDetailBtn) return;
+            checkDetailBtn.disabled = !enabled;
+            checkDetailBtn.style.pointerEvents = enabled ? "auto" : "none";
+            if (checkDetailLabel) checkDetailLabel.textContent = enabled ? "CHECK" : "LOCK";
+        }
+
+        function spawnPulseField() {
+            if (!detailPulseField) return;
+            pulseNodes.forEach((node) => node.remove());
+            pulseNodes = [];
+            for (let i = 0; i < 16; i += 1) {
+                const node = document.createElement('div');
+                node.className = 'detail-pulse-node';
+                const px = 34 + Math.random() * 62;
+                const py = 8 + Math.random() * 82;
+                node.style.left = `${px}%`;
+                node.style.top = `${py}%`;
+                detailPulseField.appendChild(node);
+                pulseNodes.push(node);
+                gsap.fromTo(node,
+                    { autoAlpha: 0.15, scale: 0.65 },
+                    { autoAlpha: 0.9, scale: 1.22, duration: 0.8 + Math.random() * 0.8, yoyo: true, repeat: -1, ease: "sine.inOut", delay: Math.random() * 0.5 }
+                );
+            }
+        }
+
+        function clearPulseField() {
+            pulseNodes.forEach((node) => { gsap.killTweensOf(node); node.remove(); });
+            pulseNodes = [];
+        }
+
+        function renderDetailContent(project) {
+            const details = project.details || {};
+            const title = document.getElementById('dg-title');
+            const story = document.getElementById('dg-story');
+            const stack = document.getElementById('dg-stack');
+            const highlights = document.getElementById('dg-highlights');
+
+            title.textContent = project.title;
+            story.textContent = details.story || project.desc || "";
+
+            const stackItems = Array.isArray(details.stack) && details.stack.length ? details.stack : ["Details Pending"];
+            stack.innerHTML = stackItems.map((item) => `<span class="text-[10px] border border-white/40 bg-black px-2 py-1 uppercase tracking-[0.14em]">${escapeHtml(item)}</span>`).join("");
+
+            const highlightItems = Array.isArray(details.highlights) && details.highlights.length ? details.highlights : [project.desc || "No highlights yet."];
+            highlights.innerHTML = highlightItems.map((item) => `<li class="pl-3 relative before:content-['▸'] before:absolute before:left-0 before:text-white">${escapeHtml(item)}</li>`).join("");
+
+            // Render accomplishment stacked folders
+            const accomplishmentsContainer = document.getElementById('dg-accomplishments');
+            const accomps = details.accomplishments || [{ year: "2026", title: "DATA MISSING", desc: "No records found." }];
+
+            accomplishmentsContainer.innerHTML = '';
+            let currentIndex = 0;
+
+            function updateFolders() {
+                const folders = Array.from(accomplishmentsContainer.children);
+                folders.forEach((folder, i) => {
+                    let diff = (i - currentIndex + accomps.length) % accomps.length;
+                    const hint = folder.querySelector('.drag-hint');
+                    
+                    if (diff === 0) {
+                        gsap.to(folder, { x: 0, y: 0, scale: 1, rotation: 0, zIndex: 30, opacity: 1, duration: 0.4, ease: "back.out(1.2)" });
+                        folder.style.filter = 'brightness(1)';
+                        folder.style.pointerEvents = 'auto';
+                        if (hint) hint.style.opacity = '1';
+                    } else if (diff === 1 || (accomps.length === 2 && diff === 1)) {
+                        gsap.to(folder, { x: 12, y: 16, scale: 0.95, rotation: 0, zIndex: 20, opacity: 0.85, duration: 0.4, ease: "back.out(1.2)" });
+                        folder.style.filter = 'brightness(0.75)';
+                        folder.style.pointerEvents = 'none';
+                        if (hint) hint.style.opacity = '0';
+                    } else if (diff === 2) {
+                        gsap.to(folder, { x: 24, y: 32, scale: 0.9, rotation: 0, zIndex: 10, opacity: 0.6, duration: 0.4, ease: "back.out(1.2)" });
+                        folder.style.filter = 'brightness(0.5)';
+                        folder.style.pointerEvents = 'none';
+                        if (hint) hint.style.opacity = '0';
+                    } else {
+                        gsap.to(folder, { x: 36, y: 48, scale: 0.85, rotation: 0, zIndex: 0, opacity: 0, duration: 0.4, ease: "power2.out" });
+                        folder.style.filter = 'brightness(0)';
+                        folder.style.pointerEvents = 'none';
+                        if (hint) hint.style.opacity = '0';
+                    }
+                });
+            }
+
+            accomps.forEach((acc, i) => {
+                const folder = document.createElement('div');
+                folder.className = 'folder-card text-white';
+                folder.innerHTML = `
+                    <div class="folder-top-bar">
+                        <div class="folder-tab text-[10px] md:text-xs pl-3 pt-[2px] text-black font-bold font-space uppercase transition-colors" style="background: #ffcc00; border-color: #ffcc00; box-shadow: 0 0 10px rgba(255,204,0,0.4);">FILE_${i+1}/${accomps.length}</div>
+                        <div class="folder-top-line" style="border-color: #ffcc00; opacity: 0.6;"></div>
+                    </div>
+                    <div class="flex justify-between items-center mb-3 mt-1">
+                        <div class="text-xs md:text-sm text-[#ffcc00] font-space uppercase tracking-widest bg-black/60 px-2 py-1 border border-[#ffcc00]/40 backdrop-blur-sm shadow-[0_0_12px_rgba(255,204,0,0.15)]">
+                            [ ${escapeHtml(acc.year)} ]
+                        </div>
+                        <div class="flex gap-1.5 opacity-80">
+                            <div class="w-1.5 h-1.5 bg-white/30"></div>
+                            <div class="w-1.5 h-1.5 bg-white/30"></div>
+                            <div class="w-1.5 h-1.5 bg-[#ffcc00] animate-pulse"></div>
+                        </div>
+                    </div>
+                    <div class="text-lg md:text-2xl font-black mb-4 leading-tight text-white tracking-wide border-l-[3px] border-[#ffcc00] pl-3 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                        ${escapeHtml(acc.title)}
+                    </div>
+                    <div class="folder-desc text-sm md:text-base text-gray-200 flex-1 overflow-y-auto leading-relaxed pr-3 font-sans bg-gradient-to-b from-black/40 to-transparent p-4 rounded-sm border border-white/10 relative pb-12">
+                        <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiLz48L3N2Zz4=')] pointer-events-none opacity-60"></div>
+                        <span class="relative z-10 block">${escapeHtml(acc.desc)}</span>
+                    </div>
+                    <div class="drag-hint absolute bottom-4 right-4 flex items-center gap-2 text-black font-space text-[10px] md:text-xs font-bold uppercase tracking-widest bg-[#ffcc00] px-3 py-1.5 shadow-[3px_3px_0_rgba(255,255,255,1)] transition-opacity duration-300">
+                        <span class="animate-swipe text-sm md:text-base">🤚</span>
+                        <span>DRAG TO FLIP</span>
+                    </div>
+                `;
+                
+                let isDragging = false;
+                let startX = 0, startY = 0;
+                let currentX = 0, currentY = 0;
+
+                folder.addEventListener('pointerdown', (e) => {
+                    let diff = (i - currentIndex + accomps.length) % accomps.length;
+                    if(diff !== 0) return; // Only the top folder is draggable
+                    
+                    // Smart handling: prioritize scroll when user touches long text area
+                    const descEl = e.target.closest('.folder-desc');
+                    if (descEl && descEl.scrollHeight > descEl.clientHeight) {
+                        return; 
+                    }
+                    
+                    isDragging = true;
+                    startX = e.clientX - currentX;
+                    startY = e.clientY - currentY;
+                    folder.setPointerCapture(e.pointerId);
+                    gsap.killTweensOf(folder); // Stop existing tweens and follow pointer
+                });
+
+                folder.addEventListener('pointermove', (e) => {
+                    if(!isDragging) return;
+                    currentX = e.clientX - startX;
+                    currentY = e.clientY - startY;
+                    
+                    // Add subtle physical rotation while dragging
+                    let rot = currentX * 0.05;
+                    gsap.set(folder, { x: currentX, y: currentY, rotation: rot });
+                });
+
+                const endDrag = (e) => {
+                    if(!isDragging) return;
+                    isDragging = false;
+                    folder.releasePointerCapture(e.pointerId);
+                    
+                    let isClick = Math.abs(currentX) < 5 && Math.abs(currentY) < 5;
+                    
+                    // Trigger throw-and-flip on threshold drag or click
+                    if(Math.abs(currentX) > 80 || Math.abs(currentY) > 80 || isClick) {
+                        let dirX = currentX > 0 ? 1 : (currentX < 0 ? -1 : 1);
+                        let dirY = currentY > 0 ? 1 : (currentY < 0 ? -1 : -1);
+                        if (isClick) { dirX = 1; dirY = -1; currentX = 50; currentY = -50; } 
+                        
+                        gsap.to(folder, {
+                            x: currentX + dirX * 150,
+                            y: currentY + dirY * 150,
+                            opacity: 0,
+                            rotation: dirX * 15,
+                            duration: 0.3,
+                            onComplete: () => {
+                                currentX = 0; currentY = 0;
+                                // Move card instantly to bottom of stack before reveal
+                                gsap.set(folder, { x: 36, y: 48, scale: 0.85, opacity: 0, rotation: 0 });
+                                currentIndex = (currentIndex + 1) % accomps.length;
+                                updateFolders();
+                            }
+                        });
+                    } else {
+                        // Snap back elastically if threshold is not reached
+                        currentX = 0; currentY = 0;
+                        gsap.to(folder, { x: 0, y: 0, rotation: 0, duration: 0.4, ease: "back.out(1.5)" });
+                    }
+                };
+
+                folder.addEventListener('pointerup', endDrag);
+                folder.addEventListener('pointercancel', endDrag);
+
+                accomplishmentsContainer.appendChild(folder);
+            });
+
+            updateFolders();
+        }
+
+        function createGhostCard(sourceCard) {
+            if (!sourceCard) return null;
+            const rect = sourceCard.getBoundingClientRect();
+            const ghost = sourceCard.cloneNode(true);
+            ghost.classList.add('detail-ghost-card');
+            ghost.style.left = `${rect.left}px`; ghost.style.top = `${rect.top}px`;
+            ghost.style.width = `${rect.width}px`; ghost.style.height = `${rect.height}px`;
+            ghost.style.transform = 'none';
+            detailGhostLayer.appendChild(ghost);
+            return ghost;
+        }
+
+        function createHandSweep(sourceRect) {
+            if (detailHandEl) detailHandEl.remove();
+            const hand = document.createElement('div');
+            hand.className = 'detail-hand-sweep';
+            hand.style.width = `${Math.max(130, sourceRect.width * 0.9)}px`;
+            hand.style.height = `${Math.max(54, sourceRect.height * 0.22)}px`;
+            hand.style.left = `${sourceRect.left + sourceRect.width * 0.55}px`;
+            hand.style.top = `${sourceRect.top + sourceRect.height * 0.58}px`;
+            detailGhostLayer.appendChild(hand);
+            detailHandEl = hand;
+            return hand;
+        }
+
+        function updateGhostHighlight(event) {
+            if (!isDetailMode || !ghostCardEl) return;
+            const rect = ghostCardEl.getBoundingClientRect();
+            const px = Math.min(Math.max(((event.clientX - rect.left) / Math.max(rect.width, 1)) * 100, 0), 100);
+            const py = Math.min(Math.max(((event.clientY - rect.top) / Math.max(rect.height, 1)) * 100, 0), 100);
+            ghostCardEl.style.setProperty('--mx', `${px}%`); ghostCardEl.style.setProperty('--my', `${py}%`);
+        }
+
+        function emitGhostTrail() {
+            if (!ghostCardEl) return;
+            detailTrailTick += 1;
+            const rect = ghostCardEl.getBoundingClientRect();
+            const trail = ghostCardEl.cloneNode(true);
+            trail.classList.remove('detail-ghost-card'); trail.classList.add('detail-trail-card');
+            trail.style.left = `${rect.left}px`; trail.style.top = `${rect.top}px`;
+            trail.style.width = `${rect.width}px`; trail.style.height = `${rect.height}px`;
+            trail.style.transform = 'none'; trail.style.filter = 'blur(0.3px)';
+            detailGhostLayer.appendChild(trail);
+            const driftY = (detailTrailTick % 2 === 0) ? -6 : 5;
+            gsap.to(trail, { x: -26 - (detailTrailTick % 3) * 6, y: driftY, scale: 0.96, opacity: 0, duration: 0.32, ease: "power2.out", onComplete: () => trail.remove() });
+        }
+
+        function openDetailMode() {
+            if (isDetailMode || activeCardIndex === -1) return;
+            const activeCard = cardElements[activeCardIndex];
+            const activeProject = projectsData[activeCardIndex];
+            if (!activeCard || !activeProject) return;
+
+            renderDetailContent(activeProject);
+            if (detailTimeline) detailTimeline.kill();
+            if (ghostCardEl) ghostCardEl.remove();
+            ghostCardEl = createGhostCard(activeCard);
+            if (!ghostCardEl) return;
+
+            const sourceRect = activeCard.getBoundingClientRect();
+            const centerX = window.innerWidth / 2 - sourceRect.left - sourceRect.width / 2;
+            const centerY = window.innerHeight * 0.42 - sourceRect.top - sourceRect.height / 2;
+            const leftX = window.innerWidth * (window.innerWidth < 768 ? 0.18 : 0.22) - sourceRect.left - sourceRect.width / 2;
+            const leftY = window.innerHeight * 0.52 - sourceRect.top - sourceRect.height / 2;
+            const handEl = createHandSweep(sourceRect);
+
+            detailTimeline = gsap.timeline({
+                onStart: () => {
+                    isDetailMode = true;
+                    gsap.set(detailOverlay, { pointerEvents: "auto" });
+                    gsap.set(activeCard, { autoAlpha: 0 });
+                    setCheckButtonState(false);
+                    if (checkDetailLabel) checkDetailLabel.textContent = "OPEN";
+                    forceEyeBlink();
+                    gsap.to(targetEye, { r: 235, g: 235, b: 255, duration: 0.3 });
+                    window.addEventListener('mousemove', updateGhostHighlight);
+                    spawnPulseField();
+                }
+            });
+
+            detailTimeline
+                .to(cardDetails, { autoAlpha: 0, x: -16, duration: 0.2, ease: "power2.inOut" }, 0)
+                .to(ghostCardEl, { x: centerX, y: centerY - 20, rotationZ: -4, scale: 1.12, duration: 0.36, ease: "power2.out" }, 0)
+                .fromTo(handEl, { autoAlpha: 0, rotationZ: -18, scaleX: 0.75 }, { autoAlpha: 0.75, rotationZ: -8, scaleX: 1.05, duration: 0.22, ease: "power2.out" }, 0.08)
+                .to(ghostCardEl, { x: leftX, y: leftY, rotationZ: -8, scale: 1.08, duration: 0.42, ease: "power3.inOut" }, 0.36)
+                .add(() => emitGhostTrail(), 0.4).add(() => emitGhostTrail(), 0.5)
+                .to(handEl, { x: -70, y: -12, autoAlpha: 0, duration: 0.3, ease: "power1.inOut" }, 0.33)
+                .to(detailOverlay, { autoAlpha: 1, duration: 0.42, ease: "power2.out" }, 0.2)
+                .fromTo(detailScanBeam, { xPercent: 0, autoAlpha: 0 }, { xPercent: 520, autoAlpha: 0.95, duration: 0.62, ease: "power1.out" }, 0.35)
+                .to(detailScanBeam, { autoAlpha: 0.08, duration: 0.25, ease: "power1.inOut" }, 0.9)
+                .to(detailGrid, { autoAlpha: 1, x: 0, duration: 0.45, ease: "power3.out", startAt: { x: 30 } }, 0.45)
+                .fromTo(detailPanels, { autoAlpha: 0.2, y: 18, filter: "blur(4px)" }, { autoAlpha: 1, y: 0, filter: "blur(0px)", duration: 0.42, ease: "power2.out", stagger: 0.08 }, 0.57)
+                .to("#game-board", { filter: "blur(1.2px)", duration: 0.35, ease: "power1.out" }, 0.22);
+        }
+
+        function closeDetailMode(done) {
+            if (!isDetailMode) {
+                if (typeof done === "function") done();
+                return;
+            }
+            const activeCard = cardElements[activeCardIndex];
+            if (!activeCard) {
+                isDetailMode = false;
+                if (ghostCardEl) ghostCardEl.remove(); ghostCardEl = null;
+                if (detailHandEl) detailHandEl.remove(); detailHandEl = null;
+                window.removeEventListener('mousemove', updateGhostHighlight); clearPulseField();
+                gsap.set(detailOverlay, { autoAlpha: 0, pointerEvents: "none" }); gsap.set("#game-board", { clearProps: "filter" });
+                setCheckButtonState(activeCardIndex !== -1);
+                if (typeof done === "function") done(); return;
+            }
+            if (detailTimeline) detailTimeline.kill();
+
+            const ghostLeft = ghostCardEl ? parseFloat(ghostCardEl.style.left || "0") : 0;
+            const ghostTop = ghostCardEl ? parseFloat(ghostCardEl.style.top || "0") : 0;
+            const targetRect = activeCard.getBoundingClientRect();
+            const toX = targetRect.left - ghostLeft; const toY = targetRect.top - ghostTop;
+
+            detailTimeline = gsap.timeline({
+                onComplete: () => {
+                    if (ghostCardEl) ghostCardEl.remove(); ghostCardEl = null;
+                    if (detailHandEl) detailHandEl.remove(); detailHandEl = null;
+                    window.removeEventListener('mousemove', updateGhostHighlight); clearPulseField();
+                    gsap.set(detailOverlay, { autoAlpha: 0, pointerEvents: "none" });
+                    gsap.set(detailGrid, { clearProps: "x,opacity" }); gsap.set(detailPanels, { clearProps: "filter,opacity,y" });
+                    gsap.set(detailScanBeam, { clearProps: "opacity,transform" }); gsap.set("#game-board", { clearProps: "filter" });
+                    gsap.set(activeCard, { autoAlpha: 1 });
+                    isDetailMode = false;
+                    if (activeCardIndex !== -1) gsap.to(cardDetails, { autoAlpha: 1, x: 0, duration: 0.2, startAt: { x: -16 } });
+                    setCheckButtonState(activeCardIndex !== -1);
+                    if (typeof done === "function") done();
+                }
+            });
+
+            detailTimeline
+                .to(detailGrid, { autoAlpha: 0, x: 20, duration: 0.24, ease: "power2.inOut" }, 0)
+                .to(detailOverlay, { autoAlpha: 0, duration: 0.3, ease: "power2.inOut" }, 0.06)
+                .to("#game-board", { filter: "blur(0px)", duration: 0.26, ease: "power1.inOut" }, 0)
+                .to(ghostCardEl, { x: toX, y: toY, rotationZ: 0, scale: 1, duration: 0.34, ease: "power3.inOut" }, 0.03);
+        }
+
+        function returnCardToHand() {
+            if(activeCardIndex === -1) return;
+            let i = activeCardIndex; let card = cardElements[i];
+            
+            gsap.to(cardDetails, { autoAlpha: 0, x: -20, duration: 0.2 });
+            playSlot.classList.remove('active'); setCheckButtonState(false);
+
+            let startX = parseFloat(card.dataset.startX); let startY = parseFloat(card.dataset.startY); let startRot = parseFloat(card.dataset.startRot);
+            gsap.to(card, { x: startX, y: startY, rotationZ: startRot, scale: 1, duration: 0.6, ease: "back.out(1.5)" });
+            card.style.boxShadow = "4px 4px 0px rgba(255,255,255,0.8)"; card.style.cursor = "pointer";
+
+            cardElements.forEach((c, idx) => {
+                if(idx !== i) gsap.to(c, { y: c.dataset.startY, opacity: 1, pointerEvents: 'auto', duration: 0.5, delay: 0.1, ease: "back.out(1.2)" });
+            });
+
+            activeCardIndex = -1;
+        }
+
+        function createSlamParticles(x, y) {
+            for(let i=0; i<40; i++) {
+                let p = document.createElement('div');
+                p.className = 'absolute w-1 h-1 md:w-2 md:h-2 bg-white z-50 pointer-events-none rounded-none shadow-[0_0_5px_#fff]';
+                p.style.left = x + 'px'; p.style.top = y + 'px';
+                projSection.appendChild(p);
+                
+                let angle = Math.random() * Math.PI * 2; let speed = 80 + Math.random() * 250;
+                gsap.to(p, {
+                    x: Math.cos(angle) * speed, y: Math.sin(angle) * speed, opacity: 0, rotation: Math.random() * 360, scale: 0.2 + Math.random(),
+                    duration: 0.6 + Math.random() * 0.4, ease: "power3.out", onComplete: () => p.remove()
+                });
+            }
+        }
+
+        projectsData.forEach((data, i) => {
+            let card = document.createElement('div');
+            // Tune base bottom value to prevent overly deep side drops
+            card.className = 'pixel-card absolute left-1/2 bottom-[-2vh] md:bottom-[2vh] w-[180px] h-[260px] md:w-[220px] md:h-[300px] z-30 cursor-pointer transform-gpu';
+            card.innerHTML = `
+                <div class="card-content p-4 md:p-5 h-full flex flex-col justify-between pointer-events-none">
+                    <div>
+                        <div class="text-[8px] md:text-[9px] border border-white/50 bg-black/50 px-2 py-1 mb-3 font-bold leading-tight break-words">${data.tag}</div>
+                        <h4 class="font-black text-base md:text-lg uppercase leading-tight drop-shadow-[2px_2px_0_#000] text-white break-words">${data.title}</h4>
+                    </div>
+                    <div class="border-t-2 border-dashed border-white/30 pt-3">
+                        <div class="text-[10px] uppercase tracking-[0.2em] font-bold ${i===Math.floor(projectsData.length/2) ? 'text-[#ffcc00] animate-pulse' : 'text-gray-400'}">${data.status}_</div>
+                    </div>
+                </div>
+            `;
+            projSection.appendChild(card); cardElements.push(card);
+
+            // Use fixed cardWidth instead of offsetWidth to avoid zero-width reads before DOM settles
+            let cardWidth = window.innerWidth < 768 ? 180 : 220;
+            let offset = i - (projectsData.length - 1) / 2; 
+            let startXOffset = window.innerWidth < 768 ? 60 : 100;
+            let startX = - (cardWidth / 2) + (offset * startXOffset); 
+            // Use a smooth parabolic arc
+            let startY = Math.pow(offset, 2) * 15; 
+            let startRot = offset * 8;
+
+            gsap.set(card, { x: startX, y: startY, rotationZ: startRot, zIndex: 30 + i });
+            card.dataset.startX = startX; 
+            card.dataset.startY = startY; 
+            card.dataset.startRot = startRot;
+
+            card.addEventListener('mouseenter', () => {
+                if(activeCardIndex !== -1) return;
+                gsap.to(card, { y: startY - 40, rotationZ: startRot * 0.4, scale: 1.05, duration: 0.3, ease: "back.out(2)" });
+                card.style.boxShadow = "0 0 30px rgba(255,255,255,0.4), 8px 8px 0px #fff"; 
+                card.style.borderColor = "#ffcc00";
+            });
+            
+            card.addEventListener('mouseleave', () => {
+                if(activeCardIndex !== -1) return;
+                gsap.to(card, { y: startY, rotationZ: startRot, scale: 1, duration: 0.3, ease: "power2.out" });
+                card.style.boxShadow = "4px 4px 0px rgba(255,255,255,0.8)"; 
+                card.style.borderColor = "#fff";
+            });
+
+            card.addEventListener('click', () => {
+                if(activeCardIndex === i || activeCardIndex !== -1) return; 
+                activeCardIndex = i; lenis.stop(); gsap.killTweensOf(card);
+
+                cardElements.forEach((c, idx) => { if(idx !== i) gsap.to(c, { y: 200, opacity: 0, pointerEvents: 'none', duration: 0.4 }); });
+
+                const slotRect = playSlot.getBoundingClientRect();
+                let slotCenterX = slotRect.left + slotRect.width/2; let slotCenterY = slotRect.top + slotRect.height/2;
+                let cardRect = card.getBoundingClientRect();
+                let cardCenterX = cardRect.left + cardRect.width/2; let cardCenterY = cardRect.top + cardRect.height/2;
+
+                let moveX = slotCenterX - cardCenterX; let moveY = slotCenterY - cardCenterY;
+                let currentX = gsap.getProperty(card, "x"); let currentY = gsap.getProperty(card, "y");
+                let finalX = currentX + moveX; let finalY = currentY + moveY;
+
+                let tl = gsap.timeline({
+                    onComplete: () => {
+                        const slotRectAfter = playSlot.getBoundingClientRect(); const cardRectAfter = card.getBoundingClientRect();
+                        const deltaX = (slotRectAfter.left + slotRectAfter.width / 2) - (cardRectAfter.left + cardRectAfter.width / 2);
+                        const deltaY = (slotRectAfter.top + slotRectAfter.height / 2) - (cardRectAfter.top + cardRectAfter.height / 2);
+                        gsap.set(card, { x: `+=${deltaX}`, y: `+=${deltaY}` });
+
+                        createSlamParticles(slotCenterX, slotCenterY); playSlot.classList.add('active');
+                        gsap.to(projSection, { x: 10, y: 10, duration: 0.04, yoyo: true, repeat: 5, clearProps: "all" });
+                        
+                        document.getElementById('detail-tag').innerText = data.tag;
+                        document.getElementById('detail-title').innerText = data.title;
+                        document.getElementById('detail-desc').innerText = data.desc;
+                        
+                        const titleEl = document.getElementById('detail-title');
+                        titleEl.classList.add('glitch-reveal'); setTimeout(() => titleEl.classList.remove('glitch-reveal'), 500);
+
+                        gsap.to(cardDetails, { autoAlpha: 1, x: 0, duration: 0.4, ease: "power3.out", startAt: { x: -40 } });
+                        renderDetailContent(data); setCheckButtonState(true); lenis.start();
+
+                        forceEyeBlink(); 
+                        gsap.to(targetEye, { scale: 0.9, r: 255, g: 200, b: 0, duration: 0.1, yoyo: true, repeat: 1, ease: "power4.inOut" });
+                    }
+                });
+
+                tl.to(card, {
+                    x: currentX + (moveX * 0.5), y: currentY + (moveY * 0.5) - 150, 
+                    rotationZ: 0, rotationY: 25, rotationX: 10, scale: 1.4, duration: 0.35, ease: "power2.out"
+                }).to(card, {
+                    x: finalX, y: finalY, rotationY: 0, rotationX: 0, scale: 1, duration: 0.15, ease: "power4.in"
+                });
+                
+                card.style.boxShadow = "none"; card.style.borderColor = "#fff"; card.style.cursor = "default";
+            });
+        });
+
+        setCheckButtonState(false);
+        checkDetailBtn.addEventListener('click', () => openDetailMode());
+        closeDetailBtn.addEventListener('click', () => closeDetailMode(() => returnCardToHand()));
+        detailOverlay.addEventListener('click', (e) => {
+            if (e.target === detailOverlay || e.target.classList.contains('detail-glass-backdrop')) closeDetailMode(() => returnCardToHand());
+        });
+        document.getElementById('return-btn').addEventListener('click', () => {
+            if (isDetailMode) { closeDetailMode(() => returnCardToHand()); return; }
+            returnCardToHand();
+        });
+
+        // Bind resize recalculation logic
+        window.addEventListener('resize', () => {
+            if (isDetailMode) closeDetailMode();
+            if (activeCardIndex !== -1) return; 
+            cardElements.forEach((card, i) => {
+                let cardWidth = window.innerWidth < 768 ? 180 : 220;
+                let offset = i - (projectsData.length - 1) / 2; 
+                let startXOffset = window.innerWidth < 768 ? 60 : 100;
+                let startX = - (cardWidth / 2) + (offset * startXOffset);
+                let startY = Math.pow(offset, 2) * 15;
+                let startRot = offset * 8;
+                card.dataset.startX = startX; 
+                card.dataset.startY = startY; 
+                card.dataset.startRot = startRot;
+                gsap.set(card, { x: startX, y: startY, rotationZ: startRot });
+            });
+        });
+
+        // APPLE WATCH ECOSYSTEM GRID
+        function initAppleWatchGrid() {
+            const wrapper = document.getElementById('aw-wrapper');
+            const container = document.getElementById('aw-container');
+            if(!wrapper || !container) return;
+            const baseD = 205;
+            const coords = [{x: 0, y: 0}];
+            for(let i=0; i<6; i++) { let a = i * Math.PI / 3; coords.push({ x: Math.cos(a) * baseD, y: Math.sin(a) * baseD }); }
+            for(let i=0; i<6; i++) {
+                let a1 = i * Math.PI / 3; let a2 = ((i + 1)%6) * Math.PI / 3;
+                let p1 = { x: Math.cos(a1) * baseD * 2, y: Math.sin(a1) * baseD * 2 };
+                let p2 = { x: Math.cos(a2) * baseD * 2, y: Math.sin(a2) * baseD * 2 };
+                coords.push(p1); coords.push({ x: (p1.x + p2.x)/2, y: (p1.y + p2.y)/2 });
+            }
+            const ecosystemData = [
+                { title: "My Friends", sub: "Network Core", type: "core" },
+                { title: "Yan Lu", sub: "Team Member", type: "member" },
+                { title: "Han Dongyang", sub: "Team Member", type: "member" },
+                { title: "Zhang Jiayi", sub: "Team Member", type: "member" },
+                { title: "Ke Shankun", sub: "Team Member", type: "member" },
+                { title: "Henry Yuan", sub: "Hackathon Mentor", type: "mentor" },
+                { title: "Vincent", sub: "Bonjour Founder", type: "member" },
+                { title: "Nancy Campbell Academy", sub: "High School", type: "member", longTitle: true }
+            ];
+            while(ecosystemData.length < 19) { ecosystemData.push({ title: "Waiting...", sub: "Slot Empty", type: "empty" }); }
+            const bubbles = [];
+            const bubbleSize = 168;
+            const bubbleHalf = bubbleSize / 2;
+            ecosystemData.forEach((data, index) => {
+                const pos = coords[index]; const bubble = document.createElement('div');
+                bubble.className = 'aw-bubble absolute pointer-events-auto' + (data.longTitle ? ' aw-bubble--long' : '');
+                bubble.style.width = bubbleSize + 'px';
+                bubble.style.height = bubbleSize + 'px';
+                bubble.style.marginLeft = -bubbleHalf + 'px';
+                bubble.style.marginTop = -bubbleHalf + 'px';
+                let innerClass = "w-full h-full rounded-full flex flex-col items-center justify-center px-3 py-3 md:px-4 text-center transition-all duration-300 border-2 ";
+                if(data.type === 'core') innerClass += "bg-black text-white border-black hover:scale-110 hover:shadow-[0_0_40px_rgba(0,0,0,0.5)]";
+                else if(data.type === 'empty') innerClass += "bg-transparent text-gray-400 border-dashed border-gray-300";
+                else innerClass += "bg-white text-black border-black hover:bg-black hover:text-white hover:scale-110 shadow-sm hover:shadow-xl";
+                bubble.innerHTML = `<div class="${innerClass}"><span class="aw-title font-bold mb-1 px-0.5">${data.title}</span><span class="font-space text-[8px] md:text-[9px] opacity-70 uppercase tracking-widest">${data.sub}</span></div>`;
+                bubble.dataset.x = pos.x; bubble.dataset.y = pos.y;
+                wrapper.appendChild(bubble); bubbles.push(bubble);
+            });
+            let gridTargetX = 0, gridTargetY = 0; let gridCurrentX = 0, gridCurrentY = 0;
+            container.addEventListener('mousemove', (e) => {
+                const rect = container.getBoundingClientRect();
+                gridTargetX = -(e.clientX - rect.left - rect.width / 2) * 1.5; gridTargetY = -(e.clientY - rect.top - rect.height / 2) * 1.5;
+            });
+            container.addEventListener('mouseleave', () => { gridTargetX = 0; gridTargetY = 0; });
+            function renderGrid() {
+                gridCurrentX += (gridTargetX - gridCurrentX) * 0.08; gridCurrentY += (gridTargetY - gridCurrentY) * 0.08;
+                const radiusEffect = window.innerWidth < 768 ? 320 : 580; 
+                bubbles.forEach(bubble => {
+                    const bx = parseFloat(bubble.dataset.x); const by = parseFloat(bubble.dataset.y);
+                    const screenX = bx + gridCurrentX; const screenY = by + gridCurrentY;
+                    const dist = Math.sqrt(screenX*screenX + screenY*screenY);
+                    let scale = 1, opacity = 1;
+                    if (dist < radiusEffect) scale = Math.max(0.15, Math.cos((dist / radiusEffect) * (Math.PI / 2.2)));
+                    else { scale = 0.15; opacity = 0; }
+                    const pull = Math.max(0.4, Math.pow(scale, 0.7)); 
+                    const finalX = screenX * pull; const finalY = screenY * pull;
+                    bubble.style.transform = `translate(${finalX}px, ${finalY}px) scale(${scale})`;
+                    bubble.style.opacity = opacity; bubble.style.zIndex = Math.round(scale * 100); 
+                });
+                requestAnimationFrame(renderGrid);
+            }
+            renderGrid();
+        }
+        window.addEventListener('load', initAppleWatchGrid);
+
+    </script>
+</body>
+</html>
