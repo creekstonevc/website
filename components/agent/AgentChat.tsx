@@ -11,12 +11,35 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   thinking?: string;
+  ttsTicket?: string;
 };
 
 type StreamHandlers = {
   onThinkingDelta: (delta: string) => void;
   onOutputDelta: (delta: string) => void;
 };
+
+type StreamResult = {
+  text: string;
+  ttsTicket: string | null;
+};
+
+type VoicePhase = "idle" | "loading" | "playing" | "paused" | "error";
+
+type VoiceState = {
+  messageIndex: number | null;
+  phase: VoicePhase;
+  error?: string;
+};
+
+class AgentRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(code);
+  }
+}
 
 const welcomeMessage: Message = {
   role: "assistant",
@@ -88,7 +111,7 @@ async function streamReply(
   input: string,
   conversation: string | null,
   handlers: StreamHandlers,
-): Promise<string> {
+): Promise<StreamResult> {
   const response = await fetch("/api/agent/responses", {
     method: "POST",
     headers: {
@@ -96,15 +119,22 @@ async function streamReply(
       Accept: "text/event-stream",
     },
     body: JSON.stringify({
-      model: "agent:@1633756673-org/liyihao",
       input,
       ...(conversation ? { conversation } : {}),
-      stream: true,
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`Responses API failed (${response.status})`);
+    let code = "agent_unavailable";
+    try {
+      const payload: unknown = await response.json();
+      if (isRecord(payload) && isRecord(payload.error)) {
+        code = readString(payload.error.code) || code;
+      }
+    } catch {
+      // Nginx rate-limit responses may not be JSON.
+    }
+    throw new AgentRequestError(response.status, code);
   }
   if (!response.body) {
     throw new Error("Responses API did not return a stream");
@@ -115,6 +145,7 @@ async function streamReply(
   let pending = "";
   let streamedOutput = "";
   let completedOutput = "";
+  let ttsTicket: string | null = null;
   let finished = false;
 
   const handleFrame = (frame: string): boolean => {
@@ -145,6 +176,15 @@ async function streamReply(
       isRecord(payload) && typeof payload.type === "string" ? payload.type : "";
     const type = eventName || payloadType;
     const delta = isRecord(payload) ? readString(payload.delta) : "";
+
+    if (
+      type === "creekstone.tts.ready" &&
+      isRecord(payload) &&
+      typeof payload.ticket === "string"
+    ) {
+      ttsTicket = payload.ticket;
+      return false;
+    }
 
     if (type === "response.output_text.delta" && delta) {
       streamedOutput += delta;
@@ -193,7 +233,82 @@ async function streamReply(
     handleFrame(pending);
   }
 
-  return completedOutput || streamedOutput;
+  return { text: completedOutput || streamedOutput, ttsTicket };
+}
+
+function VoiceGlyph({ phase }: { phase: VoicePhase }) {
+  if (phase === "loading") {
+    return (
+      <span className={styles.voiceBars} aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+    );
+  }
+
+  return (
+    <svg
+      className={styles.voiceIcon}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      {phase === "playing" ? (
+        <>
+          <rect x="6" y="5" width="4" height="14" />
+          <rect x="14" y="5" width="4" height="14" />
+        </>
+      ) : (
+        <>
+          <path d="M4 9v6h4l5 4V5L8 9H4Z" />
+          <path d="M16 9.2c1.35 1.55 1.35 4.05 0 5.6" />
+          <path d="M18.6 6.8c2.8 2.9 2.8 7.5 0 10.4" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function VoiceControl({
+  messageIndex,
+  state,
+  onToggle,
+}: {
+  messageIndex: number;
+  state: VoiceState;
+  onToggle: () => void;
+}) {
+  const active = state.messageIndex === messageIndex;
+  const phase = active ? state.phase : "idle";
+  const labels: Record<VoicePhase, string> = {
+    idle: "Play voice",
+    loading: "Rendering voice",
+    playing: "Pause voice",
+    paused: "Resume voice",
+    error: "Retry voice",
+  };
+
+  return (
+    <div className={styles.voiceControl} data-phase={phase}>
+      <button
+        type="button"
+        className={styles.voiceButton}
+        onClick={onToggle}
+        disabled={phase === "loading"}
+        aria-label={`${labels[phase]} for Yihao AI response ${messageIndex + 1}`}
+        aria-pressed={phase === "playing"}
+      >
+        <VoiceGlyph phase={phase} />
+        <span>{labels[phase]}</span>
+      </button>
+      <span className={styles.voiceDisclosure}>AI-generated voice</span>
+      {active && state.error ? (
+        <span className={styles.voiceError} role="status">
+          {state.error}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 function ThinkingBlock({ text, live }: { text: string; live: boolean }) {
@@ -232,17 +347,126 @@ export function AgentChat() {
   const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const [voice, setVoice] = useState<VoiceState>({
+    messageIndex: null,
+    phase: "idle",
+  });
   const conversationId = useRef<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     const transcript = transcriptRef.current;
     if (transcript) transcript.scrollTop = transcript.scrollHeight;
   }, [messages]);
 
+  useEffect(() => {
+    return () => {
+      const audio = audioRef.current;
+      audioRef.current = null;
+      audio?.pause();
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    };
+  }, []);
+
+  const disposeAudio = () => {
+    const audio = audioRef.current;
+    audioRef.current = null;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  };
+
+  const handleVoiceToggle = async (messageIndex: number, ticket: string) => {
+    const currentAudio = audioRef.current;
+    if (voice.messageIndex === messageIndex && currentAudio) {
+      if (!currentAudio.paused) {
+        currentAudio.pause();
+        setVoice({ messageIndex, phase: "paused" });
+        return;
+      }
+      try {
+        if (currentAudio.ended) currentAudio.currentTime = 0;
+        await currentAudio.play();
+        setVoice({ messageIndex, phase: "playing" });
+      } catch {
+        setVoice({
+          messageIndex,
+          phase: "error",
+          error: "Playback was blocked · tap to retry",
+        });
+      }
+      return;
+    }
+
+    disposeAudio();
+    setVoice({ messageIndex, phase: "loading" });
+
+    try {
+      const response = await fetch("/api/agent/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticket }),
+      });
+      if (!response.ok) {
+        const message =
+          response.status === 429
+            ? "Voice channel is busy · retry shortly"
+            : response.status === 410
+              ? "Voice ticket expired · start a new signal"
+              : "Voice unavailable · tap to retry";
+        throw new AgentRequestError(response.status, message);
+      }
+
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("Voice response was empty");
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.preload = "auto";
+      audioRef.current = audio;
+      audioUrlRef.current = url;
+      audio.addEventListener("ended", () => {
+        if (audioRef.current === audio) {
+          setVoice({ messageIndex, phase: "idle" });
+        }
+      });
+      audio.addEventListener("error", () => {
+        if (audioRef.current === audio) {
+          setVoice({
+            messageIndex,
+            phase: "error",
+            error: "Audio could not be played · tap to retry",
+          });
+        }
+      });
+
+      await audio.play();
+      setVoice({ messageIndex, phase: "playing" });
+    } catch (error) {
+      disposeAudio();
+      setVoice({
+        messageIndex,
+        phase: "error",
+        error:
+          error instanceof AgentRequestError
+            ? error.code
+            : "Voice unavailable · tap to retry",
+      });
+    }
+  };
+
   const resetConversation = () => {
     if (busy) return;
+    disposeAudio();
+    setVoice({ messageIndex: null, phase: "idle" });
     conversationId.current = null;
     setMessages([welcomeMessage]);
     setValue("");
@@ -253,6 +477,8 @@ export function AgentChat() {
     const input = (text ?? value).trim();
     if (!input || busy) return;
 
+    disposeAudio();
+    setVoice({ messageIndex: null, phase: "idle" });
     setValue("");
     setBusy(true);
     setMessages((current) => [
@@ -300,7 +526,7 @@ export function AgentChat() {
         conversationId.current = await createConversation();
       }
 
-      const finalText = await streamReply(input, conversationId.current, {
+      const result = await streamReply(input, conversationId.current, {
         onOutputDelta: (delta) => {
           pendingOutput += delta;
           queueFlush();
@@ -319,24 +545,27 @@ export function AgentChat() {
       setMessages((current) => {
         const last = current[current.length - 1];
         const content = (
-          finalText.trim() ? finalText.replace(/^\s+/, "") : last.content
+          result.text.trim() ? result.text.replace(/^\s+/, "") : last.content
         ).trim();
         return [
           ...current.slice(0, -1),
           {
             ...last,
             content: content || "……（没有收到回复，请再试一次）",
+            ttsTicket: result.ttsTicket ?? undefined,
           },
         ];
       });
-    } catch {
+    } catch (error) {
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
       pendingOutput = "";
       pendingThinking = "";
       const note =
-        "连接出了点问题 — 请稍后再试，或直接邮件 claw@creekstonevc.com。";
+        error instanceof AgentRequestError && error.status === 429
+          ? "当前访问较多 — 请稍等片刻后再试。"
+          : "连接出了点问题 — 请稍后再试，或直接邮件 claw@creekstonevc.com。";
 
       setMessages((current) => {
         const last = current[current.length - 1];
@@ -493,16 +722,28 @@ export function AgentChat() {
                         Reading the signal
                       </span>
                     ) : (
-                      <div className={styles.markdown}>
-                        <Markdown remarkPlugins={[remarkGfm]}>
-                          {message.content}
-                        </Markdown>
-                        {busy &&
-                        index === messages.length - 1 &&
-                        message.content ? (
-                          <span className={styles.streamCursor}>▋</span>
+                      <>
+                        <div className={styles.markdown}>
+                          <Markdown remarkPlugins={[remarkGfm]}>
+                            {message.content}
+                          </Markdown>
+                          {busy &&
+                          index === messages.length - 1 &&
+                          message.content ? (
+                            <span className={styles.streamCursor}>▋</span>
+                          ) : null}
+                        </div>
+                        {message.ttsTicket &&
+                        !(busy && index === messages.length - 1) ? (
+                          <VoiceControl
+                            messageIndex={index}
+                            state={voice}
+                            onToggle={() =>
+                              void handleVoiceToggle(index, message.ttsTicket!)
+                            }
+                          />
                         ) : null}
-                      </div>
+                      </>
                     )}
                   </>
                 ) : (

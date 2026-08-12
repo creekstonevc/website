@@ -679,6 +679,127 @@
   animation: agentBlink 0.7s steps(2) infinite;
 }
 
+.voiceControl {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(229, 189, 82, 0.14);
+}
+
+.voiceButton {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  color: var(--agent-gold-light);
+  border: 1px solid rgba(229, 189, 82, 0.34);
+  background: rgba(5, 5, 5, 0.54);
+  font: inherit;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.voiceButton:hover:not(:disabled),
+.voiceButton:focus-visible {
+  color: var(--agent-ink);
+  border-color: var(--agent-gold);
+  outline: none;
+  background: var(--agent-gold);
+}
+
+.voiceButton:focus-visible {
+  box-shadow: 0 0 0 2px var(--agent-ink), 0 0 0 3px var(--agent-gold-light);
+}
+
+.voiceButton:disabled {
+  color: rgba(243, 239, 229, 0.48);
+  border-color: rgba(229, 189, 82, 0.18);
+  background: rgba(5, 5, 5, 0.36);
+}
+
+.voiceControl[data-phase="playing"] .voiceButton {
+  color: var(--agent-ink);
+  border-color: var(--agent-gold);
+  background: var(--agent-gold);
+}
+
+.voiceControl[data-phase="error"] .voiceButton {
+  color: var(--agent-paper);
+  border-color: rgba(229, 189, 82, 0.48);
+}
+
+.voiceIcon,
+.voiceBars {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.voiceIcon {
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.voiceIcon path:first-child {
+  stroke: none;
+}
+
+.voiceBars {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.voiceBars span {
+  width: 2px;
+  height: 5px;
+  background: currentColor;
+  animation: agentVoiceBar 0.75s ease-in-out infinite alternate;
+}
+
+.voiceBars span:nth-child(2) {
+  height: 12px;
+  animation-delay: -0.35s;
+}
+
+.voiceBars span:nth-child(3) {
+  height: 8px;
+  animation-delay: -0.15s;
+}
+
+.voiceDisclosure,
+.voiceError {
+  font-size: 0.48rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.voiceDisclosure {
+  color: rgba(243, 239, 229, 0.34);
+}
+
+.voiceError {
+  min-width: 0;
+  color: rgba(244, 216, 125, 0.72);
+  overflow-wrap: anywhere;
+}
+
 .suggestions {
   display: flex;
   flex-wrap: wrap;
@@ -864,6 +985,17 @@
   }
 }
 
+@keyframes agentVoiceBar {
+  from {
+    transform: scaleY(0.4);
+    opacity: 0.45;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 900px) {
   .agentShell {
     grid-template-columns: minmax(230px, 35vw) 1fr;
@@ -1038,6 +1170,18 @@
     font-size: 0.86rem;
   }
 
+  .voiceControl {
+    gap: 7px 9px;
+  }
+
+  .voiceButton {
+    min-height: 38px;
+  }
+
+  .voiceError {
+    flex-basis: 100%;
+  }
+
   .suggestions {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -1092,7 +1236,8 @@
   .liveDot,
   .portraitScan,
   .waiting span,
-  .streamCursor {
+  .streamCursor,
+  .voiceBars span {
     animation: none;
   }
 }

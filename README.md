@@ -19,20 +19,44 @@ Open `http://localhost:3100`.
 ## Production deployment
 
 Production uses a static Next.js export served by Nginx, matching the original
-Creekstone deployment model. The `/api/agent/*` path remains a same-origin
-Nginx proxy so the Boids API key never reaches the browser and SSE responses
-remain unbuffered.
+Creekstone deployment model. Three exact same-origin API routes terminate at a
+private Node gateway bound to `127.0.0.1:8790`. The gateway validates request
+bodies, forces the published Yihao Agent model, streams Boids responses, signs
+short-lived voice tickets, and renders ticketed replies through BytePlus Voice
+Replication. Neither provider key reaches Nginx or the browser.
 
 On the configured server, the project lives at `/root/creekstone-website`.
-Keep `BOIDS_API_KEY` in `/root/creekstone-website/.env.local`, then run:
+Create `/root/creekstone-website/.env.local` from `.env.example` and provide
+the Boids key, BytePlus key, and cloned speaker ID, then run:
 
 ```bash
 npm run deploy
 ```
 
-The deployment script builds both `/` and `/agent/`, snapshots the current web
-root and Nginx configuration under `/root/creekstone-deploy-backups`, stages
-the new export, validates Nginx, and reloads it.
+The deployment script runs the gateway tests, builds both `/` and `/agent/`,
+installs the gateway as a hardened `systemd` service, writes provider secrets
+to `/etc/creekstone-agent-gateway.env`, configures exact Nginx routes and rate
+limits, snapshots the current release under `/root/creekstone-deploy-backups`,
+validates Nginx, and activates the new static export.
+
+Gateway checks:
+
+```bash
+npm run gateway:test
+systemctl status creekstone-agent-gateway
+curl http://127.0.0.1:8790/health
+```
+
+Public routes are intentionally limited to:
+
+```text
+POST /api/agent/conversations
+POST /api/agent/responses
+POST /api/agent/tts
+```
+
+TTS accepts only an HMAC-signed ticket emitted with an Agent response. It does
+not accept arbitrary text, model IDs, speaker IDs, or BytePlus parameters.
 
 ## Project structure
 
@@ -51,6 +75,10 @@ components/experience/
 components/agent/
   AgentChat.tsx           stateful streaming Yihao.AI founder channel
   AgentChat.module.css    responsive Creekstone dossier interface
+gateway/
+  core.mjs                validation, signed tickets, SSE and audio parsing
+  server.mjs              private Boids + BytePlus HTTP gateway
+  *.test.mjs              unit and integration security tests
 lib/
   content.ts              all timeline, project, and ecosystem content
   types.ts                content contracts
