@@ -33,6 +33,9 @@ read_project_env() {
 
 read_gateway_env() {
   local name="$1"
+  if [ ! -f "$GATEWAY_ENV" ]; then
+    return 0
+  fi
   sed -n "s/^${name}=//p" "$GATEWAY_ENV" 2>/dev/null | tail -n 1
 }
 
