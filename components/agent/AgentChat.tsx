@@ -2,7 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "./AgentChat.module.css";
@@ -24,6 +31,11 @@ type StreamResult = {
   ttsTicket: string | null;
 };
 
+type ConversationSession = {
+  needsBootstrap: boolean;
+  messages: Message[];
+};
+
 type VoicePhase = "idle" | "loading" | "playing" | "paused" | "error";
 
 type VoiceState = {
@@ -41,11 +53,7 @@ class AgentRequestError extends Error {
   }
 }
 
-const welcomeMessage: Message = {
-  role: "assistant",
-  content:
-    "你好，我是李一豪的 AI 化身 — the world's first AI VC agent.\n\n聊聊你在 build 什么，或者问我 Creekstone 怎么看 agent-native 的未来。",
-};
+const waitingMessage: Message = { role: "assistant", content: "" };
 
 const suggestions = [
   "Creekstone 的投资逻辑是什么？",
@@ -92,25 +100,53 @@ function extractFailure(payload: unknown): string {
     : "Stream failed";
 }
 
-async function createConversation(): Promise<string | null> {
-  try {
-    const response = await fetch("/api/agent/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ metadata: { source: "creekstone-web" } }),
-    });
-    if (!response.ok) return null;
-    const data: unknown = await response.json();
-    return isRecord(data) && typeof data.id === "string" ? data.id : null;
-  } catch {
-    return null;
+function readHistoryMessages(value: unknown): Message[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (
+      !isRecord(item) ||
+      (item.role !== "user" && item.role !== "assistant") ||
+      typeof item.content !== "string" ||
+      !item.content.trim()
+    ) {
+      return [];
+    }
+    return [
+      {
+        role: item.role,
+        content: item.content,
+        ...(typeof item.ttsTicket === "string"
+          ? { ttsTicket: item.ttsTicket }
+          : {}),
+      } satisfies Message,
+    ];
+  });
+}
+
+async function openConversation(reset = false): Promise<ConversationSession> {
+  const response = await fetch("/api/agent/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(reset ? { reset: true } : {}),
+  });
+  if (!response.ok) {
+    throw new AgentRequestError(response.status, "conversation_unavailable");
   }
+  const data: unknown = await response.json();
+  if (!isRecord(data)) {
+    throw new AgentRequestError(502, "conversation_unavailable");
+  }
+  return {
+    needsBootstrap: data.needsBootstrap === true,
+    messages: readHistoryMessages(data.messages),
+  };
 }
 
 async function streamReply(
   input: string,
-  conversation: string | null,
   handlers: StreamHandlers,
+  { bootstrap = false }: { bootstrap?: boolean } = {},
 ): Promise<StreamResult> {
   const response = await fetch("/api/agent/responses", {
     method: "POST",
@@ -118,9 +154,9 @@ async function streamReply(
       "Content-Type": "application/json",
       Accept: "text/event-stream",
     },
+    credentials: "same-origin",
     body: JSON.stringify({
-      input,
-      ...(conversation ? { conversation } : {}),
+      ...(bootstrap ? { bootstrap: true } : { input }),
     }),
   });
 
@@ -248,11 +284,7 @@ function VoiceGlyph({ phase }: { phase: VoicePhase }) {
   }
 
   return (
-    <svg
-      className={styles.voiceIcon}
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
+    <svg className={styles.voiceIcon} viewBox="0 0 24 24" aria-hidden="true">
       {phase === "playing" ? (
         <>
           <rect x="6" y="5" width="4" height="14" />
@@ -344,14 +376,15 @@ function ThinkingBlock({ text, live }: { text: string; live: boolean }) {
 }
 
 export function AgentChat() {
-  const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
+  const [messages, setMessages] = useState<Message[]>([waitingMessage]);
   const [value, setValue] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
+  const [ready, setReady] = useState(false);
   const [voice, setVoice] = useState<VoiceState>({
     messageIndex: null,
     phase: "idle",
   });
-  const conversationId = useRef<string | null>(null);
+  const initializationStarted = useRef(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -371,7 +404,7 @@ export function AgentChat() {
     };
   }, []);
 
-  const disposeAudio = () => {
+  const disposeAudio = useCallback(() => {
     const audio = audioRef.current;
     audioRef.current = null;
     if (audio) {
@@ -383,7 +416,7 @@ export function AgentChat() {
       URL.revokeObjectURL(audioUrlRef.current);
       audioUrlRef.current = null;
     }
-  };
+  }, []);
 
   const handleVoiceToggle = async (messageIndex: number, ticket: string) => {
     const currentAudio = audioRef.current;
@@ -463,30 +496,7 @@ export function AgentChat() {
     }
   };
 
-  const resetConversation = () => {
-    if (busy) return;
-    disposeAudio();
-    setVoice({ messageIndex: null, phase: "idle" });
-    conversationId.current = null;
-    setMessages([welcomeMessage]);
-    setValue("");
-    window.setTimeout(() => inputRef.current?.focus(), 0);
-  };
-
-  const send = async (text?: string) => {
-    const input = (text ?? value).trim();
-    if (!input || busy) return;
-
-    disposeAudio();
-    setVoice({ messageIndex: null, phase: "idle" });
-    setValue("");
-    setBusy(true);
-    setMessages((current) => [
-      ...current,
-      { role: "user", content: input },
-      { role: "assistant", content: "" },
-    ]);
-
+  const renderReply = useCallback(async (input: string, bootstrap = false) => {
     let pendingOutput = "";
     let pendingThinking = "";
     let animationFrame: number | null = null;
@@ -522,20 +532,20 @@ export function AgentChat() {
     };
 
     try {
-      if (!conversationId.current) {
-        conversationId.current = await createConversation();
-      }
-
-      const result = await streamReply(input, conversationId.current, {
-        onOutputDelta: (delta) => {
-          pendingOutput += delta;
-          queueFlush();
+      const result = await streamReply(
+        input,
+        {
+          onOutputDelta: (delta) => {
+            pendingOutput += delta;
+            queueFlush();
+          },
+          onThinkingDelta: (delta) => {
+            pendingThinking += delta;
+            queueFlush();
+          },
         },
-        onThinkingDelta: (delta) => {
-          pendingThinking += delta;
-          queueFlush();
-        },
-      });
+        { bootstrap },
+      );
 
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
@@ -562,10 +572,90 @@ export function AgentChat() {
       }
       pendingOutput = "";
       pendingThinking = "";
+      throw error;
+    }
+  }, []);
+
+  const initializeConversation = useCallback(
+    async (reset = false) => {
+      disposeAudio();
+      setVoice({ messageIndex: null, phase: "idle" });
+      setValue("");
+      setReady(false);
+      setBusy(true);
+      setMessages([waitingMessage]);
+
+      try {
+        const session = await openConversation(reset);
+        if (session.messages.length) {
+          setMessages(session.messages);
+        } else if (session.needsBootstrap) {
+          try {
+            await renderReply("", true);
+          } catch (error) {
+            const canRestore =
+              error instanceof AgentRequestError &&
+              ["bootstrap_completed", "conversation_not_empty"].includes(
+                error.code,
+              );
+            if (!canRestore) throw error;
+            const restored = await openConversation(false);
+            if (!restored.messages.length) throw error;
+            setMessages(restored.messages);
+          }
+        } else {
+          throw new AgentRequestError(502, "empty_conversation");
+        }
+        setReady(true);
+      } catch (error) {
+        const note =
+          error instanceof AgentRequestError && error.status === 429
+            ? "当前访问较多 — 请稍等片刻后点击 New signal。"
+            : "连接出了点问题 — 请点击 New signal 重试，或直接邮件 claw@creekstonevc.com。";
+        setMessages([{ role: "assistant", content: note }]);
+      } finally {
+        setBusy(false);
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+      }
+    },
+    [disposeAudio, renderReply],
+  );
+
+  useEffect(() => {
+    if (initializationStarted.current) return;
+    initializationStarted.current = true;
+    void initializeConversation(false);
+  }, [initializeConversation]);
+
+  const resetConversation = () => {
+    if (busy) return;
+    void initializeConversation(true);
+  };
+
+  const send = async (text?: string) => {
+    const input = (text ?? value).trim();
+    if (!input || busy || !ready) return;
+
+    disposeAudio();
+    setVoice({ messageIndex: null, phase: "idle" });
+    setValue("");
+    setBusy(true);
+    setMessages((current) => [
+      ...current,
+      { role: "user", content: input },
+      { role: "assistant", content: "" },
+    ]);
+
+    try {
+      await renderReply(input);
+    } catch (error) {
       const note =
         error instanceof AgentRequestError && error.status === 429
           ? "当前访问较多 — 请稍等片刻后再试。"
-          : "连接出了点问题 — 请稍后再试，或直接邮件 claw@creekstonevc.com。";
+          : error instanceof AgentRequestError &&
+              error.code === "conversation_required"
+            ? "会话已过期 — 请点击 New signal 重新开始。"
+            : "连接出了点问题 — 请稍后再试，或直接邮件 claw@creekstonevc.com。";
 
       setMessages((current) => {
         const last = current[current.length - 1];
@@ -605,10 +695,12 @@ export function AgentChat() {
           <span
             className={styles.signalParticle}
             key={index}
-            style={{
-              "--particle-index": index,
-              "--particle-angle": `${index * 15}deg`,
-            } as React.CSSProperties}
+            style={
+              {
+                "--particle-index": index,
+                "--particle-angle": `${index * 15}deg`,
+              } as React.CSSProperties
+            }
           />
         ))}
       </div>
@@ -667,7 +759,10 @@ export function AgentChat() {
         </div>
       </section>
 
-      <section className={styles.console} aria-label="Conversation with Yihao AI">
+      <section
+        className={styles.console}
+        aria-label="Conversation with Yihao AI"
+      >
         <div className={styles.consoleHeader}>
           <div>
             <span className={styles.consoleLight} />
@@ -759,7 +854,7 @@ export function AgentChat() {
             <button
               type="button"
               key={suggestion}
-              disabled={busy}
+              disabled={busy || !ready}
               onClick={() => void send(suggestion)}
             >
               {suggestion}
@@ -781,13 +876,13 @@ export function AgentChat() {
               ref={inputRef}
               rows={1}
               value={value}
-              disabled={busy}
+              disabled={busy || !ready}
               maxLength={4000}
               placeholder="Tell me what you’re building…"
               onChange={(event) => setValue(event.target.value)}
               onKeyDown={handleKeyDown}
             />
-            <button type="submit" disabled={busy || !value.trim()}>
+            <button type="submit" disabled={busy || !ready || !value.trim()}>
               <span>{busy ? "Listening" : "Transmit"}</span>
               <span aria-hidden="true">{busy ? "···" : "↗"}</span>
             </button>

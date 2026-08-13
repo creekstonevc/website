@@ -21,9 +21,11 @@ Open `http://localhost:3100`.
 Production uses a static Next.js export served by Nginx, matching the original
 Creekstone deployment model. Three exact same-origin API routes terminate at a
 private Node gateway bound to `127.0.0.1:8790`. The gateway validates request
-bodies, forces the published Yihao Agent model, streams Boids responses, signs
-short-lived voice tickets, and renders ticketed replies through BytePlus Voice
-Replication. Neither provider key reaches Nginx or the browser.
+bodies, binds each browser to a Boids conversation with a signed, HttpOnly
+cookie, restores recent history, forces the published Yihao Agent model,
+streams Boids responses, signs short-lived voice tickets, and renders ticketed
+replies through BytePlus Voice Replication. Neither provider key nor a raw
+conversation credential reaches the application JavaScript.
 
 On the configured server, the project lives at `/root/creekstone-website`.
 Create `/root/creekstone-website/.env.local` from `.env.example` and provide
@@ -57,6 +59,13 @@ POST /api/agent/tts
 
 TTS accepts only an HMAC-signed ticket emitted with an Agent response. It does
 not accept arbitrary text, model IDs, speaker IDs, or BytePlus parameters.
+
+The conversation cookie lasts 30 days, is scoped to `/api/agent`, and is the
+only browser credential used to select a conversation. The first empty session
+silently submits the fixed user prompt `Hi`; the gateway removes only that
+oldest internal prompt when returning history, while preserving later user
+messages with the same text. `New signal` deletes the previous Boids
+conversation, rotates the signed cookie, and generates a fresh Agent opening.
 
 ## Project structure
 

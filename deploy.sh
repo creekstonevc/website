@@ -89,8 +89,8 @@ if [ -z "$BYTEPLUS_TTS_SPEAKER_ID" ]; then
 fi
 
 BYTEPLUS_TTS_RESOURCE_ID="${BYTEPLUS_TTS_RESOURCE_ID:-seed-icl-2.0}"
-BOIDS_BASE_URL="${BOIDS_BASE_URL:-https://staging-api.boids.so/v1}"
-BOIDS_AGENT_MODEL="${BOIDS_AGENT_MODEL:-agent:@1633756673-org/liyihao}"
+BOIDS_BASE_URL="${BOIDS_BASE_URL:-https://api.boids.so/v1}"
+BOIDS_AGENT_MODEL="${BOIDS_AGENT_MODEL:-agent:@qq1006775897-1-org/qq1006775897}"
 GATEWAY_SIGNING_SECRET="${GATEWAY_SIGNING_SECRET:-$(openssl rand -hex 32)}"
 
 if ! id "$GATEWAY_USER" >/dev/null 2>&1; then
@@ -106,6 +106,9 @@ install -m 755 -o root -g root "$PROJECT_DIR/gateway/server.mjs" "$GATEWAY_ROOT/
   printf 'GATEWAY_PORT=8790\n'
   printf 'GATEWAY_ALLOWED_ORIGINS=https://creekstonevc.com,https://www.creekstonevc.com\n'
   printf 'GATEWAY_SIGNING_SECRET=%s\n' "$GATEWAY_SIGNING_SECRET"
+  printf 'GATEWAY_CONVERSATION_TTL_MS=2592000000\n'
+  printf 'GATEWAY_CONVERSATION_HISTORY_LIMIT=100\n'
+  printf 'GATEWAY_BOOTSTRAP_PROMPT=Hi\n'
   printf 'BOIDS_API_KEY=%s\n' "$BOIDS_API_KEY"
   printf 'BOIDS_BASE_URL=%s\n' "$BOIDS_BASE_URL"
   printf 'BOIDS_AGENT_MODEL=%s\n' "$BOIDS_AGENT_MODEL"
