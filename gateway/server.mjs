@@ -8,7 +8,6 @@ import {
   createTtsTicket,
   decodeBytePlusAudio,
   extractCompletedText,
-  isReasoningSseEvent,
   normalizeConversationHistory,
   parseSseFrame,
   readJsonBody,
@@ -400,16 +399,6 @@ async function proxyResponseStream(
 
     const relayFrame = (frame) => {
       const parsed = parseSseFrame(frame);
-      if (body.bootstrap && isReasoningSseEvent(parsed)) return;
-      if (
-        body.bootstrap &&
-        parsed.type !== "response.output_text.delta" &&
-        parsed.type !== "response.completed" &&
-        parsed.type !== "response.failed" &&
-        !parsed.done
-      ) {
-        return;
-      }
       if (
         parsed.type === "response.output_text.delta" &&
         typeof parsed.payload?.delta === "string"
@@ -417,25 +406,7 @@ async function proxyResponseStream(
         streamedText += parsed.payload.delta;
       }
       if (parsed.type === "response.completed") {
-        const completedText = extractCompletedText(parsed.payload, streamedText);
-        emitTicket(completedText);
-        if (body.bootstrap) {
-          response.write(
-            `event: response.completed\ndata: ${JSON.stringify({
-              type: "response.completed",
-              response: {
-                output: [
-                  {
-                    type: "message",
-                    role: "assistant",
-                    content: [{ type: "output_text", text: completedText }],
-                  },
-                ],
-              },
-            })}\n\n`,
-          );
-          return;
-        }
+        emitTicket(extractCompletedText(parsed.payload, streamedText));
       } else if (parsed.done) {
         emitTicket(streamedText);
       }
