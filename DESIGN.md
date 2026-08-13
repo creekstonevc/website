@@ -150,6 +150,8 @@ conversation owns the larger right-hand console.
 Assistant output is treated as an evolving signal record. Streaming reasoning
 appears in a collapsible trace, final output supports Markdown and GFM, and
 each turn receives a terse origin label and functional sequence number.
+The silent first-turn bootstrap never exposes its internal reasoning trace;
+reasoning remains available only for replies to visible founder messages.
 Founder messages are offset but never converted into generic chat bubbles.
 Suggested prompts remain secondary pills; the square gold transmit control is
 the only primary action. Error states resolve inside the transcript and point

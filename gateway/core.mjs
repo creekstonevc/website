@@ -314,6 +314,21 @@ export function parseSseFrame(frame) {
   }
 }
 
+function isReasoningSseType(type) {
+  return (
+    typeof type === "string" &&
+    (type.includes("reasoning") || type.includes("thinking"))
+  );
+}
+
+export function isReasoningSseEvent(parsed) {
+  const payloadType =
+    parsed?.payload && typeof parsed.payload.type === "string"
+      ? parsed.payload.type
+      : "";
+  return isReasoningSseType(parsed?.type) || isReasoningSseType(payloadType);
+}
+
 export function extractCompletedText(payload, streamedText = "") {
   const response =
     payload?.response && typeof payload.response === "object"

@@ -540,6 +540,7 @@ export function AgentChat() {
             queueFlush();
           },
           onThinkingDelta: (delta) => {
+            if (bootstrap) return;
             pendingThinking += delta;
             queueFlush();
           },
