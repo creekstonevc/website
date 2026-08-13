@@ -245,7 +245,8 @@ test("gateway forces the hidden bootstrap prompt and refuses unsigned conversati
     if (url.endsWith("/responses")) {
       boidsPayload = JSON.parse(options.body);
       return new Response(
-        'event: message\ndata: {"type":"response.reasoning_summary_text.delta","delta":"private bootstrap trace"}\n\n' +
+        'event: response.created\ndata: {"type":"response.created","response":{"reasoning":{"effort":"high"}}}\n\n' +
+          'event: message\ndata: {"type":"response.reasoning_summary_text.delta","delta":"private bootstrap trace"}\n\n' +
           'event: response.output_text.delta\ndata: {"delta":"Welcome"}\n\n' +
           'event: response.completed\ndata: {"type":"response.completed","response":{"output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"private completed trace"}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Welcome"}]}]}}\n\n',
         { status: 200 },
@@ -283,6 +284,8 @@ test("gateway forces the hidden bootstrap prompt and refuses unsigned conversati
     assert.doesNotMatch(bootstrapStream, /private bootstrap trace/);
     assert.doesNotMatch(bootstrapStream, /private completed trace/);
     assert.doesNotMatch(bootstrapStream, /reasoning_summary/);
+    assert.doesNotMatch(bootstrapStream, /reasoning/);
+    assert.doesNotMatch(bootstrapStream, /response.created/);
     assert.deepEqual(boidsPayload, {
       model: "agent:creekstone",
       input: "Hi",

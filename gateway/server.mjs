@@ -402,6 +402,15 @@ async function proxyResponseStream(
       const parsed = parseSseFrame(frame);
       if (body.bootstrap && isReasoningSseEvent(parsed)) return;
       if (
+        body.bootstrap &&
+        parsed.type !== "response.output_text.delta" &&
+        parsed.type !== "response.completed" &&
+        parsed.type !== "response.failed" &&
+        !parsed.done
+      ) {
+        return;
+      }
+      if (
         parsed.type === "response.output_text.delta" &&
         typeof parsed.payload?.delta === "string"
       ) {
