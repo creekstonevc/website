@@ -28,7 +28,9 @@ export function useTranscriptScroll() {
       const distance = target - node.scrollTop;
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const step = 1 - Math.exp(-Math.min(time - lastTime, 64) / 70);
-      node.scrollTop = reduced || Math.abs(distance) < 1 ? target : node.scrollTop + distance * step;
+      // Snap the final sub-pixel distance so browser rounding cannot keep the
+      // animation frame alive forever on fractional device-pixel ratios.
+      node.scrollTop = reduced || Math.abs(distance) <= 2 ? target : node.scrollTop + distance * step;
       previousTop.current = node.scrollTop;
       lastTime = time;
       if (!reduced && Math.abs(target - node.scrollTop) > 1) frame.current = requestAnimationFrame(tick);
