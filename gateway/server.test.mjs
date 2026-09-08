@@ -48,7 +48,7 @@ function cookieFrom(response) {
   assert.match(setCookie, /HttpOnly/);
   assert.match(setCookie, /Secure/);
   assert.match(setCookie, /SameSite=Lax/);
-  return setCookie.split(";", 1)[0];
+  return response.headers.getSetCookie().map((cookie) => cookie.split(";", 1)[0]).join("; ");
 }
 
 test("gateway binds responses to its signed conversation cookie and renders ticketed audio", async () => {
@@ -91,11 +91,15 @@ test("gateway binds responses to its signed conversation cookie and renders tick
     });
     assert.equal(session.status, 200);
     const sessionBody = await session.json();
-    assert.deepEqual(sessionBody, {
+    const { sessionKey, sessions, ...history } = sessionBody;
+    assert.equal(typeof sessionKey, "string");
+    assert.equal(sessions[0].key, sessionKey);
+    assert.deepEqual(history, {
       created: true,
       needsBootstrap: true,
       truncated: false,
       messages: [],
+      nextCursor: null,
     });
     const cookie = cookieFrom(session);
 
@@ -225,9 +229,23 @@ test("gateway restores history, hides only the internal Hi, and rotates New sign
       body: JSON.stringify({ reset: true }),
     });
     assert.equal(reset.status, 200);
-    assert.deepEqual(deleted, ["conv_1"]);
-    assert.equal((await reset.json()).created, true);
+    assert.deepEqual(deleted, []);
+    const resetBody = await reset.json();
+    assert.equal(resetBody.created, true);
+    assert.equal(resetBody.sessions.length, 2);
     assert.notEqual(cookieFrom(reset), cookie);
+
+    const selected = await fetch(`${baseUrl}/conversations`, {
+      method: "POST", headers: { Origin: origin, Cookie: cookieFrom(reset), "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionKey: restoredBody.sessionKey }),
+    });
+    assert.equal(selected.status, 200);
+    assert.equal((await selected.json()).messages[0].content, "Welcome founder");
+    const forged = await fetch(`${baseUrl}/conversations`, {
+      method: "POST", headers: { Origin: origin, Cookie: cookieFrom(reset), "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionKey: "conv_someone_else" }),
+    });
+    assert.equal(forged.status, 404);
   });
 });
 

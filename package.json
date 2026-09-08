@@ -8,6 +8,7 @@
     "deploy": "bash deploy.sh",
     "gateway:dev": "node --env-file=.env.local gateway/server.mjs",
     "gateway:test": "node --test gateway/*.test.mjs",
+    "agent:test": "node --experimental-strip-types --test components/agent/*.test.mjs",
     "start": "python3 -m http.server 3100 --directory out",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit"

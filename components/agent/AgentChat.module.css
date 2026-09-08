@@ -465,6 +465,111 @@
   opacity: 0.35;
 }
 
+.sessionActions {
+  min-width: 0;
+}
+
+.sessionActions select {
+  min-width: 0;
+  width: clamp(90px, 15vw, 200px);
+  padding: 6px;
+  color: var(--agent-paper);
+  background: #10100e;
+  border: 1px solid rgba(229, 189, 82, 0.28);
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.historyControl {
+  margin-block: 0 24px;
+  text-align: center;
+}
+
+.historyControl button,
+.recovery button,
+.jumpToLatest {
+  padding: 9px 12px;
+  border: 1px solid rgba(229, 189, 82, 0.45);
+  color: var(--agent-gold);
+  background: #10100e;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.historyControl button:hover:not(:disabled),
+.recovery button:hover,
+.jumpToLatest:hover {
+  background: var(--agent-gold);
+  color: var(--agent-ink);
+}
+
+.historyControl button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.historyControl p,
+.recovery p {
+  margin-block: 0 12px;
+  color: var(--agent-paper);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.historyControl p { margin-top: 12px; }
+
+.recovery {
+  margin-block: 18px 4px;
+  padding-block: 16px;
+  border-top: 1px solid rgba(229, 189, 82, 0.3);
+}
+
+.recovery button + button { margin-inline-start: 8px; }
+
+.jumpToLatest {
+  position: absolute;
+  inset-inline-end: 16px;
+  bottom: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.composerHint {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 6px;
+  color: rgba(243, 239, 229, 0.65);
+  font-size: 0.65rem;
+}
+
+.composerControl:focus-within {
+  border-color: var(--agent-gold);
+}
+
+.agentShell :is(button, select, a):focus-visible,
+.transcript:focus-visible {
+  outline: 2px solid var(--agent-gold);
+  outline-offset: -2px;
+}
+
+@media (max-width: 760px) {
+  .consoleHeader { min-height: 44px; gap: 8px; }
+  .consoleHeader > div:first-child { flex: 1; min-width: 0; font-size: 0.46rem; }
+  .sessionActions { gap: 5px !important; }
+  .sessionActions select { width: 98px; font-size: 0.6rem; }
+  .sessionActions button { max-width: 94px; font-size: 0.55rem; padding: 5px; }
+  .composer label { gap: 12px; }
+  .composer label small { text-align: end; }
+}
+
+.transcriptPane {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .transcript {
   min-height: 0;
   height: 100%;
@@ -473,6 +578,7 @@
   padding: 18px 20px 26px;
   scrollbar-color: rgba(229, 189, 82, 0.45) transparent;
   scrollbar-width: thin;
+  overflow-anchor: none;
 }
 
 .channelIntro {
@@ -863,7 +969,7 @@
 
 .composer textarea {
   width: 100%;
-  max-height: 120px;
+  max-height: 144px;
   resize: none;
   padding: 12px 8px;
   color: var(--agent-paper);
@@ -871,7 +977,7 @@
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 0.92rem;
+  font-size: 1rem;
   line-height: 1.45;
 }
 

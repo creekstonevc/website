@@ -2,6 +2,27 @@
 
 Reference: `https://jianyuanthomasdeng.com/`
 
+## 2026-09-08 — Agent conversation UX hardening
+
+- 19 Gateway tests and 9 client tests pass, including cursor pagination,
+  first-Hi suppression, archive signature/expiry, stale-tab rejection,
+  concurrent-send locking, voice-ticket grace, IME Enter, split UTF-8 SSE,
+  unsuccessful terminal events, unexpected EOF and explicit HTTP rejection.
+- Typecheck, lint and production static export pass.
+- Local browser checks use `scripts/agent-qa-server.mjs`, with a deterministic
+  mocked Boids upstream and no provider calls or live test messages.
+- Targeted retry keeps exactly one user message. Interrupted transport retains
+  partial text and offers history sync, without submitting the prompt again.
+- Draft survives reload and switching away to a new conversation and back.
+  Four-line input grows to 117px in the tested desktop viewport.
+- Loading one older page grows the transcript from 20 to 40 records, keeping
+  the old content in position via a 2,085px scroll compensation.
+- Mobile 390 × 844: document remains 390 × 844, transcript height is 347px;
+  session picker, return-to-latest action and composer remain inside the viewport.
+- No automatic input focus after completion; bootstrap reasoning remains hidden.
+- Actual Boids cursor support is assumed per the brief, not live-verified.
+  Stop generation, drafting while busy and live stream resumption remain deferred.
+
 ## 2026-07-31 — Agent transcript containment
 
 - Agent route shell is constrained to `100dvh` with `100svh` fallback

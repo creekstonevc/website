@@ -116,6 +116,33 @@ export function createTtsTicket(
   return `${payload}.${sign(payload, secret)}`;
 }
 
+// The browser keeps only an HttpOnly, signed index. Public keys are selectors,
+// never authority to open an arbitrary upstream conversation.
+export function createConversationArchive(entries, secret, now = Date.now()) {
+  const recent = entries.filter((entry) => entry.exp > now).slice(0, 10);
+  while (true) {
+    const payload = Buffer.from(JSON.stringify({ v: 2, entries: recent })).toString("base64url");
+    const token = `${payload}.${sign(payload, secret)}`;
+    if (token.length <= 2800 || !recent.length) return token;
+    recent.pop();
+  }
+}
+
+export function verifyConversationArchive(token, secret, now = Date.now()) {
+  if (typeof token !== "string" || token.length > 3500) return [];
+  const separator = token.lastIndexOf(".");
+  if (separator < 1 || !verifySignature(token.slice(0, separator), token.slice(separator + 1), secret)) return [];
+  try {
+    const data = JSON.parse(Buffer.from(token.slice(0, separator), "base64url").toString());
+    if (data.v !== 2 || !Array.isArray(data.entries)) return [];
+    return data.entries.slice(0, 10).filter((entry) =>
+      typeof entry.exp === "number" && entry.exp > now && validateConversationId(entry.cid),
+    );
+  } catch {
+    return [];
+  }
+}
+
 export function verifyTtsTicket(ticket, secret, { now = Date.now() } = {}) {
   if (
     typeof ticket !== "string" ||
@@ -256,7 +283,7 @@ function extractMessageText(item) {
 
 export function normalizeConversationHistory(
   items,
-  { bootstrapPrompt = "Hi", oldestItemIncluded = true } = {},
+  { bootstrapPrompt = "Hi", oldestItemIncluded = true, includeIds = false } = {},
 ) {
   if (!Array.isArray(items)) return [];
 
@@ -275,8 +302,11 @@ export function normalizeConversationHistory(
     const previous = messages[messages.length - 1];
     if (item.role === "assistant" && previous?.role === "assistant") {
       previous.content = `${previous.content}\n\n${content}`;
+      if (includeIds && typeof item.id === "string") previous.itemIds.push(item.id);
     } else {
-      messages.push({ role: item.role, content });
+      messages.push({ role: item.role, content,
+        ...(includeIds ? { id: item.id, itemIds: typeof item.id === "string" ? [item.id] : [] } : {}),
+      });
     }
   }
 

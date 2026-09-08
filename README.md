@@ -59,13 +59,57 @@ POST /api/agent/tts
 
 TTS accepts only an HMAC-signed ticket emitted with an Agent response. It does
 not accept arbitrary text, model IDs, speaker IDs, or BytePlus parameters.
+An active signed conversation grants an expired voice ticket a bounded 24-hour
+grace period; older tickets require reloading history to obtain fresh tickets.
 
 The conversation cookie lasts 30 days, is scoped to `/api/agent`, and is the
-only browser credential used to select a conversation. The first empty session
+active browser credential. A second signed, HttpOnly archive cookie retains up
+to ten recent conversations (subject to cookie size and 30-day expiry). The UI
+receives only opaque selectors; arbitrary upstream IDs cannot open a session.
+Clearing cookies removes browser access, and this is not cross-device history.
+Old conversations are never deleted when starting a new one. The first empty session
 silently submits the fixed user prompt `Hi`; the gateway removes only that
 oldest internal prompt when returning history, while preserving later user
-messages with the same text. `New signal` deletes the previous Boids
-conversation, rotates the signed cookie, and generates a fresh Agent opening.
+messages with the same text. `New conversation` switches the active cookie and
+generates a fresh Agent opening. Conversation titles and per-conversation drafts
+are kept in localStorage; pending-request recovery is kept in sessionStorage.
+Do not enter sensitive drafts on a shared browser.
+
+### Agent interaction and recovery
+
+- Manual transcript scrolling pauses the smooth bottom-follow animation;
+  scrolling down to the bottom or sending the next message resumes it.
+- IME composition, Safari keyCode 229 and the composition-end Enter are ignored
+  for submission. Shift+Enter inserts a newline. The composer grows to 144px,
+  displays the 4,000-character limit and restores drafts without stealing focus.
+- Only explicitly rejected requests offer **Retry sending**. A lost stream or
+  unknown outcome preserves partial text and offers **Sync history**, never an
+  automatic resend. This is not stream reconnection or regeneration.
+- A stream requires `response.completed`; EOF, `[DONE]` alone, `response.failed`,
+  `response.incomplete` and empty output are not treated as success.
+- **Load earlier messages** passes `{ after }` through the conversation route to
+  Boids `GET /conversations/{id}/items?order=desc&limit=100&after=...`. The last raw
+  item ID is the next cursor, including tool/reasoning-only pages. The reading
+  position is preserved. A missing/ignored cursor fails explicitly without
+  replacing current messages. Boids pagination support is assumed, not live-verified.
+- Drafting while generating, user cancellation and live stream resumption remain
+  intentionally deferred. Bootstrap reasoning remains hidden only in the UI.
+
+Local regression checks (Node 22.6+ for the TypeScript client tests):
+
+```bash
+npm run agent:test
+npm run gateway:test
+npm run typecheck
+npm run lint
+npm run build
+node scripts/agent-qa-server.mjs
+```
+
+The QA server binds localhost:3100 and serves the built export with a mocked
+upstream, no credentials and no external API calls. Prompts `long`, `retry`,
+`disconnect` and `seed history` exercise streaming, rejection, interrupted
+transport and cursor pagination. It is not the production gateway.
 
 ## Project structure
 

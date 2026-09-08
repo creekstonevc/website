@@ -5,6 +5,7 @@ import {
   GatewayError,
   buildBoidsResponsePayload,
   createConversationCredential,
+  createConversationArchive,
   createTtsTicket,
   decodeBytePlusAudio,
   extractCompletedText,
@@ -12,6 +13,7 @@ import {
   parseSseFrame,
   readJsonBody,
   verifyConversationCredential,
+  verifyConversationArchive,
   verifyTtsTicket,
 } from "./core.mjs";
 
@@ -178,23 +180,13 @@ async function createBoidsConversation(config, fetchImpl) {
   return payload.id;
 }
 
-async function deleteBoidsConversation(conversationId, config, fetchImpl) {
-  await fetchImpl(
-    `${config.boidsBaseUrl}/conversations/${encodeURIComponent(conversationId)}`,
-    {
-      method: "DELETE",
-      headers: boidsHeaders(config),
-      signal: AbortSignal.timeout(30_000),
-    },
-  ).catch(() => undefined);
-}
-
-async function fetchBoidsHistory(conversationId, config, fetchImpl, limit) {
+async function fetchBoidsHistory(conversationId, config, fetchImpl, limit, after) {
   const url = new URL(
     `${config.boidsBaseUrl}/conversations/${encodeURIComponent(conversationId)}/items`,
   );
   url.searchParams.set("order", "desc");
   url.searchParams.set("limit", String(limit));
+  if (after) url.searchParams.set("after", after);
   const upstream = await fetchImpl(url, {
     headers: boidsHeaders(config),
     signal: AbortSignal.timeout(30_000),
@@ -202,11 +194,18 @@ async function fetchBoidsHistory(conversationId, config, fetchImpl, limit) {
   if (upstream.status === 404) return null;
   if (!upstream.ok) throwBoidsError(upstream.status);
   const payload = await upstream.json();
-  const newestFirst = Array.isArray(payload?.data) ? payload.data : [];
+  if (!Array.isArray(payload?.data)) throw new GatewayError(502, "invalid_history", "History format is unavailable");
+  const newestFirst = payload.data;
+  const nextCursor = payload.has_more === true ? newestFirst.at(-1)?.id : null;
+  if ((payload.has_more && (!nextCursor || !newestFirst.length)) ||
+      (after && newestFirst.some((item) => item.id === after))) {
+    throw new GatewayError(502, "pagination_unavailable", "Earlier history is not supported by the upstream service");
+  }
   const oldestFirst = newestFirst.slice().reverse();
   const messages = normalizeConversationHistory(oldestFirst, {
     bootstrapPrompt: config.bootstrapPrompt,
     oldestItemIncluded: payload?.has_more !== true,
+    includeIds: true,
   }).map((message) => ({
     ...message,
     ...(message.role === "assistant"
@@ -224,9 +223,35 @@ async function fetchBoidsHistory(conversationId, config, fetchImpl, limit) {
   ).length;
   return {
     messages,
-    needsBootstrap: rawMessageCount === 0,
+    needsBootstrap: rawMessageCount === 0 && newestFirst.length === 0 && !payload.has_more && !after,
     truncated: payload?.has_more === true,
+    nextCursor,
   };
+}
+
+function sessionKey(cid) {
+  return createHash("sha256").update(cid).digest("hex").slice(0, 24);
+}
+
+function archivedSessions(request, config) {
+  const entries = verifyConversationArchive(readCookie(request, `${config.conversationCookieName}_archive`), config.signingSecret);
+  const active = readConversationSession(request, config);
+  if (active && !entries.some((entry) => entry.cid === active.conversationId)) {
+    entries.unshift({ cid: active.conversationId, exp: active.expiresAt });
+  }
+  return entries;
+}
+
+function sessionResponse(request, response, config, conversationId, history, created) {
+  const entries = [{ cid: conversationId, exp: Date.now() + config.conversationTtlMs },
+    ...archivedSessions(request, config).filter((entry) => entry.cid !== conversationId)];
+  const token = createConversationArchive(entries, config.signingSecret);
+  const retained = verifyConversationArchive(token, config.signingSecret);
+  const activeCookie = conversationCookie(request, conversationId, config);
+  const archiveCookie = activeCookie.replace(/^[^;]+/, `${config.conversationCookieName}_archive=${token}`);
+  sendJson(response, 200, { ...history, created, sessionKey: sessionKey(conversationId),
+    sessions: retained.map((entry) => ({ key: sessionKey(entry.cid), expiresAt: entry.exp })),
+  }, { "Set-Cookie": [activeCookie, archiveCookie] });
 }
 
 async function proxyConversation(request, response, config, fetchImpl) {
@@ -235,46 +260,33 @@ async function proxyConversation(request, response, config, fetchImpl) {
     throw new GatewayError(400, "invalid_request", "Reset must be a boolean");
   }
 
-  const existing = readConversationSession(request, config);
+  let existing = readConversationSession(request, config);
+  if (body.sessionKey !== undefined) {
+    const selected = archivedSessions(request, config).find((entry) => sessionKey(entry.cid) === body.sessionKey);
+    if (!selected) throw new GatewayError(404, "session_unavailable", "This conversation is no longer saved in this browser");
+    existing = { conversationId: selected.cid };
+  }
+  if (body.after !== undefined && (typeof body.after !== "string" || !/^[A-Za-z0-9._:-]{1,256}$/.test(body.after))) {
+    throw new GatewayError(400, "invalid_cursor", "History cursor is invalid");
+  }
+  if (body.after && (!existing || body.reset)) throw new GatewayError(409, "conversation_required", "Open a conversation before loading history");
   if (existing && !body.reset) {
     const history = await fetchBoidsHistory(
       existing.conversationId,
       config,
       fetchImpl,
       config.conversationHistoryLimit,
+      body.after,
     );
     if (history) {
-      sendJson(
-        response,
-        200,
-        {
-          created: false,
-          needsBootstrap: history.needsBootstrap,
-          truncated: history.truncated,
-          messages: history.messages,
-        },
-        {
-          "Set-Cookie": conversationCookie(
-            request,
-            existing.conversationId,
-            config,
-          ),
-        },
-      );
+      sessionResponse(request, response, config, existing.conversationId, history, false);
       return;
     }
-  }
-
-  if (existing && body.reset) {
-    await deleteBoidsConversation(existing.conversationId, config, fetchImpl);
+    throw new GatewayError(404, "session_unavailable", "This conversation is no longer available upstream");
   }
   const conversationId = await createBoidsConversation(config, fetchImpl);
-  sendJson(
-    response,
-    200,
-    { created: true, needsBootstrap: true, truncated: false, messages: [] },
-    { "Set-Cookie": conversationCookie(request, conversationId, config) },
-  );
+  sessionResponse(request, response, config, conversationId,
+    { needsBootstrap: true, truncated: false, nextCursor: null, messages: [] }, true);
 }
 
 async function proxyResponseStream(
@@ -283,6 +295,7 @@ async function proxyResponseStream(
   config,
   fetchImpl,
   bootstrapLocks,
+  activeTurns,
 ) {
   const body = await readJsonBody(request, config.requestMaxBytes);
   if (body.bootstrap !== undefined && typeof body.bootstrap !== "boolean") {
@@ -302,6 +315,10 @@ async function proxyResponseStream(
   }
 
   let releaseBootstrap;
+  let ownsTurn = false;
+  if (body.sessionKey !== undefined && body.sessionKey !== sessionKey(session.conversationId)) {
+    throw new GatewayError(409, "session_changed", "The active conversation changed in another tab; sync history before sending");
+  }
   if (body.bootstrap) {
     const activeBootstrap = bootstrapLocks.get(session.conversationId);
     if (activeBootstrap) {
@@ -352,6 +369,11 @@ async function proxyResponseStream(
       session.conversationId,
       config.maxInputCharacters,
     );
+    if (activeTurns.has(session.conversationId)) {
+      throw new GatewayError(409, "conversation_busy", "This conversation already has a response in progress");
+    }
+    activeTurns.add(session.conversationId);
+    ownsTurn = true;
     const controller = new AbortController();
     response.on("close", () => {
       if (!response.writableEnded) controller.abort();
@@ -366,6 +388,9 @@ async function proxyResponseStream(
 
     if (!upstream.ok || !upstream.body) {
       await upstream.body?.cancel().catch(() => undefined);
+      if ([400, 401, 403, 404, 422].includes(upstream.status)) {
+        throw new GatewayError(502, "response_rejected", "The upstream service rejected this request before generation");
+      }
       throwBoidsError(upstream.status);
     }
 
@@ -407,8 +432,6 @@ async function proxyResponseStream(
       }
       if (parsed.type === "response.completed") {
         emitTicket(extractCompletedText(parsed.payload, streamedText));
-      } else if (parsed.done) {
-        emitTicket(streamedText);
       }
       response.write(`${frame}\n\n`);
     };
@@ -424,12 +447,12 @@ async function proxyResponseStream(
       }
       pending += decoder.decode();
       if (pending.trim()) relayFrame(pending);
-      emitTicket(streamedText);
       response.end();
     } finally {
       reader.releaseLock();
     }
   } finally {
+    if (ownsTurn) activeTurns.delete(session.conversationId);
     releaseBootstrap?.();
   }
 }
@@ -492,7 +515,16 @@ async function renderTicketedTts(
   inFlight,
 ) {
   const body = await readJsonBody(request, config.requestMaxBytes);
-  const { text } = verifyTtsTicket(body.ticket, config.signingSecret);
+  let verified;
+  try {
+    verified = verifyTtsTicket(body.ticket, config.signingSecret);
+  } catch (error) {
+    // A valid signature still proves this text came from the agent. Give an
+    // active browser session a bounded grace period; never accept unsigned text.
+    if (error.code !== "expired_tts_ticket" || !readConversationSession(request, config)) throw error;
+    verified = verifyTtsTicket(body.ticket, config.signingSecret, { now: Date.now() - 24 * 60 * 60_000 });
+  }
+  const { text } = verified;
   const key = ttsCacheKey(text, config);
 
   let audio = cache.get(key);
@@ -528,6 +560,7 @@ export function createGateway({
   const cache = new Map();
   const inFlight = new Map();
   const bootstrapLocks = new Map();
+  const activeTurns = new Set();
 
   return createServer(async (request, response) => {
     const requestId = randomUUID();
@@ -566,6 +599,7 @@ export function createGateway({
           config,
           fetchImpl,
           bootstrapLocks,
+          activeTurns,
         );
         return;
       }
