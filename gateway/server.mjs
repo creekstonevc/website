@@ -2,6 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import {
+  attachmentCapabilities, attachmentConfig, buildAttachmentInput, createAttachmentBudget,
+  replyAttachments, restoreAttachmentInput, transferAttachment,
+} from "./attachments.mjs";
+import { parseAttachmentReply } from "../lib/agent-attachments.mjs";
+import {
   GatewayError,
   buildBoidsResponsePayload,
   createConversationCredential,
@@ -45,6 +50,7 @@ export function loadConfig(env = process.env) {
     requestMaxBytes: Number(env.GATEWAY_REQUEST_MAX_BYTES || 64 * 1024),
     maxInputCharacters: Number(env.GATEWAY_MAX_INPUT_CHARACTERS || 4_000),
     maxTtsCharacters: Number(env.GATEWAY_MAX_TTS_CHARACTERS || 8_000),
+    attachments: attachmentConfig(env),
     conversationCookieName:
       env.GATEWAY_CONVERSATION_COOKIE_NAME?.trim() || "creekstone_conversation",
     conversationTtlMs: Number(
@@ -206,18 +212,15 @@ async function fetchBoidsHistory(conversationId, config, fetchImpl, limit, after
     bootstrapPrompt: config.bootstrapPrompt,
     oldestItemIncluded: payload?.has_more !== true,
     includeIds: true,
-  }).map((message) => ({
-    ...message,
-    ...(message.role === "assistant"
-      ? {
-          ttsTicket:
-            createTtsTicket(message.content, config.signingSecret, {
-              ttlMs: config.ticketTtlMs,
-              maxCharacters: config.maxTtsCharacters,
-            }) || undefined,
-        }
-      : {}),
-  }));
+  }).map((message) => {
+    if (message.role === "user") return { ...message, ...restoreAttachmentInput(message.content, conversationId, config) };
+    const complete = !oldestFirst.some((item) => message.itemIds?.includes(item.id) &&
+      ["in_progress", "incomplete", "failed"].includes(item.status));
+    return { ...message, complete, ...replyAttachments(message.content, conversationId, config, complete),
+      ttsTicket: complete ? createTtsTicket(parseAttachmentReply(message.content, true).text, config.signingSecret, {
+        ttlMs: config.ticketTtlMs, maxCharacters: config.maxTtsCharacters,
+      }) || undefined : undefined };
+  });
   const rawMessageCount = oldestFirst.filter(
     (item) => item?.type === "message",
   ).length;
@@ -249,7 +252,7 @@ function sessionResponse(request, response, config, conversationId, history, cre
   const retained = verifyConversationArchive(token, config.signingSecret);
   const activeCookie = conversationCookie(request, conversationId, config);
   const archiveCookie = activeCookie.replace(/^[^;]+/, `${config.conversationCookieName}_archive=${token}`);
-  sendJson(response, 200, { ...history, created, sessionKey: sessionKey(conversationId),
+  sendJson(response, 200, { ...history, created, sessionKey: sessionKey(conversationId), attachments: attachmentCapabilities(config),
     sessions: retained.map((entry) => ({ key: sessionKey(entry.cid), expiresAt: entry.exp })),
   }, { "Set-Cookie": [activeCookie, archiveCookie] });
 }
@@ -363,12 +366,17 @@ async function proxyResponseStream(
         );
       }
     }
+    if (body.bootstrap && body.attachments?.length) throw new GatewayError(400, "invalid_attachments", "The opening message cannot include attachments");
+    const attachmentInput = body.bootstrap ? { visible: config.bootstrapPrompt, input: config.bootstrapPrompt } :
+      buildAttachmentInput(body.input, body.attachments, session.conversationId, config);
     const payload = buildBoidsResponsePayload(
-      { ...body, input: body.bootstrap ? config.bootstrapPrompt : body.input },
+      { input: attachmentInput.visible },
       config.boidsModel,
       session.conversationId,
       config.maxInputCharacters,
     );
+    // Validate the founder's text limit BEFORE adding the server-authored manifest.
+    payload.input = attachmentInput.input;
     if (activeTurns.has(session.conversationId)) {
       throw new GatewayError(409, "conversation_busy", "This conversation already has a response in progress");
     }
@@ -431,8 +439,15 @@ async function proxyResponseStream(
         streamedText += parsed.payload.delta;
       }
       if (parsed.type === "response.completed") {
-        emitTicket(extractCompletedText(parsed.payload, streamedText));
+        const text = extractCompletedText(parsed.payload, streamedText);
+        const attachments = replyAttachments(text, session.conversationId, config);
+        if (Object.keys(attachments).length) response.write(
+          `event: creekstone.attachments.ready\ndata: ${JSON.stringify(attachments)}\n\n`,
+        );
+        emitTicket(parseAttachmentReply(text, true).text);
       }
+      // Only this gateway may issue signed artifact / voice metadata.
+      if (parsed.type.startsWith("creekstone.")) return;
       response.write(`${frame}\n\n`);
     };
 
@@ -557,10 +572,12 @@ export function createGateway({
   config = loadConfig(),
   fetchImpl = fetch,
 } = {}) {
+  config = { ...config, attachments: config.attachments || attachmentConfig() };
   const cache = new Map();
   const inFlight = new Map();
   const bootstrapLocks = new Map();
   const activeTurns = new Set();
+  const attachmentBudget = createAttachmentBudget();
 
   return createServer(async (request, response) => {
     const requestId = randomUUID();
@@ -587,6 +604,16 @@ export function createGateway({
         );
       }
       assertOrigin(request, config);
+
+      if (["/attachments/upload", "/attachments/download"].includes(url.pathname)) {
+        const session = readConversationSession(request, config);
+        if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation before transferring files");
+        const result = await transferAttachment({ request, response, config, fetchImpl,
+          conversationId: session.conversationId, expectedSessionKey: sessionKey(session.conversationId),
+          kind: url.pathname.endsWith("/upload") ? "upload" : "download", budget: attachmentBudget });
+        if (result) sendJson(response, 200, result);
+        return;
+      }
 
       if (url.pathname === "/conversations") {
         await proxyConversation(request, response, config, fetchImpl);

@@ -15,8 +15,11 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "./AgentChat.module.css";
 import { useTranscriptScroll } from "./useTranscriptScroll";
+import { useAttachmentDrafts } from "./useAttachmentDrafts";
+import { FileGlyph, MessageAttachments, PendingAttachments } from "./AttachmentControls";
+import { ATTACHMENT_ONLY_INPUT, parseAttachmentReply } from "../../lib/agent-attachments.mjs";
 
-import { AgentRequestError, openConversation, readSavedDraft, shouldSendOnEnter, streamReply, suggestions, waitingMessage, type Message, type ConversationSession, type Recovery, type VoicePhase, type VoiceState } from "./agent-client";
+import { AgentRequestError, attachmentError, defaultAttachmentCapabilities, openConversation, readAttachmentFiles, readSavedDraft, shouldSendOnEnter, streamReply, suggestions, waitingMessage, type AttachmentFile, type Message, type ConversationSession, type Recovery, type VoicePhase, type VoiceState } from "./agent-client";
 
 function VoiceGlyph({ phase }: { phase: VoicePhase }) {
   if (phase === "loading") {
@@ -149,6 +152,10 @@ export function AgentChat() {
   const [recovery, setRecovery] = useState<Recovery | null>(null);
   const [phase, setPhase] = useState("Restoring your conversation…");
   const prependAnchor = useRef<{ height: number; top: number } | null>(null);
+  const attachmentDrafts = useAttachmentDrafts();
+  const { restore: restoreAttachments, replace: replaceAttachments } = attachmentDrafts;
+  const [attachmentCapabilities, setAttachmentCapabilities] = useState(defaultAttachmentCapabilities);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useLayoutEffect(() => {
     const anchor = prependAnchor.current;
@@ -277,7 +284,7 @@ export function AgentChat() {
     }
   };
 
-  const renderReply = useCallback(async (input: string, bootstrap = false) => {
+  const renderReply = useCallback(async (input: string, bootstrap = false, attachments: AttachmentFile[] = []) => {
     let pendingOutput = "";
     let pendingThinking = "";
     let animationFrame: number | null = null;
@@ -326,7 +333,7 @@ export function AgentChat() {
             queueFlush();
           },
         },
-        { bootstrap, sessionKey: sessionKeyRef.current },
+        { bootstrap, sessionKey: sessionKeyRef.current, attachments },
       );
 
       if (animationFrame !== null) {
@@ -345,6 +352,9 @@ export function AgentChat() {
             ...last,
             content: content || "……（没有收到回复，请再试一次）",
             ttsTicket: result.ttsTicket ?? undefined,
+            complete: true,
+            attachments: result.attachments,
+            attachmentWarning: result.attachmentWarning,
           },
         ];
       });
@@ -362,6 +372,8 @@ export function AgentChat() {
     setSessionKey(session.sessionKey);
     setSessions(session.sessions);
     setNextCursor(session.nextCursor);
+    setAttachmentCapabilities(session.attachments);
+    restoreAttachments(session.sessionKey);
     setValue(readSavedDraft(session.sessionKey));
     try {
       const titles: Record<string, string> = {};
@@ -373,7 +385,7 @@ export function AgentChat() {
       }
       setSessionTitles(titles);
     } catch { /* A saved-session index is still available without local titles. */ }
-  }, []);
+  }, [restoreAttachments]);
 
   const saveRecovery = useCallback((next: Recovery | null) => {
     setRecovery(next);
@@ -414,6 +426,7 @@ export function AgentChat() {
           }
         } else if (pending?.kind === "retry") {
           setValue(pending.input || "");
+          replaceAttachments(readAttachmentFiles(pending.attachments));
           saveRecovery(null);
         } else if (session.needsBootstrap) {
           setMessages([waitingMessage]);
@@ -455,7 +468,7 @@ export function AgentChat() {
         operation.current = false;
       }
     },
-    [applySession, disposeAudio, follow, renderReply, saveRecovery],
+    [applySession, disposeAudio, follow, renderReply, replaceAttachments, saveRecovery],
   );
 
   useEffect(() => {
@@ -470,8 +483,10 @@ export function AgentChat() {
   };
 
   const send = async (text?: string, retry = false) => {
-    const input = (text ?? value).trim();
-    if (!input || input.length > 4000 || operation.current || busy || loadingHistory || !ready || (recovery && !retry)) return;
+    const attachments = retry ? readAttachmentFiles(recovery?.attachments) : attachmentDrafts.snapshot();
+    const input = (text ?? value).trim() || (attachments.length ? ATTACHMENT_ONLY_INPUT : "");
+    if (!input || input.length > 4000 || operation.current || busy || loadingHistory || !ready || (recovery && !retry) ||
+        !retry && attachmentDrafts.hasPending() || attachments.length > 0 && !attachmentCapabilities.enabled) return;
     operation.current = true;
     const baseline = retry ? recovery?.baseline : messages.filter((item) => item.role === "user").length;
     const previousAnswer = retry ? recovery?.previousAnswer : messages.findLast((item) => item.role === "assistant")?.content;
@@ -479,10 +494,11 @@ export function AgentChat() {
     disposeAudio();
     setVoice({ messageIndex: null, phase: "idle" });
     setValue("");
+    if (!retry) attachmentDrafts.clear();
     setBusy(true);
     setPhase("Yihao is thinking…");
     follow();
-    saveRecovery({ kind: "sync", input, baseline, previousAnswer,
+    saveRecovery({ kind: "sync", input, baseline, previousAnswer, attachments,
       note: "这条消息可能已经送达。先同步历史检查结果，避免重复发送。" });
     try {
       if (!localStorage.getItem(`creekstone.title.${sessionKey}`)) {
@@ -492,19 +508,19 @@ export function AgentChat() {
     } catch { /* Sending must also work when browser storage is unavailable. */ }
     setMessages((current) => retry
       ? [...current.slice(0, -1), { role: "assistant", content: "" }]
-      : [...current, { role: "user", content: input }, { role: "assistant", content: "" }]);
+      : [...current, { role: "user", content: input, attachments }, { role: "assistant", content: "" }]);
 
     try {
       if (retry && recovery?.rebind) await openConversation({ sessionKey: sessionKeyRef.current });
-      await renderReply(input);
+      await renderReply(input, false, attachments);
       saveRecovery(null);
     } catch (error) {
       const rejected = error instanceof AgentRequestError &&
-        (error.status === 429 || ["response_rejected", "session_changed", "conversation_busy"].includes(error.code));
+        (error.status === 429 || ["response_rejected", "session_changed", "conversation_busy", "invalid_attachment", "attachment_expired", "invalid_attachments", "attachments_too_large", "attachments_unavailable"].includes(error.code));
       saveRecovery({ kind: rejected ? "retry" : "sync", input,
-        baseline, previousAnswer,
+        baseline, previousAnswer, attachments,
         rebind: error instanceof AgentRequestError && error.code === "session_changed",
-        note: rejected ? "这条消息未被接收，可以稍后重试发送。"
+        note: rejected ? (error instanceof AgentRequestError && error.code.includes("attachment") ? `${attachmentError(error)} 这条消息尚未发送，可点击 Edit message 调整。` : "这条消息未被接收，可以稍后重试发送。")
           : "接收中断了，已收到的文字会保留。先同步历史检查结果，不会自动重发消息。" });
     } finally {
       setBusy(false);
@@ -522,7 +538,7 @@ export function AgentChat() {
       applySession(session);
       // This is a history refresh, not a request to resume/reissue generation.
       const lastUser = session.messages.findLast((item) => item.role === "user");
-      const hasAnswer = session.messages.at(-1)?.role === "assistant";
+      const hasAnswer = session.messages.at(-1)?.role === "assistant" && session.messages.at(-1)?.complete !== false;
       const resolved = hasAnswer && (recovery?.bootstrap ||
         (lastUser?.content === recovery?.input && (session.messages.at(-1)?.content !== recovery?.previousAnswer ||
           session.messages.filter((item) => item.role === "user").length > (recovery?.baseline ?? Infinity))));
@@ -699,7 +715,9 @@ export function AgentChat() {
             {historyError && <p role="status">{historyError}</p>}
           </div>}
 
-          {messages.map((message, index) => (
+          {messages.map((message, index) => {
+            const reply = parseAttachmentReply(message.content, message.role === "user" || message.complete === true);
+            return (
             <article
               className={`${styles.message} ${
                 message.role === "user"
@@ -735,7 +753,7 @@ export function AgentChat() {
                       <>
                         <div className={styles.markdown}>
                           <Markdown remarkPlugins={[remarkGfm]}>
-                            {message.content}
+                            {reply.text}
                           </Markdown>
                           {busy &&
                           index === messages.length - 1 &&
@@ -743,6 +761,10 @@ export function AgentChat() {
                             <span className={styles.streamCursor}>▋</span>
                           ) : null}
                         </div>
+                        {reply.state === "pending" && busy && index === messages.length - 1 &&
+                          <p className={styles.attachmentStatus} role="status">Receiving file details…</p>}
+                        <MessageAttachments files={message.attachments} references={reply.files} sessionKey={sessionKey} />
+                        {message.attachmentWarning && <p className={styles.attachmentError} role="status">{message.attachmentWarning}</p>}
                         {message.ttsTicket &&
                         !(busy && index === messages.length - 1) ? (
                           <VoiceControl
@@ -757,11 +779,12 @@ export function AgentChat() {
                     )}
                   </>
                 ) : (
-                  <p>{message.content}</p>
+                  <>{reply.text && <p>{reply.text}</p>}<MessageAttachments files={message.attachments} references={reply.files} sessionKey={sessionKey} />
+                    {reply.state === "invalid" && <p className={styles.attachmentError}>附件引用不完整，请重新上传文件。</p>}</>
                 )}
               </div>
             </article>
-          ))}
+          ); })}
           {recovery && !busy && <div className={styles.recovery} role="status">
             <p>{recovery.note}</p>
             <button type="button" onClick={() => {
@@ -771,6 +794,7 @@ export function AgentChat() {
             }}>{recovery.kind === "retry" ? "Retry sending" : recovery.kind === "sync" ? "Sync history" : "Retry connection"}</button>
             {recovery.kind === "retry" && <button type="button" onClick={() => {
               setValue(recovery.input || "");
+              replaceAttachments(readAttachmentFiles(recovery.attachments));
               setMessages((current) => current.slice(0, -2));
               saveRecovery(null);
               inputRef.current?.focus({ preventScroll: true });
@@ -788,7 +812,7 @@ export function AgentChat() {
             <button
               type="button"
               key={suggestion}
-              disabled={busy || !ready || loadingHistory || !!recovery}
+              disabled={busy || !ready || loadingHistory || !!recovery || attachmentDrafts.blocked}
               onClick={() => void send(suggestion)}
             >
               {suggestion}
@@ -801,6 +825,8 @@ export function AgentChat() {
             <span>Founder input</span>
             <small id="composer-hint">{busy ? phase : "Enter to send · Shift + Enter for a new line"}</small>
           </label>
+          <PendingAttachments drafts={attachmentDrafts.drafts} onRemove={attachmentDrafts.remove} onRetry={attachmentDrafts.retry} />
+          {attachmentDrafts.notice && <p className={styles.attachmentError} role="status">{attachmentDrafts.notice}</p>}
           <div className={styles.composerControl}>
             <span className={styles.promptMark} aria-hidden="true">
               &gt;
@@ -819,10 +845,20 @@ export function AgentChat() {
               onCompositionEnd={() => { composing.current = false; compositionEnded.current = performance.now(); }}
               aria-describedby="composer-hint composer-count"
             />
-            <button type="submit" disabled={busy || !ready || loadingHistory || !!recovery || !value.trim()}>
+            <button type="submit" aria-label="Send message" disabled={busy || !ready || loadingHistory || !!recovery || attachmentDrafts.blocked ||
+              (!value.trim() && !attachmentDrafts.drafts.length) || (!attachmentCapabilities.enabled && attachmentDrafts.drafts.length > 0)}>
               <span>{busy ? "Listening" : "Transmit"}</span>
               <span aria-hidden="true">{busy ? "···" : "↗"}</span>
             </button>
+          </div>
+          <div className={styles.attachmentToolbar}>
+            <input ref={fileInputRef} className={styles.fileInput} type="file" multiple tabIndex={-1} aria-label="Choose attachments"
+              disabled={!attachmentCapabilities.enabled || busy || !ready || !!recovery || loadingHistory}
+              onChange={(event) => { attachmentDrafts.add(Array.from(event.target.files || [])); event.target.value = ""; }} />
+            <button type="button" className={styles.attachButton} onClick={() => fileInputRef.current?.click()}
+              disabled={!attachmentCapabilities.enabled || busy || !ready || !!recovery || loadingHistory || attachmentDrafts.drafts.length >= 3}
+              aria-describedby="attachment-hint"><FileGlyph attach /> Attach files</button>
+            <span id="attachment-hint">{attachmentCapabilities.enabled ? "5 MB / file · 3 files · 10 MB total" : "Attachments unavailable · text chat is open"}</span>
           </div>
           <div className={styles.composerHint}>
             <span>Drafts stay in this browser.</span>

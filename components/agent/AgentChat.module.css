@@ -544,6 +544,151 @@
   font-size: 0.65rem;
 }
 
+/* File controls extend the existing founder console; upload is not parsing. */
+.fileInput { display: none; }
+
+.attachmentToolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding-top: 4px;
+}
+
+.attachmentToolbar > span {
+  color: #b5b1a7;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.attachButton,
+.attachmentAction {
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--agent-gold-light);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.attachButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding-inline-start: 0;
+}
+
+.attachButton:disabled,
+.attachmentAction:disabled { color: #99958c; cursor: default; }
+.attachButton:hover:not(:disabled),
+.attachmentAction:hover:not(:disabled) { color: var(--agent-paper); text-decoration: underline; text-underline-offset: 3px; }
+
+.fileGlyph { flex: 0 0 auto; width: 20px; height: 20px; color: var(--agent-gold); }
+
+.attachmentList {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  border-top: 1px solid rgba(229, 189, 82, 0.3);
+}
+
+.attachmentRow {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(229, 189, 82, 0.18);
+}
+
+.attachmentDetails { min-width: 0; }
+.attachmentName { display: block; font-size: 0.87rem; line-height: 1.5; overflow-wrap: anywhere; color: var(--agent-paper); }
+.attachmentDetails small { display: block; font-size: 0.72rem; line-height: 1.5; color: #b5b1a7; }
+.attachmentCards {
+  display: grid;
+  gap: 8px;
+  max-width: 480px;
+  padding: 0;
+  margin: 16px 0 0;
+  list-style: none;
+}
+
+.attachmentCard {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 12px;
+  border: 1px solid rgba(229, 189, 82, 0.3);
+  background: var(--agent-ink);
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.attachmentCard:focus-within,
+.attachmentCard:hover { border-color: var(--agent-gold); background: #17150e; }
+.attachmentCard .attachmentName { font-weight: 500; }
+.attachmentCard .attachmentDetails small { margin-top: 4px; }
+.attachmentStamp { display: grid; justify-items: center; gap: 3px; color: var(--agent-gold); }
+.attachmentStamp .fileGlyph { width: 24px; height: 24px; }
+.attachmentStamp > span { font-size: 0.6rem; line-height: 1.2; font-weight: 700; letter-spacing: 0.06em; }
+.attachmentDownload {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px;
+  color: var(--agent-gold-light);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.attachmentDownload svg { flex: 0 0 auto; width: 18px; height: 18px; }
+.attachmentDownload:hover:not(:disabled) { color: var(--agent-paper); }
+.attachmentDownload:disabled { color: #99958c; cursor: default; }
+.attachmentCard[data-state="loading"] { border-color: var(--agent-gold); }
+.attachmentCard[data-state="loading"] .attachmentStamp { animation: attachmentReceive 1.1s ease-in-out infinite alternate; }
+.attachmentCard[data-state="unavailable"] { border-style: dashed; }
+@keyframes attachmentReceive { to { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .attachmentCard { transition: none; }
+  .attachmentCard[data-state="loading"] .attachmentStamp { animation: none; }
+}
+.attachmentActions { display: flex; flex-wrap: wrap; justify-content: flex-end; }
+.attachmentRow[data-phase="uploading"] .attachmentDetails small { color: var(--agent-gold-light); }
+.attachmentStatus { color: #b5b1a7; font-size: 0.8rem; line-height: 1.5; }
+
+.attachmentError {
+  grid-column: 1 / -1;
+  margin: 5px 0 0;
+  color: #edc498;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.pendingAttachments {
+  max-height: min(180px, 24dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 0 6px;
+}
+
+@media (max-width: 700px) {
+  .attachButton, .attachmentAction { min-height: 44px; }
+  .attachmentToolbar { gap: 0 10px; }
+  .attachmentToolbar > span { font-size: 0.65rem; }
+  .pendingAttachments { max-height: min(140px, 20dvh); }
+  .pendingAttachments .attachmentRow { grid-template-columns: 18px minmax(0, 1fr); }
+  .pendingAttachments .attachmentActions { grid-column: 2; justify-content: flex-start; }
+  .attachmentCard { grid-template-columns: 32px minmax(0, 1fr) 44px; gap: 6px 8px; padding: 10px; }
+  .attachmentDownload { justify-content: center; padding: 8px; }
+  .attachmentDownload > span { display: none; }
+}
+
 .composerControl:focus-within {
   border-color: var(--agent-gold);
 }

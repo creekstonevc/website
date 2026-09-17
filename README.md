@@ -19,13 +19,20 @@ Open `http://localhost:3100`.
 ## Production deployment
 
 Production uses a static Next.js export served by Nginx, matching the original
-Creekstone deployment model. Three exact same-origin API routes terminate at a
+Creekstone deployment model. Five exact same-origin API routes terminate at a
 private Node gateway bound to `127.0.0.1:8790`. The gateway validates request
 bodies, binds each browser to a Boids conversation with a signed, HttpOnly
 cookie, restores recent history, forces the published Yihao Agent model,
 streams Boids responses, signs short-lived voice tickets, and renders ticketed
 replies through BytePlus Voice Replication. Neither provider key nor a raw
 conversation credential reaches the application JavaScript.
+
+Optional attachments use the existing AgentOS Workspace API through this same
+private Gateway. The website uploads small files; the external Boids Agent uses
+its **existing** Workspace CLI to read them and write deliverables. Signed,
+session-bound downloads keep file paths from becoming public links. The full
+protocol, security boundary, limits and copy-paste Agent Skill instructions are
+in [docs/agent-attachments.md](docs/agent-attachments.md).
 
 On the configured server, the project lives at `/root/creekstone-website`.
 Create `/root/creekstone-website/.env.local` from `.env.example` and provide
@@ -55,6 +62,8 @@ Public routes are intentionally limited to:
 POST /api/agent/conversations
 POST /api/agent/responses
 POST /api/agent/tts
+POST /api/agent/attachments/upload
+POST /api/agent/attachments/download
 ```
 
 TTS accepts only an HMAC-signed ticket emitted with an Agent response. It does
@@ -74,6 +83,14 @@ messages with the same text. `New conversation` switches the active cookie and
 generates a fresh Agent opening. Conversation titles and per-conversation drafts
 are kept in localStorage; pending-request recovery is kept in sessionStorage.
 Do not enter sensitive drafts on a shared browser.
+
+Uploaded attachment draft metadata/receipts also stay in this browser (not file
+bytes). Configure `WORKSPACE_API_URL`, `WORKSPACE_API_KEY` and
+`WORKSPACE_ATTACHMENT_ROOT` server-side to enable file controls; otherwise chat
+continues without them. Do not use the external Agent CLI key as the website key.
+The current Agent key spans all session folders: website checks are **not** hard
+cross-user isolation inside the Agent. File retention/cleanup remains undecided;
+removing a draft does not delete the stored upload.
 
 ### Agent interaction and recovery
 
@@ -109,7 +126,9 @@ node scripts/agent-qa-server.mjs
 The QA server binds localhost:3100 and serves the built export with a mocked
 upstream, no credentials and no external API calls. Prompts `long`, `retry`,
 `disconnect` and `seed history` exercise streaming, rejection, interrupted
-transport and cursor pagination. It is not the production gateway.
+transport and cursor pagination. File uploads and the `artifact` / `incomplete file`
+prompts exercise Workspace handoffs. Filenames containing `slow-upload` or
+`fail-upload` exercise pending/failed transfers. It is not the production gateway.
 
 ## Project structure
 
@@ -128,13 +147,17 @@ components/experience/
 components/agent/
   AgentChat.tsx           stateful streaming Yihao.AI founder channel
   AgentChat.module.css    responsive Creekstone dossier interface
+  AttachmentControls.tsx upload status / authenticated download controls
+  useAttachmentDrafts.ts per-conversation attachment drafts and upload queue
 gateway/
   core.mjs                validation, signed tickets, SSE and audio parsing
   server.mjs              private Boids + BytePlus HTTP gateway
+  attachments.mjs         Workspace transport, signed receipts, namespace checks
   *.test.mjs              unit and integration security tests
 lib/
   content.ts              all timeline, project, and ecosystem content
   types.ts                content contracts
+  agent-attachments.mjs   inline attachment:// parser, legacy block compatibility
 public/
   portfolio-runtime.js    GSAP/Three/Lenis interaction engine
 reference/

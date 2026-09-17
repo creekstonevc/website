@@ -1,9 +1,15 @@
+import { DEFAULT_FILE_BYTES, MAX_ATTACHMENT_FILES, MAX_TURN_BYTES, isSafeFileName, isWorkspacePath, type AttachmentFile, type AttachmentCapabilities } from "../../lib/agent-attachments.mjs";
+export type { AttachmentFile, AttachmentCapabilities } from "../../lib/agent-attachments.mjs";
+
 export type Message = {
   id?: string;
   role: "user" | "assistant";
   content: string;
   thinking?: string;
   ttsTicket?: string;
+  attachments?: AttachmentFile[];
+  attachmentWarning?: string;
+  complete?: boolean;
 };
 
 export type StreamHandlers = {
@@ -14,6 +20,8 @@ export type StreamHandlers = {
 export type StreamResult = {
   text: string;
   ttsTicket: string | null;
+  attachments?: AttachmentFile[];
+  attachmentWarning?: string;
 };
 
 export type ConversationSession = {
@@ -22,9 +30,10 @@ export type ConversationSession = {
   nextCursor: string | null;
   sessionKey: string;
   sessions: { key: string; expiresAt: number }[];
+  attachments: AttachmentCapabilities;
 };
 
-export type Recovery = { kind: "retry" | "sync" | "connect"; note: string; input?: string; baseline?: number; previousAnswer?: string; bootstrap?: boolean; rebind?: boolean };
+export type Recovery = { kind: "retry" | "sync" | "connect"; note: string; input?: string; baseline?: number; previousAnswer?: string; bootstrap?: boolean; rebind?: boolean; attachments?: AttachmentFile[] };
 
 export function readSavedDraft(key: string) {
   try { return localStorage.getItem(`creekstone.draft.${key}`)?.slice(0, 4000) || ""; }
@@ -63,6 +72,76 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readString(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+export function readAttachmentFiles(value: unknown): AttachmentFile[] {
+  if (!Array.isArray(value) || value.length > MAX_ATTACHMENT_FILES) return [];
+  return value.filter((file): file is AttachmentFile => isRecord(file) &&
+    isSafeFileName(file.name) && isWorkspacePath(file.path) && typeof file.ticket === "string" && file.ticket.length <= 6000 &&
+    (file.size === undefined || typeof file.size === "number" && Number.isSafeInteger(file.size) && file.size >= 0 && file.size <= DEFAULT_FILE_BYTES));
+}
+
+export const defaultAttachmentCapabilities: AttachmentCapabilities = {
+  enabled: false, maxFileBytes: DEFAULT_FILE_BYTES, maxFiles: MAX_ATTACHMENT_FILES, maxTotalBytes: MAX_TURN_BYTES,
+};
+
+export function attachmentError(error: unknown): string {
+  const code = error instanceof AgentRequestError ? error.code : "";
+  const messages: Record<string, string> = {
+    attachments_unavailable: "附件服务尚未配置，文字聊天仍可使用。",
+    attachment_too_large: "单个文件不能超过 5 MB，请缩小文件后重新选择。",
+    attachments_too_large: "每条消息的附件总大小不能超过 10 MB。",
+    request_too_large: "文件过大，单个文件不能超过 5 MB。",
+    invalid_filename: "文件名不能含路径分隔符或控制字符，请重命名后重新选择。",
+    invalid_attachment_data: "文件为空或数据无效，请重新选择。",
+    invalid_attachment: "附件凭据无效或不属于当前会话，请重新选择文件。",
+    attachment_expired: "附件凭据已过期。已发送的附件可刷新历史后下载；待发送附件请重新选择。",
+    invalid_attachments: "附件列表无效，每条消息最多 3 个文件。",
+    session_changed: "当前会话已在另一标签页切换。请重新打开此会话后重试。",
+    conversation_required: "请先连接会话，再上传或下载附件。",
+    workspace_permission_denied: "附件服务权限不足，请联系 Creekstone 检查配置；文字聊天不受影响。",
+    attachment_busy: "另一个文件正在传输，请稍后重试。",
+    attachment_rate_limited: "文件传输次数已达限制，请稍后重试。",
+    attachment_unavailable: "文件暂时无法读取，请让 Agent 确认已写回本会话的输出目录。",
+    attachment_timeout: "文件传输超时，结果尚未确认。可以重试；未发送的文件不会自动交给 Agent。",
+    workspace_unavailable: "附件服务暂时不可用，请稍后重试。",
+    workspace_invalid_response: "附件服务未确认文件，请稍后重试。",
+  };
+  return messages[code] || (error instanceof AgentRequestError && error.status === 429
+    ? "文件传输次数已达限制，请稍后重试。" : "文件传输失败，请检查连接后重试。");
+}
+
+async function attachmentRequest(path: "upload" | "download", body: unknown, signal?: AbortSignal) {
+  const response = await fetch(`/api/agent/attachments/${path}`, {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new AgentRequestError(response.status, payload?.error?.code || "workspace_unavailable");
+  }
+  return response;
+}
+
+export async function uploadAttachment(file: File, sessionKey: string, signal?: AbortSignal): Promise<{ file: AttachmentFile; warning?: string }> {
+  const name = file.name.normalize("NFC");
+  if (!isSafeFileName(name)) throw new AgentRequestError(400, "invalid_filename");
+  if (file.size > DEFAULT_FILE_BYTES) throw new AgentRequestError(413, "attachment_too_large");
+  if (!file.size) throw new AgentRequestError(400, "invalid_attachment_data");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  signal?.throwIfAborted();
+  const chunks: string[] = [];
+  for (let index = 0; index < bytes.length; index += 32768) chunks.push(String.fromCharCode(...bytes.subarray(index, index + 32768)));
+  const response = await attachmentRequest("upload", { sessionKey, name, dataBase64: btoa(chunks.join("")) }, signal);
+  const result = await response.json();
+  const uploaded = readAttachmentFiles([result.file])[0];
+  if (!uploaded || uploaded.name !== name || uploaded.size !== file.size) throw new AgentRequestError(502, "workspace_invalid_response");
+  return { file: uploaded, ...(typeof result.warning === "string" ? { warning: result.warning } : {}) };
+}
+
+export async function downloadAttachment(file: AttachmentFile, sessionKey: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await attachmentRequest("download", { sessionKey, ticket: file.ticket }, signal);
+  return response.blob();
 }
 
 function extractFinalText(payload: unknown): string {
@@ -104,6 +183,9 @@ function readHistoryMessages(value: unknown): Message[] {
         id: readString(item.id) || undefined,
         role: item.role,
         content: item.content,
+        attachments: readAttachmentFiles(item.attachments),
+        attachmentWarning: readString(item.attachmentWarning) || undefined,
+        complete: item.complete !== false,
         ...(typeof item.ttsTicket === "string"
           ? { ttsTicket: item.ttsTicket }
           : {}),
@@ -132,6 +214,7 @@ export async function openConversation(options: { reset?: boolean; sessionKey?: 
     messages: readHistoryMessages(data.messages),
     nextCursor: readString(data.nextCursor) || null,
     sessionKey: readString(data.sessionKey),
+    attachments: { ...defaultAttachmentCapabilities, enabled: isRecord(data.attachments) && data.attachments.enabled === true },
     sessions: Array.isArray(data.sessions) ? data.sessions.filter((item): item is { key: string; expiresAt: number } =>
       isRecord(item) && typeof item.key === "string" && typeof item.expiresAt === "number") : [],
   };
@@ -140,7 +223,7 @@ export async function openConversation(options: { reset?: boolean; sessionKey?: 
 export async function streamReply(
   input: string,
   handlers: StreamHandlers,
-  { bootstrap = false, sessionKey }: { bootstrap?: boolean; sessionKey?: string } = {},
+  { bootstrap = false, sessionKey, attachments }: { bootstrap?: boolean; sessionKey?: string; attachments?: AttachmentFile[] } = {},
 ): Promise<StreamResult> {
   const response = await fetch("/api/agent/responses", {
     method: "POST",
@@ -152,6 +235,7 @@ export async function streamReply(
     body: JSON.stringify({
       ...(bootstrap ? { bootstrap: true } : { input }),
       ...(sessionKey ? { sessionKey } : {}),
+      ...(!bootstrap && attachments?.length ? { attachments: attachments.map((file) => file.ticket) } : {}),
     }),
   });
 
@@ -178,6 +262,7 @@ export async function streamReply(
   let completedOutput = "";
   let ttsTicket: string | null = null;
   let finished = false;
+  let attachmentMetadata: { attachments?: AttachmentFile[]; attachmentWarning?: string } = {};
 
   const handleFrame = (frame: string): boolean => {
     let eventName = "";
@@ -209,6 +294,12 @@ export async function streamReply(
       isRecord(payload) && typeof payload.type === "string" ? payload.type : "";
     const type = eventName || payloadType;
     const delta = isRecord(payload) ? readString(payload.delta) : "";
+
+    if (type === "creekstone.attachments.ready" && isRecord(payload)) {
+      attachmentMetadata = { attachments: readAttachmentFiles(payload.attachments),
+        ...(typeof payload.attachmentWarning === "string" ? { attachmentWarning: payload.attachmentWarning } : {}) };
+      return false;
+    }
 
     if (
       type === "creekstone.tts.ready" &&
@@ -270,7 +361,7 @@ export async function streamReply(
   if (!finished) throw new AgentRequestError(502, "stream_interrupted");
   if (!(completedOutput || streamedOutput).trim()) throw new AgentRequestError(502, "empty_response");
 
-  return { text: completedOutput || streamedOutput, ttsTicket };
+  return { text: completedOutput || streamedOutput, ttsTicket, ...attachmentMetadata };
   } finally {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();

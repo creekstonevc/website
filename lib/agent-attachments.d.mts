@@ -1,0 +1,17 @@
+export const ATTACHMENT_VERSION: 1;
+export const MAX_ATTACHMENT_FILES: 3;
+export const DEFAULT_FILE_BYTES: number;
+export const MAX_TURN_BYTES: number;
+export const ATTACHMENT_ONLY_INPUT: string;
+export const OUTPUT_FENCE: string;
+export const INPUT_FENCE: string;
+export const ATTACHMENT_MARKER: string;
+export type AttachmentReference = { name: string; path: string };
+export type AttachmentFile = AttachmentReference & { ticket: string; size?: number };
+export type AttachmentCapabilities = { enabled: boolean; maxFileBytes: number; maxFiles: number; maxTotalBytes: number };
+export function isSafeFileName(value: unknown): value is string;
+export function isWorkspacePath(value: unknown): value is string;
+export function attachmentReferencePath(path: string): string;
+export function formatAttachmentReference(path: string): string;
+export function parseAttachmentReply(source: string, complete?: boolean): { text: string; files: AttachmentReference[]; state: "none" | "pending" | "ready" | "invalid" };
+export function formatFileSize(bytes?: number): string;

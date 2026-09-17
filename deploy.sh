@@ -60,6 +60,9 @@ install -d -m 700 "$BACKUP_ROOT" "$DEPLOY_BACKUP"
 if [ -d "$WEB_ROOT" ]; then
   cp -a "$WEB_ROOT" "$DEPLOY_BACKUP/webroot"
 fi
+if [ -d "$GATEWAY_ROOT" ]; then
+  cp -a "$GATEWAY_ROOT" "$DEPLOY_BACKUP/gateway"
+fi
 for file in "$SITE_CONF" "$AGENT_SNIPPET" "$AGENT_LIMITS" "$GATEWAY_ENV" "$GATEWAY_SERVICE"; do
   if [ -f "$file" ]; then
     cp -a "$file" "$DEPLOY_BACKUP/$(basename "$file")"
@@ -73,6 +76,9 @@ BYTEPLUS_TTS_SPEAKER_ID="$(read_project_env BYTEPLUS_TTS_SPEAKER_ID)"
 BYTEPLUS_TTS_RESOURCE_ID="$(read_project_env BYTEPLUS_TTS_RESOURCE_ID)"
 BOIDS_BASE_URL="$(read_project_env BOIDS_BASE_URL)"
 BOIDS_AGENT_MODEL="$(read_project_env BOIDS_AGENT_MODEL)"
+WORKSPACE_API_URL="$(read_project_env WORKSPACE_API_URL)"
+WORKSPACE_API_KEY="$(read_project_env WORKSPACE_API_KEY)"
+WORKSPACE_ATTACHMENT_ROOT="$(read_project_env WORKSPACE_ATTACHMENT_ROOT)"
 GATEWAY_SIGNING_SECRET="$(read_gateway_env GATEWAY_SIGNING_SECRET)"
 
 if [ -z "$BOIDS_API_KEY" ]; then
@@ -92,14 +98,18 @@ BYTEPLUS_TTS_RESOURCE_ID="${BYTEPLUS_TTS_RESOURCE_ID:-seed-icl-2.0}"
 BOIDS_BASE_URL="${BOIDS_BASE_URL:-https://api.boids.so/v1}"
 BOIDS_AGENT_MODEL="${BOIDS_AGENT_MODEL:-agent:@qq1006775897-1-org/qq1006775897}"
 GATEWAY_SIGNING_SECRET="${GATEWAY_SIGNING_SECRET:-$(openssl rand -hex 32)}"
+WORKSPACE_ATTACHMENT_ROOT="${WORKSPACE_ATTACHMENT_ROOT:-founder-handoff/Yihao Agent Founder Intake/attachments}"
 
 if ! id "$GATEWAY_USER" >/dev/null 2>&1; then
   useradd --system --user-group --home-dir /nonexistent --shell /usr/sbin/nologin "$GATEWAY_USER"
 fi
 
 install -d -m 750 -o root -g "$GATEWAY_USER" "$GATEWAY_ROOT"
-install -m 755 -o root -g root "$PROJECT_DIR/gateway/core.mjs" "$GATEWAY_ROOT/core.mjs"
-install -m 755 -o root -g root "$PROJECT_DIR/gateway/server.mjs" "$GATEWAY_ROOT/server.mjs"
+install -d -m 750 -o root -g "$GATEWAY_USER" "$GATEWAY_ROOT/gateway" "$GATEWAY_ROOT/lib"
+for module in core server attachments; do
+  install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/gateway/$module.mjs" "$GATEWAY_ROOT/gateway/$module.mjs"
+done
+install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/lib/agent-attachments.mjs" "$GATEWAY_ROOT/lib/agent-attachments.mjs"
 
 {
   printf 'GATEWAY_HOST=127.0.0.1\n'
@@ -115,6 +125,9 @@ install -m 755 -o root -g root "$PROJECT_DIR/gateway/server.mjs" "$GATEWAY_ROOT/
   printf 'BYTEPLUS_TTS_API_KEY=%s\n' "$BYTEPLUS_TTS_API_KEY"
   printf 'BYTEPLUS_TTS_SPEAKER_ID=%s\n' "$BYTEPLUS_TTS_SPEAKER_ID"
   printf 'BYTEPLUS_TTS_RESOURCE_ID=%s\n' "$BYTEPLUS_TTS_RESOURCE_ID"
+  printf 'WORKSPACE_API_URL=%s\n' "$WORKSPACE_API_URL"
+  printf 'WORKSPACE_API_KEY=%s\n' "$WORKSPACE_API_KEY"
+  printf 'WORKSPACE_ATTACHMENT_ROOT=%s\n' "$WORKSPACE_ATTACHMENT_ROOT"
 } > "$GATEWAY_ENV"
 chown root:"$GATEWAY_USER" "$GATEWAY_ENV"
 chmod 640 "$GATEWAY_ENV"
@@ -131,7 +144,7 @@ Type=simple
 User=$GATEWAY_USER
 Group=$GATEWAY_USER
 EnvironmentFile=$GATEWAY_ENV
-ExecStart=/usr/bin/node $GATEWAY_ROOT/server.mjs
+ExecStart=/usr/bin/node $GATEWAY_ROOT/gateway/server.mjs
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=15s
@@ -174,6 +187,8 @@ cat > "$AGENT_LIMITS" <<'EOF'
 limit_req_zone $binary_remote_addr zone=creekstone_agent_conversation:10m rate=6r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_agent_response:10m rate=12r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_agent_tts:10m rate=6r/m;
+limit_req_zone $binary_remote_addr zone=creekstone_attachment_upload:10m rate=3r/m;
+limit_req_zone $binary_remote_addr zone=creekstone_attachment_download:10m rate=12r/m;
 limit_conn_zone $binary_remote_addr zone=creekstone_agent_connections:10m;
 EOF
 chmod 644 "$AGENT_LIMITS"
@@ -232,6 +247,47 @@ location = /api/agent/tts {
     proxy_set_header Connection "";
     proxy_connect_timeout 5s;
     proxy_read_timeout 125s;
+    proxy_cache off;
+}
+
+location = /api/agent/attachments/upload {
+    limit_except POST { deny all; }
+    limit_req zone=creekstone_attachment_upload burst=3 nodelay;
+    limit_req_status 429;
+    limit_conn creekstone_agent_connections 2;
+    client_max_body_size 8m;
+    client_body_timeout 15s;
+
+    proxy_pass http://127.0.0.1:8790/attachments/upload;
+    proxy_http_version 1.1;
+    proxy_set_header Host 127.0.0.1;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 35s;
+    proxy_read_timeout 35s;
+    proxy_request_buffering off;
+    proxy_buffering off;
+    proxy_cache off;
+}
+
+location = /api/agent/attachments/download {
+    limit_except POST { deny all; }
+    limit_req zone=creekstone_attachment_download burst=6 nodelay;
+    limit_req_status 429;
+    limit_conn creekstone_agent_connections 2;
+    client_max_body_size 8k;
+
+    proxy_pass http://127.0.0.1:8790/attachments/download;
+    proxy_http_version 1.1;
+    proxy_set_header Host 127.0.0.1;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 35s;
+    proxy_buffering off;
     proxy_cache off;
 }
 
