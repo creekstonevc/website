@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { streamReply, uploadAttachment, downloadAttachment, readAttachmentFiles, openConversation, attachmentError } from "./agent-client.ts";
-import { OUTPUT_FENCE, parseAttachmentReply, formatAttachmentReference, formatFileSize } from "../../lib/agent-attachments.mjs";
+import { attachmentDisplayText, formatFileSize } from "../../lib/agent-attachments.mjs";
 
-const file = { name: "计划 书.pdf", path: "root/inputs/session/id/计划 书.pdf", size: 6, ticket: "signed-upload-receipt" };
-const output = { name: "结果 报告.html", path: "root/outputs/session/结果 报告.html", ticket: "signed-download" };
+const file = { name: "计划 书.pdf", fileId: "file-upload-123", size: 6, ticket: "signed-upload-receipt" };
+const output = { name: "结果 报告.html", fileId: "file-out-123", ticket: "signed-download" };
 const event = (type, payload) => `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;
 const handlers = { onOutputDelta() {}, onThinkingDelta() {} };
 
@@ -46,15 +46,14 @@ test("Responses only submits signed receipts, never client paths or filenames as
 });
 
 test("output attachments appear only on terminal success, never from partial SSE", async (t) => {
-  const answer = `完成\n\n${OUTPUT_FENCE}\n${JSON.stringify({ version: 1, files: [{ name: output.name, path: output.path }] })}\n\`\`\``;
+  const answer = "完成";
   let wire = event("response.output_text.delta", { delta: answer }) + event("creekstone.attachments.ready", { attachments: [output] });
   t.mock.method(globalThis, "fetch", async () => new Response(wire));
   await assert.rejects(streamReply("read", handlers), (error) => error.code === "stream_interrupted");
-  assert.equal(parseAttachmentReply(answer, false).files.length, 0);
   wire += event("response.completed", {});
   const result = await streamReply("read", handlers);
   assert.deepEqual(result.attachments, [output]);
-  assert.equal(parseAttachmentReply(result.text, true).text, "完成");
+  assert.equal(result.text, "完成");
 });
 
 test("history uses the same attachment representation and preserves incompletion and warnings", async (t) => {
@@ -71,8 +70,8 @@ test("history uses the same attachment representation and preserves incompletion
   assert.equal(result.attachments.enabled, true);
 });
 
-test("inline paths never appear in rendered text during streaming, completion or history restore", async (t) => {
-  const answer = `${formatAttachmentReference(output.path)} 改完了，请查收。`;
+test("native sandbox filenames are presented as attachments, not raw download paths", async (t) => {
+  const answer = "文件已生成：`/workspace/session/结果 报告.html`";
   const chunks = Array.from(answer);
   let text = "";
   t.mock.method(globalThis, "fetch", async () => new Response(chunks.map((delta) =>
@@ -80,21 +79,19 @@ test("inline paths never appear in rendered text during streaming, completion or
     event("creekstone.attachments.ready", { attachments: [output] }) + event("response.completed", {})));
   const result = await streamReply("修改一下", { ...handlers, onOutputDelta(delta) {
     text += delta;
-    const displayed = parseAttachmentReply(text, false);
-    assert.doesNotMatch(displayed.text, /attachment:|root\/outputs/);
-    assert.equal(displayed.files.length, 0);
+    if (text.includes("/workspace/session/")) assert.doesNotMatch(attachmentDisplayText(text, true), /\/workspace\/session\//);
   } });
   assert.deepEqual(result.attachments, [output]);
-  assert.equal(parseAttachmentReply(result.text, true).text, "改完了，请查收。");
+  assert.equal(attachmentDisplayText(result.text, true), "文件已生成：附件");
   t.mock.method(globalThis, "fetch", async () => Response.json({ sessionKey: "s", messages: [
     { role: "assistant", content: answer, complete: true, attachments: [output] },
   ] }));
   const restored = await openConversation();
-  assert.equal(parseAttachmentReply(restored.messages[0].content, restored.messages[0].complete).text, "改完了，请查收。");
+  assert.equal(attachmentDisplayText(restored.messages[0].content, true), "文件已生成：附件");
   assert.deepEqual(restored.messages[0].attachments, [output]);
 });
 
-test("downloads are same-origin authenticated POSTs, not exposed Workspace URLs", async (t) => {
+test("downloads are same-origin authenticated POSTs, never exposed provider URLs", async (t) => {
   t.mock.method(globalThis, "fetch", async (url, options) => {
     assert.equal(url, "/api/agent/attachments/download"); assert.equal(options.credentials, "same-origin");
     assert.deepEqual(JSON.parse(options.body), { sessionKey: "s", ticket: output.ticket });
@@ -104,9 +101,29 @@ test("downloads are same-origin authenticated POSTs, not exposed Workspace URLs"
 });
 
 test("permission failures have actionable UI copy and malformed metadata is ignored", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => Response.json({ error: { code: "workspace_permission_denied" } }, { status: 503 }));
+  t.mock.method(globalThis, "fetch", async () => Response.json({ error: { code: "files_permission_denied" } }, { status: 503 }));
   await assert.rejects(downloadAttachment(output, "s"), (error) => /权限不足/.test(attachmentError(error)));
-  assert.deepEqual(readAttachmentFiles([{ ...file, path: "../another-session" }]), []);
+  assert.deepEqual(readAttachmentFiles([{ ...file, fileId: "file-../another-session" }]), []);
+  assert.deepEqual(readAttachmentFiles([{ name: "old.pdf", path: "old/inputs/old.pdf", ticket: "retired" }]), []);
   assert.deepEqual(readAttachmentFiles([{ ...file, ticket: undefined }]), []);
   assert.equal(formatFileSize(1024), "1.0 KB"); assert.equal(formatFileSize(5 * 1024 * 1024), "5.0 MB");
+});
+
+test("file-only Responses and file-only history remain visible without text", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(event("creekstone.attachments.ready", { attachments: [output] }) +
+    event("response.completed", { response: { output: [] } })));
+  const result = await streamReply("give me a file", handlers);
+  assert.equal(result.text, ""); assert.deepEqual(result.attachments, [output]);
+  t.mock.method(globalThis, "fetch", async () => Response.json({ sessionKey: "s", messages: [
+    { role: "user", content: "", attachments: [file] }, { role: "assistant", content: "", attachments: [output] },
+    { role: "assistant", content: "", attachmentWarning: "File unavailable" },
+  ] }));
+  assert.equal((await openConversation()).messages.length, 3);
+});
+
+test("an annotation without a gateway-issued ticket cannot create a clickable file", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(event("response.completed", { response: { output: [{
+    type: "message", role: "assistant", content: [{ type: "output_text", text: "done", annotations: [{ type: "file_path", file_id: output.fileId }] }],
+  }] } })));
+  assert.equal((await streamReply("give me a file", handlers)).attachments, undefined);
 });

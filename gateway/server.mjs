@@ -3,9 +3,9 @@ import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import {
   attachmentCapabilities, attachmentConfig, buildAttachmentInput, createAttachmentBudget,
-  replyAttachments, restoreAttachmentInput, transferAttachment,
+  messageAttachments, createFileMetadataLookup, transferAttachment,
 } from "./attachments.mjs";
-import { parseAttachmentReply } from "../lib/agent-attachments.mjs";
+import { attachmentDisplayText } from "../lib/agent-attachments.mjs";
 import {
   GatewayError,
   buildBoidsResponsePayload,
@@ -208,19 +208,20 @@ async function fetchBoidsHistory(conversationId, config, fetchImpl, limit, after
     throw new GatewayError(502, "pagination_unavailable", "Earlier history is not supported by the upstream service");
   }
   const oldestFirst = newestFirst.slice().reverse();
-  const messages = normalizeConversationHistory(oldestFirst, {
+  const messages = await Promise.all(normalizeConversationHistory(oldestFirst, {
     bootstrapPrompt: config.bootstrapPrompt,
     oldestItemIncluded: payload?.has_more !== true,
     includeIds: true,
-  }).map((message) => {
-    if (message.role === "user") return { ...message, ...restoreAttachmentInput(message.content, conversationId, config) };
-    const complete = !oldestFirst.some((item) => message.itemIds?.includes(item.id) &&
-      ["in_progress", "incomplete", "failed"].includes(item.status));
-    return { ...message, complete, ...replyAttachments(message.content, conversationId, config, complete),
-      ttsTicket: complete ? createTtsTicket(parseAttachmentReply(message.content, true).text, config.signingSecret, {
+  }).map(async (message) => {
+    const items = oldestFirst.filter((item) => message.itemIds?.includes(item.id));
+    const complete = !items.some((item) => ["in_progress", "incomplete", "failed"].includes(item.status));
+    const attachments = await messageAttachments(items, message.role, conversationId, config, config.fileMetadata, complete);
+    const content = attachmentDisplayText(message.content, message.role === "assistant");
+    return { ...message, content, complete, ...attachments,
+      ttsTicket: complete && message.role === "assistant" ? createTtsTicket(content, config.signingSecret, {
         ttlMs: config.ticketTtlMs, maxCharacters: config.maxTtsCharacters,
       }) || undefined : undefined };
-  });
+  }));
   const rawMessageCount = oldestFirst.filter(
     (item) => item?.type === "message",
   ).length;
@@ -375,7 +376,7 @@ async function proxyResponseStream(
       session.conversationId,
       config.maxInputCharacters,
     );
-    // Validate the founder's text limit BEFORE adding the server-authored manifest.
+    // Validate text separately from the server-verified native input_file parts.
     payload.input = attachmentInput.input;
     if (activeTurns.has(session.conversationId)) {
       throw new GatewayError(409, "conversation_busy", "This conversation already has a response in progress");
@@ -416,6 +417,8 @@ async function proxyResponseStream(
     let pending = "";
     let streamedText = "";
     let ticketSent = false;
+    const outputItems = new Map();
+    const fileAnnotations = new Map();
 
     const emitTicket = (text) => {
       if (ticketSent) return;
@@ -430,8 +433,16 @@ async function proxyResponseStream(
       ticketSent = true;
     };
 
-    const relayFrame = (frame) => {
+    const relayFrame = async (frame) => {
       const parsed = parseSseFrame(frame);
+      // Some providers send annotations on item/annotation events, others only
+      // in response.completed. Neither grants access before terminal success.
+      if (parsed.type === "response.output_item.done" && parsed.payload?.item?.type === "message" && outputItems.size < 16) {
+        outputItems.set(parsed.payload.item.id ?? parsed.payload.output_index, parsed.payload.item);
+      }
+      if (parsed.type === "response.output_text.annotation.added" && parsed.payload?.annotation?.type === "file_path" && fileAnnotations.size < 4) {
+        fileAnnotations.set(parsed.payload.annotation.file_id, parsed.payload.annotation);
+      }
       if (
         parsed.type === "response.output_text.delta" &&
         typeof parsed.payload?.delta === "string"
@@ -440,11 +451,17 @@ async function proxyResponseStream(
       }
       if (parsed.type === "response.completed") {
         const text = extractCompletedText(parsed.payload, streamedText);
-        const attachments = replyAttachments(text, session.conversationId, config);
+        const terminal = parsed.payload?.response || parsed.payload;
+        const items = Array.isArray(terminal?.output) ? terminal.output : [...outputItems.values()];
+        const completedItems = items.filter((item) => !["in_progress", "incomplete", "failed"].includes(item.status));
+        if (fileAnnotations.size) completedItems.push({ type: "message", role: "assistant", content: [
+          { type: "output_text", text, annotations: [...fileAnnotations.values()] },
+        ] });
+        const attachments = await messageAttachments(completedItems, "assistant", session.conversationId, config, config.fileMetadata);
         if (Object.keys(attachments).length) response.write(
           `event: creekstone.attachments.ready\ndata: ${JSON.stringify(attachments)}\n\n`,
         );
-        emitTicket(parseAttachmentReply(text, true).text);
+        emitTicket(attachmentDisplayText(text, true));
       }
       // Only this gateway may issue signed artifact / voice metadata.
       if (parsed.type.startsWith("creekstone.")) return;
@@ -458,10 +475,10 @@ async function proxyResponseStream(
         pending += decoder.decode(value, { stream: true });
         const frames = pending.split(/\r?\n\r?\n/);
         pending = frames.pop() ?? "";
-        for (const frame of frames) relayFrame(frame);
+        for (const frame of frames) await relayFrame(frame);
       }
       pending += decoder.decode();
-      if (pending.trim()) relayFrame(pending);
+      if (pending.trim()) await relayFrame(pending);
       response.end();
     } finally {
       reader.releaseLock();
@@ -573,6 +590,7 @@ export function createGateway({
   fetchImpl = fetch,
 } = {}) {
   config = { ...config, attachments: config.attachments || attachmentConfig() };
+  config.fileMetadata = createFileMetadataLookup(config, fetchImpl);
   const cache = new Map();
   const inFlight = new Map();
   const bootstrapLocks = new Map();

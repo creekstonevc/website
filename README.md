@@ -27,12 +27,12 @@ streams Boids responses, signs short-lived voice tickets, and renders ticketed
 replies through BytePlus Voice Replication. Neither provider key nor a raw
 conversation credential reaches the application JavaScript.
 
-Optional attachments use the existing AgentOS Workspace API through this same
-private Gateway. The website uploads small files; the external Boids Agent uses
-its **existing** Workspace CLI to read them and write deliverables. Signed,
-session-bound downloads keep file paths from becoming public links. The full
-protocol, security boundary, limits and copy-paste Agent Skill instructions are
-in [docs/agent-attachments.md](docs/agent-attachments.md).
+Attachments use Boids' native OpenAI-compatible Files API through this same
+private Gateway: multipart upload (`purpose=user_data`), native `input_file`
+content in Responses, and `file_path` annotations for generated files. Signed,
+session-bound receipts protect downloads; provider credentials never reach the
+browser. No Agent.md or Skill edits are required. The contract, security boundary
+and limits are in [docs/agent-attachments.md](docs/agent-attachments.md).
 
 On the configured server, the project lives at `/root/creekstone-website`.
 Create `/root/creekstone-website/.env.local` from `.env.example` and provide
@@ -85,12 +85,12 @@ are kept in localStorage; pending-request recovery is kept in sessionStorage.
 Do not enter sensitive drafts on a shared browser.
 
 Uploaded attachment draft metadata/receipts also stay in this browser (not file
-bytes). Configure `WORKSPACE_API_URL`, `WORKSPACE_API_KEY` and
-`WORKSPACE_ATTACHMENT_ROOT` server-side to enable file controls; otherwise chat
-continues without them. Do not use the external Agent CLI key as the website key.
-The current Agent key spans all session folders: website checks are **not** hard
-cross-user isolation inside the Agent. File retention/cleanup remains undecided;
-removing a draft does not delete the stored upload.
+bytes). Files reuse `BOIDS_API_KEY` and `BOIDS_BASE_URL`; set
+`BOIDS_FILES_ENABLED=false` to disable file controls without affecting text chat.
+Website receipts prevent arbitrary file-ID access but do not replace Boids'
+own account/session isolation. Old storage-backed attachments must be uploaded
+or generated again; their text references cannot grant downloads. Retention is
+managed upstream; removing a draft does not delete the stored file.
 
 ### Agent interaction and recovery
 
@@ -127,7 +127,7 @@ The QA server binds localhost:3100 and serves the built export with a mocked
 upstream, no credentials and no external API calls. Prompts `long`, `retry`,
 `disconnect` and `seed history` exercise streaming, rejection, interrupted
 transport and cursor pagination. File uploads and the `artifact` / `incomplete file`
-prompts exercise Workspace handoffs. Filenames containing `slow-upload` or
+prompts exercise native file annotations; `file only` returns no text. Filenames containing `slow-upload` or
 `fail-upload` exercise pending/failed transfers. It is not the production gateway.
 
 ## Project structure
@@ -152,12 +152,12 @@ components/agent/
 gateway/
   core.mjs                validation, signed tickets, SSE and audio parsing
   server.mjs              private Boids + BytePlus HTTP gateway
-  attachments.mjs         Workspace transport, signed receipts, namespace checks
+  attachments.mjs         native Boids Files transport and session-bound receipts
   *.test.mjs              unit and integration security tests
 lib/
   content.ts              all timeline, project, and ecosystem content
   types.ts                content contracts
-  agent-attachments.mjs   inline attachment:// parser, legacy block compatibility
+  agent-attachments.mjs   file-ID validation and attachment display helpers
 public/
   portfolio-runtime.js    GSAP/Three/Lenis interaction engine
 reference/

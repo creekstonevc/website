@@ -298,13 +298,18 @@ export function normalizeConversationHistory(
       continue;
     }
     const content = extractMessageText(item);
-    if (!content) continue;
+    const hasFiles = Array.isArray(item.content) && item.content.some((part) =>
+      part?.type === "input_file" || part?.type === "output_text" &&
+      Array.isArray(part.annotations) && part.annotations.some((entry) => entry?.type === "file_path"));
+    if (!content && !hasFiles) continue;
     const previous = messages[messages.length - 1];
     if (item.role === "assistant" && previous?.role === "assistant") {
       previous.content = `${previous.content}\n\n${content}`;
+      if (hasFiles) previous.hasFiles = true;
       if (includeIds && typeof item.id === "string") previous.itemIds.push(item.id);
     } else {
       messages.push({ role: item.role, content,
+        ...(hasFiles ? { hasFiles: true } : {}),
         ...(includeIds ? { id: item.id, itemIds: typeof item.id === "string" ? [item.id] : [] } : {}),
       });
     }
@@ -313,6 +318,7 @@ export function normalizeConversationHistory(
   if (
     oldestItemIncluded &&
     messages[0]?.role === "user" &&
+    !messages[0].hasFiles &&
     messages[0].content.trim() === bootstrapPrompt
   ) {
     return messages.slice(1);

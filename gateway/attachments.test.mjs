@@ -1,72 +1,75 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { createHmac } from "node:crypto";
 import test from "node:test";
 import { createGateway, loadConfig } from "./server.mjs";
-import { createConversationCredential } from "./core.mjs";
-import { attachmentDirectory, attachmentNamespace, buildAttachmentInput, createAttachmentBudget,
-  replyAttachments, restoreAttachmentInput, verifyAttachmentTicket } from "./attachments.mjs";
-import { parseAttachmentReply, formatAttachmentReference, attachmentReferencePath, INPUT_FENCE, OUTPUT_FENCE } from "../lib/agent-attachments.mjs";
+import { createConversationCredential, normalizeConversationHistory, verifyTtsTicket } from "./core.mjs";
+import { attachmentConfig, buildAttachmentInput, createAttachmentBudget, createFileMetadataLookup,
+  nativeAttachmentReferences, messageAttachments, verifyAttachmentTicket } from "./attachments.mjs";
+import { attachmentDisplayText, isFileId, hasRetiredAttachment } from "../lib/agent-attachments.mjs";
 
 const origin = "https://creekstonevc.com";
-const root = "founder-handoff/Yihao Agent Founder Intake/attachments";
-const block = (files, version = 1) => `${OUTPUT_FENCE}\n${JSON.stringify({ version, files })}\n\`\`\``;
 const sse = (type, payload) => `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;
 const configuration = () => loadConfig({
   GATEWAY_SIGNING_SECRET: "attachment-tests-only-secret-1234567890", BOIDS_API_KEY: "test-boids", BOIDS_BASE_URL: "https://boids.example/v1",
   BYTEPLUS_TTS_API_KEY: "test-tts", BYTEPLUS_TTS_SPEAKER_ID: "test-speaker",
-  WORKSPACE_API_URL: "https://workspace.example/api/external/workspace", WORKSPACE_API_KEY: `wsk_${"a".repeat(43)}`,
 });
-const item = (role, text, id = role) => ({ id, type: "message", role, status: "completed", content: [{ type: role === "user" ? "input_text" : "output_text", text }] });
+const outputId = "file-out-97d83c8927ae4d02b66328fb085244a4-c68c449819f44930b9f840b64d7559b1";
+const outputName = "笑话.txt";
+const outputText = "文件已生成：`/workspace/session/笑话.txt`";
+const message = (role, text, id = role) => ({ id, type: "message", role, status: "completed", content: [{ type: role === "user" ? "input_text" : "output_text", text }] });
+const outputItem = (text = outputText) => ({ ...message("assistant", text, "97d83c89-27ae-4d02-b663-28fb085244a4"),
+  object: "conversation.item", content: [{ type: "output_text", text, annotations: [{ type: "file_path", file_id: outputId, index: 0 }] }] });
+const ready = (wire) => {
+  const match = /event: creekstone.attachments.ready\ndata: ([^\n]+)/.exec(wire);
+  return match ? JSON.parse(match[1]) : {};
+};
 
 async function fixture(t, overrides = {}) {
   const config = { ...configuration(), ...overrides };
-  const storage = new Map();
+  const storage = new Map([[outputId, { name: outputName, bytes: Buffer.from("原生文件内容\0\u00ff") }]]);
   const histories = new Map();
   const calls = [];
-  const state = { workspaceFault: null, workspaceBody: null, responseFault: null, payload: null };
+  const state = { filesFault: null, uploadOverrides: {}, responseFault: null, payload: null };
   let serial = 0;
   const fetchImpl = async (rawUrl, options = {}) => {
-    const url = String(rawUrl);
-    if (url === config.attachments.url) {
-      const operation = JSON.parse(options.body);
-      calls.push(operation);
-      assert.equal(options.headers.Authorization, `Bearer ${config.attachments.apiKey}`);
+    const url = new URL(rawUrl);
+    assert.equal(url.origin, "https://boids.example");
+    assert.equal(options.headers.Authorization, "Bearer test-boids");
+    if (url.pathname.startsWith("/v1/files")) {
+      calls.push({ url: url.pathname, options });
       assert.equal(options.redirect, "error");
-      if (state.workspaceFault) return state.workspaceFault(operation, options);
-      if (operation.command === "write") {
-        const bytes = Buffer.from(operation.dataBase64, "base64");
-        storage.set(operation.path, bytes);
-        return Response.json({ ok: true, path: operation.path, size: bytes.length, action: "created", ...state.workspaceBody });
+      if (state.filesFault) { const result = await state.filesFault(url, options); if (result) return result; }
+      if (url.pathname === "/v1/files" && options.method === "POST") {
+        assert.ok(options.body instanceof FormData);
+        assert.equal(options.body.get("purpose"), "user_data");
+        assert.equal(options.headers["Content-Type"], undefined, "fetch must generate the multipart boundary");
+        const upload = options.body.get("file");
+        const fileId = `file-upload-${++serial}`;
+        const bytes = Buffer.from(await upload.arrayBuffer());
+        storage.set(fileId, { name: upload.name, bytes });
+        return Response.json({ id: fileId, object: "file", filename: upload.name, bytes: bytes.length, purpose: "user_data", status: "processed", ...state.uploadOverrides });
       }
-      const bytes = storage.get(operation.path);
-      if (!bytes) return Response.json({ ok: false, error: "Workspace operation failed" }, { status: 400 });
-      return Response.json({ ok: true, path: operation.path, size: bytes.length, dataBase64: bytes.toString("base64"), ...state.workspaceBody });
+      const fileId = url.pathname.split("/")[3];
+      const data = storage.get(fileId);
+      if (!data) return new Response(null, { status: 404 });
+      if (url.pathname.endsWith("/content")) return new Response(data.bytes, { headers: { "Content-Type": "text/html" } });
+      return Response.json({ id: fileId, object: "file", filename: data.name, bytes: data.bytes.length });
     }
-    if (url.endsWith("/conversations")) {
-      const id = `conv_${++serial}`;
-      histories.set(id, []);
-      return Response.json({ id });
+    if (url.pathname.endsWith("/conversations")) {
+      const id = `conv_${++serial}`; histories.set(id, []); return Response.json({ id });
     }
-    if (url.includes("/items")) {
-      const id = new URL(url).pathname.split("/")[3];
+    if (url.pathname.endsWith("/items")) {
+      const id = url.pathname.split("/")[3];
       return Response.json({ data: (histories.get(id) || []).slice().reverse(), has_more: false });
     }
-    if (url.endsWith("/responses")) {
-      const payload = JSON.parse(options.body);
-      state.payload = payload;
+    if (url.pathname.endsWith("/responses")) {
+      const payload = JSON.parse(options.body); state.payload = payload;
       if (state.responseFault) return state.responseFault(payload);
-      const match = payload.input.split(`${INPUT_FENCE}\n`)[1];
-      let answer = "收到。我会先阅读文件，再进行分析。";
-      if (match) {
-        const manifest = JSON.parse(match.slice(0, -4));
-        // Simulates the external Agent's already-existing Workspace CLI.
-        for (const file of manifest.files) assert.ok(storage.has(file.path));
-        const path = `${manifest.outputDirectory}/分析 报告.html`;
-        storage.set(path, Buffer.from("<html><script>alert('download only')</script>结果</html>"));
-        answer = `${formatAttachmentReference(path)} ${answer} 文件已生成，请查收。`;
-      }
-      histories.get(payload.conversation).push(item("user", payload.input, `user_${serial}`), item("assistant", answer, `answer_${serial}`));
-      return new Response(sse("response.output_text.delta", { delta: answer }) + sse("response.completed", { type: "response.completed" }));
+      const input = Array.isArray(payload.input) ? { ...payload.input[0], type: "message", id: `user_${++serial}` } : message("user", payload.input);
+      histories.get(payload.conversation).push(input, outputItem());
+      return new Response(sse("response.output_text.delta", { delta: outputText }) +
+        sse("response.completed", { response: { output: [outputItem()] } }));
     }
     throw new Error("Unexpected mock endpoint");
   };
@@ -75,292 +78,271 @@ async function fixture(t, overrides = {}) {
   t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = (path, body, session, headers = {}) => fetch(`${base}${path}`, {
-    method: "POST", headers: { Origin: origin, "Content-Type": "application/json", ...(session ? { Cookie: session.cookie } : {}), ...headers },
-    body: JSON.stringify(body),
+    method: "POST", headers: { Origin: origin, "Content-Type": "application/json", ...(session ? { Cookie: session.cookie } : {}), ...headers }, body: JSON.stringify(body),
   });
   const open = async (session, options = {}) => {
     const response = await post("/conversations", options, session);
     assert.equal(response.status, 200);
     return { ...(await response.json()), cookie: response.headers.getSetCookie().map((cookie) => cookie.split(";", 1)[0]).join("; ") };
   };
-  const upload = async (session, name = "创业 计划.pdf", content = "pitch bytes") => {
+  const upload = async (session, name = "创业 计划.pdf", content = Buffer.from("pitch bytes")) => {
     const response = await post("/attachments/upload", { sessionKey: session.sessionKey, name, dataBase64: Buffer.from(content).toString("base64") }, session);
     assert.equal(response.status, 200, await response.clone().text());
     return (await response.json()).file;
   };
-  return { config, storage, histories, calls, state, post, open, upload };
+  return { config, storage, histories, calls, state, post, open, upload, base, fetchImpl };
 }
 
-test("mock round-trip: upload → signed Responses manifest → CLI output → completed reply → authorized forced download → history", async (t) => {
-  const f = await fixture(t);
-  const session = await f.open();
+test("native round-trip: multipart upload → input_file → annotation → forced binary download → history", async (t) => {
+  const f = await fixture(t); const session = await f.open();
   assert.equal(session.attachments.enabled, true);
-  const file = await f.upload(session);
-  const duplicateName = await f.upload(session);
-  assert.notEqual(file.path, duplicateName.path);
-  assert.match(file.path, /attachments\/inputs\/[a-f0-9]{64}\/[a-f0-9-]{36}\/创业 计划\.pdf$/);
-  const response = await f.post("/responses", { sessionKey: session.sessionKey, input: "请帮我分析", attachments: [file.ticket] }, session);
-  assert.equal(response.status, 200);
+  const bytes = Buffer.from([0, 255, 128, 42, 13, 10]);
+  const file = await f.upload(session, "创业 计划.pdf", bytes);
+  assert.deepEqual(f.storage.get(file.fileId).bytes, bytes);
+  assert.equal(file.path, undefined);
+  const input = { input: "请帮我分析", sessionKey: session.sessionKey, attachments: [file.ticket] };
+  const response = await f.post("/responses", input, session);
   const wire = await response.text();
-  assert.match(f.state.payload.input, /creekstone-inputs/);
-  assert.ok(f.state.payload.input.includes(file.path));
-  assert.ok(f.state.payload.input.startsWith(`${formatAttachmentReference(file.path)}\n请帮我分析`));
-  assert.equal(f.state.payload.conversation, "conv_1");
-  assert.equal(f.state.payload.model, "agent:@qq1006775897-1-org/qq1006775897");
-  const metadata = JSON.parse(wire.match(/event: creekstone.attachments.ready\ndata: (.*)/)[1]);
-  assert.equal(metadata.attachments.length, 1);
-  const produced = metadata.attachments[0];
-  const downloaded = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: produced.ticket }, session);
-  assert.equal(downloaded.status, 200);
-  assert.equal(downloaded.headers.get("content-type"), "application/octet-stream");
-  assert.match(downloaded.headers.get("content-disposition"), /^attachment;.*filename\*=UTF-8''%/);
-  assert.equal(downloaded.headers.get("x-content-type-options"), "nosniff");
-  assert.match(downloaded.headers.get("content-security-policy"), /sandbox/);
-  assert.match(await downloaded.text(), /结果/);
-  const inputDownload = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: file.ticket }, session);
-  assert.equal(await inputDownload.text(), "pitch bytes");
+  assert.deepEqual(f.state.payload, { model: f.config.boidsModel, conversation: "conv_1", stream: true,
+    input: [{ role: "user", content: [{ type: "input_text", text: input.input }, { type: "input_file", file_id: file.fileId }] }] });
+  const output = ready(wire).attachments[0];
+  assert.equal(output.fileId, outputId); assert.equal(output.name, outputName);
+  const tts = JSON.parse(/event: creekstone.tts.ready\ndata: ([^\n]+)/.exec(wire)[1]);
+  assert.doesNotMatch(verifyTtsTicket(tts.ticket, f.config.signingSecret).text, /session|file-out/);
+  for (const attachment of [file, output]) {
+    const download = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: attachment.ticket }, session);
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get("content-type"), "application/octet-stream");
+    assert.match(download.headers.get("content-disposition"), /attachment;.*filename\*=UTF-8''/);
+    assert.equal(download.headers.get("x-content-type-options"), "nosniff");
+    assert.match(download.headers.get("content-security-policy"), /sandbox/);
+    assert.equal(download.headers.get("cache-control"), "no-store");
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), f.storage.get(attachment.fileId).bytes);
+  }
   const history = await f.open(session);
-  assert.equal(history.messages[0].content, "请帮我分析");
-  assert.equal(history.messages[0].attachments[0].path, file.path);
-  assert.equal(history.messages[1].attachments[0].path, produced.path);
-  const tts = JSON.parse(Buffer.from(history.messages[1].ttsTicket.split(".")[0], "base64url").toString());
-  assert.doesNotMatch(tts.text, /attachments|founder-handoff/);
+  assert.equal(history.messages[0].content, input.input);
+  assert.equal(history.messages[0].attachments[0].fileId, file.fileId);
+  assert.equal(history.messages[0].attachments[0].name, file.name);
+  assert.equal(history.messages[1].content, "文件已生成：附件");
+  assert.equal(history.messages[1].attachments[0].fileId, outputId);
+  assert.ok(wire.indexOf("creekstone.attachments.ready") < wire.indexOf("event: response.completed"));
 });
 
-test("attachment-only messages and explicit rejected retries reuse the upload, not another file write", async (t) => {
-  const f = await fixture(t); const session = await f.open(); const file = await f.upload(session);
-  f.state.responseFault = () => new Response(null, { status: 429 });
-  const request = { input: "", attachments: [file.ticket], sessionKey: session.sessionKey };
-  assert.equal((await f.post("/responses", request, session)).status, 429);
-  f.state.responseFault = null;
-  const response = await f.post("/responses", request, session); await response.text();
-  assert.equal(restoreAttachmentInput(f.state.payload.input, "conv_1", f.config).content, "请查看附件。");
-  assert.equal(f.calls.filter((call) => call.command === "write").length, 1);
-});
-
-test("signed cookies, selected session and file signatures are all required; switching back restores access", async (t) => {
-  const f = await fixture(t); const a = await f.open(); const file = await f.upload(a); const b = await f.open(a, { reset: true });
-  const download = (session, ticket = file.ticket) => f.post("/attachments/download", { sessionKey: session.sessionKey, ticket }, session);
-  assert.equal((await download(b)).status, 403);
-  assert.equal((await f.post("/responses", { input: "read", attachments: [file.ticket] }, b)).status, 403);
-  assert.equal((await download(a, file.ticket + "x")).status, 403);
-  assert.equal((await download(a, file.ticket.replace(/^./, "!"))).status, 403);
-  assert.equal((await f.post("/attachments/download", { sessionKey: a.sessionKey, ticket: file.ticket }, b)).status, 409);
-  assert.equal((await f.post("/attachments/download", { ticket: file.ticket })).status, 409);
-  assert.equal((await f.post("/attachments/download", { sessionKey: a.sessionKey, ticket: file.ticket }, { cookie: "creekstone_conversation=forged" })).status, 409);
-  const back = await f.open(b, { sessionKey: a.sessionKey });
-  assert.equal((await download(back)).status, 200);
-  assert.equal(f.calls.filter((call) => call.command === "read").length, 1);
-});
-
-test("download never accepts raw caller paths, and a valid output ticket cannot be used as an input receipt", async (t) => {
+test("text-only payload remains plain text; attachment-only payload uses the default prompt", async (t) => {
   const f = await fixture(t); const session = await f.open();
-  const file = replyAttachments(block([{ name: "result.txt", path: `${attachmentDirectory("outputs", "conv_1", f.config)}/result.txt` }]), "conv_1", f.config).attachments[0];
-  assert.equal((await f.post("/attachments/download", { sessionKey: session.sessionKey, path: file.path }, session)).status, 400);
-  assert.equal((await f.post("/responses", { input: "read", attachments: [file.ticket] }, session)).status, 403);
+  assert.deepEqual(buildAttachmentInput(" Hello ", [], "conv_1", f.config), { visible: "Hello", input: "Hello" });
+  const file = await f.upload(session);
+  const result = buildAttachmentInput("", [file.ticket], "conv_1", f.config);
+  assert.equal(result.input[0].content[0].text, "请查看附件。");
+  assert.equal(result.input[0].content[1].file_id, file.fileId);
+  const duplicate = await f.upload(session);
+  assert.notEqual(duplicate.fileId, file.fileId, "same filenames remain distinct uploads");
+});
+
+test("cross-session, tampered, expired, old-version and output upload receipts are rejected before upstream access", async (t) => {
+  const f = await fixture(t); const a = await f.open(); const file = await f.upload(a); const b = await f.open();
+  const callCount = f.calls.length;
+  assert.equal((await f.post("/attachments/download", { sessionKey: b.sessionKey, ticket: file.ticket }, b)).status, 403);
+  assert.equal((await f.post("/attachments/download", { sessionKey: a.sessionKey, ticket: `${file.ticket}x` }, a)).status, 403);
+  const reSign = (changes) => {
+    const data = JSON.parse(Buffer.from(file.ticket.split(".")[0], "base64url"));
+    const body = Buffer.from(JSON.stringify({ ...data, ...changes })).toString("base64url");
+    const signature = createHmac("sha256", f.config.signingSecret).update(`creekstone.files.v2\0${body}`).digest("base64url");
+    return `${body}.${signature}`;
+  };
+  for (const [ticket, status] of [[reSign({ exp: 1 }), 410], [reSign({ v: 1 }), 403], [reSign({ fileId: "file-../secret" }), 403]]) {
+    assert.equal((await f.post("/attachments/download", { sessionKey: a.sessionKey, ticket }, a)).status, status);
+  }
+  assert.throws(() => buildAttachmentInput("reuse", [reSign({ kind: "outputs" })], "conv_1", f.config), { code: "invalid_attachment" });
+  assert.equal(f.calls.length, callCount);
+});
+
+test("browser cannot select an arbitrary file ID, upstream URL, purpose or conversation", async (t) => {
+  const f = await fixture(t); const session = await f.open();
+  for (const extra of [{ file_id: outputId }, { url: "https://attacker.example" }, { purpose: "assistants" }, { conversation: "other" }]) {
+    assert.equal((await f.post("/attachments/upload", { sessionKey: session.sessionKey, name: "a.txt", dataBase64: "YQ==", ...extra }, session)).status, 400);
+  }
+  assert.equal((await f.post("/attachments/download", { sessionKey: session.sessionKey, file_id: outputId }, session)).status, 400);
+  assert.equal((await f.post("/responses", { input: "x", attachments: [outputId] }, session)).status, 403);
   assert.equal(f.calls.length, 0);
 });
 
-test("namespace ownership rejects cross-session, traversal, percent encoding, prefixes and absolute paths", () => {
-  const config = configuration();
-  const allowed = attachmentDirectory("outputs", "conv_a", config);
-  for (const path of ["/etc/passwd", "../secret", `${allowed}/../secret`, `${allowed}/%2e%2e/secret`, `${allowed}/a//b`,
-    `${allowed}/a\\b`, `${allowed}/.hidden`, `${allowed}/a\u0000b`, `${allowed}-other/file`, `${root}/inputs/anything/file`,
-    `${attachmentDirectory("outputs", "conv_b", config)}/file`]) {
-    const result = replyAttachments(block([{ name: "file.txt", path }]), "conv_a", config);
-    assert.equal(result.attachments, undefined, path);
-    assert.ok(result.attachmentWarning);
-  }
-  assert.notEqual(attachmentNamespace("conv_a", config.signingSecret), attachmentNamespace("conv_b", config.signingSecret));
+test("only native assistant file_path annotations authorize outputs; prose and citations do not", async () => {
+  const config = configuration(); const lookup = async () => null;
+  const invalid = [message("assistant", outputId), message("assistant", "{{attachment://outputs/secret.pdf}}"),
+    { ...outputItem(), role: "user" }, { ...outputItem(), content: [{ type: "output_text", text: "x", annotations: [{ type: "url_citation", file_id: outputId }] }] }];
+  for (const item of invalid) assert.equal((await messageAttachments([item], "assistant", "conv_a", config, lookup)).attachments, undefined);
+  for (const fileId of ["../secret", "file-%2e%2e", "https://example.com", "file-x/content", "file-a?key=x", "file-", "file-" + "x".repeat(241)]) assert.equal(isFileId(fileId), false);
+  const files = await messageAttachments([outputItem(), outputItem()], "assistant", "conv_a", config, lookup);
+  assert.equal(files.attachments.length, 1); assert.equal(files.attachments[0].name, outputName);
+  assert.equal(verifyAttachmentTicket(files.attachments[0].ticket, "conv_a", config).fileId, outputId);
 });
 
-test("strict contract rejects malformed, duplicate, unsupported, non-terminal and incomplete blocks", () => {
-  const file = { name: "分析 报告.md", path: "outputs/session/分析 报告.md" };
-  const good = `完成\n\n${block([file])}`;
-  assert.deepEqual(parseAttachmentReply(good, true).files, [file]);
-  for (let i = 0; i < good.length; i++) assert.equal(parseAttachmentReply(good.slice(0, i), false).files.length, 0);
-  assert.equal(parseAttachmentReply(good, false).files.length, 0);
-  for (const bad of [block([file], 2), block([file, file]), block([]), `${block([file])}\nmore text`,
-    `${OUTPUT_FENCE}\nnot JSON\n\`\`\``, block([{ ...file, url: "https://attacker.invalid" }]), good.slice(0, -1)]) {
-    assert.equal(parseAttachmentReply(bad, true).state, "invalid");
-  }
-  assert.equal(parseAttachmentReply("普通 Markdown\n```json\n{}\n```", true).state, "none");
+test("incomplete responses/history never issue file download or TTS authority", async (t) => {
+  const f = await fixture(t); const session = await f.open();
+  f.state.responseFault = () => new Response(sse("response.output_item.done", { item: outputItem() }) + sse("response.incomplete", {}));
+  const wire = await (await f.post("/responses", { input: "make file" }, session)).text();
+  assert.doesNotMatch(wire, /creekstone.attachments.ready|creekstone.tts.ready/);
+  f.histories.set("conv_1", [{ ...outputItem(), status: "incomplete" }]);
+  const history = await f.open(session);
+  assert.equal(history.messages[0].complete, false);
+  assert.equal(history.messages[0].attachments, undefined);
+  assert.equal(history.messages[0].ttsTicket, undefined);
+  assert.ok(history.messages[0].attachmentWarning);
 });
 
-test("inline references preserve prose on both sides, support Unicode/spaces, and deduplicate files", () => {
-  const path = "Yihao Agent Founder Intake/attachments/outputs/session/修改 后的 BP.pdf";
-  const reference = `{{attachment://${path}}}`;
-  assert.equal(formatAttachmentReference(`founder-handoff/${path}`), reference);
-  assert.deepEqual(parseAttachmentReply(`${reference} 改完了，请查收`, true), {
-    text: "改完了，请查收", files: [{ name: "修改 后的 BP.pdf", path }], state: "ready",
-  });
-  assert.equal(parseAttachmentReply(`这是报告。${reference}请查收。`, true).text, "这是报告。请查收。");
-  assert.equal(parseAttachmentReply(`这是报告。${reference}`, true).text, "这是报告。");
-  assert.equal(parseAttachmentReply(`${reference}\n${reference}`, true).files.length, 1);
-  assert.equal(parseAttachmentReply("普通正文 {{variable}}", true).text, "普通正文 {{variable}}");
-});
-
-test("every SSE split hides marker fragments and paths, including closed but not completed references", () => {
-  const path = "Yihao Agent Founder Intake/attachments/outputs/session/报告.pdf";
-  const reference = formatAttachmentReference(path);
-  for (let i = 1; i <= reference.length; i++) {
-    const result = parseAttachmentReply(`改好了。${reference.slice(0, i)}`, false);
-    assert.equal(result.text, "改好了。", `offset ${i}`);
-    assert.equal(result.files.length, 0);
-    assert.equal(result.state, "pending");
-  }
-  const tail = parseAttachmentReply(`${reference}正在补充说明。`, false);
-  assert.equal(tail.text, "正在补充说明。"); assert.equal(tail.files.length, 0);
-});
-
-test("invalid inline references are hidden and never become authorized paths", () => {
-  for (const path of ["/etc/passwd", "../secret", "a/%2e%2e/file", "a/../file", "a\\file", "a\nfile", "a/.hidden", "a/{nested}", "a\u202efile"]) {
-    const result = parseAttachmentReply(`{{attachment://${path}}}请查收`, true);
-    assert.equal(result.state, "invalid", path);
-    assert.equal(result.text, "请查收"); assert.deepEqual(result.files, []);
-  }
-  const unfinished = parseAttachmentReply("改好了 {{attachment://outputs/incomplete.pdf", true);
-  assert.equal(unfinished.state, "invalid"); assert.equal(unfinished.text, "改好了");
-  assert.equal(parseAttachmentReply(Array.from({ length: 4 }, (_, i) => formatAttachmentReference(`outputs/${i}.pdf`)).join(" "), true).state, "invalid");
-});
-
-test("inline mount aliases normalize only within this conversation's outputs, legacy remains compatible", () => {
-  const config = configuration();
-  const path = `${attachmentDirectory("outputs", "conv_a", config)}/报告.pdf`;
-  for (const text of [formatAttachmentReference(path), `{{attachment://${path}}}`, block([{ name: "报告.pdf", path }])]) {
-    const result = replyAttachments(text, "conv_a", config);
-    assert.equal(result.attachments[0].path, path);
-    assert.equal(verifyAttachmentTicket(result.attachments[0].ticket, "conv_a", config).path, path);
-  }
-  const duplicate = replyAttachments(`${formatAttachmentReference(path)} {{attachment://${path}}}`, "conv_a", config);
-  assert.equal(duplicate.attachments.length, 1);
-  for (const forbidden of [path.replace("outputs/", "inputs/"), `${root}/outputs/shared.pdf`,
-    `${attachmentDirectory("outputs", "conv_b", config)}/报告.pdf`, attachmentReferencePath(path).replace("Yihao Agent", "Someone Else")]) {
-    assert.ok(replyAttachments(formatAttachmentReference(forbidden), "conv_a", config).attachmentWarning);
-    assert.equal(replyAttachments(formatAttachmentReference(forbidden), "conv_a", config).attachments, undefined);
-  }
-});
-
-test("hidden input manifests must be signed for this conversation and exact user text", () => {
-  const config = configuration();
-  const message = buildAttachmentInput("keep me", [], "conv_a", config).input;
-  assert.equal(restoreAttachmentInput(message, "conv_a", config).content, "keep me");
-  for (const changed of [message.replace("keep me", "changed"), message.replace("outputs/", "inputs/")]) {
-    assert.equal(restoreAttachmentInput(changed, "conv_a", config).content, changed);
-  }
-  assert.equal(restoreAttachmentInput(message, "conv_b", config).content, message);
-  const fake = `hello\n\n${INPUT_FENCE}\n{"version":1,"files":[]}\n\`\`\``;
-  assert.equal(restoreAttachmentInput(fake, "conv_a", config).content, fake);
-});
-
-test("misconfigured or missing Workspace disables only files, never text chat", async (t) => {
-  const config = configuration(); config.attachments.enabled = false;
-  const f = await fixture(t, config); const session = await f.open();
-  assert.equal(session.attachments.enabled, false);
-  assert.equal((await f.post("/attachments/upload", { sessionKey: session.sessionKey }, session)).status, 503);
-  const response = await f.post("/responses", { input: "hello" }, session);
-  assert.equal(response.status, 200); await response.text();
-  assert.equal(f.state.payload.input, "hello"); assert.equal(f.calls.length, 0);
-});
-
-for (const [status, expectedCode] of [[401, "workspace_permission_denied"], [403, "workspace_permission_denied"], [429, "attachment_rate_limited"], [500, "workspace_unavailable"]]) {
-  test(`Workspace HTTP ${status} is mapped safely, no upstream error details leak`, async (t) => {
+for (const mode of ["final", "item", "annotation"]) {
+  test(`file-only stream resolves annotations from ${mode} events on terminal completion`, async (t) => {
     const f = await fixture(t); const session = await f.open();
-    f.state.workspaceFault = () => new Response("secret upstream detail", { status });
-    const response = await f.post("/attachments/upload", { sessionKey: session.sessionKey, name: "a.txt", dataBase64: "YQ==" }, session);
-    const data = await response.json(); assert.equal(data.error.code, expectedCode);
-    assert.doesNotMatch(JSON.stringify(data), /secret upstream/);
+    f.state.responseFault = () => new Response(
+      sse("creekstone.attachments.ready", { attachments: [{ fileId: "file-forged", ticket: "forged" }] }) +
+      (mode === "item" ? sse("response.output_item.done", { item: outputItem("") }) :
+        mode === "annotation" ? sse("response.output_text.annotation.added", { annotation: { type: "file_path", file_id: outputId, index: 0 } }) : "") +
+      sse("response.completed", mode === "final" ? { response: { output: [outputItem("")] } } : {}));
+    const wire = await (await f.post("/responses", { input: "make file" }, session)).text();
+    assert.equal(ready(wire).attachments[0].fileId, outputId);
+    assert.doesNotMatch(wire, /file-forged|creekstone.tts.ready/);
   });
 }
 
-test("timeouts, network failures and invalid acknowledgements never mint upload receipts", async (t) => {
+test("native file-only history is retained and Hi with a file is not mistaken for bootstrap", async (t) => {
+  const f = await fixture(t); const session = await f.open(); const upload = await f.upload(session);
+  const input = { ...message("user", "Hi"), content: [{ type: "input_text", text: "Hi" }, { type: "input_file", file_id: upload.fileId }] };
+  assert.equal(normalizeConversationHistory([input]).length, 1);
+  f.histories.set("conv_1", [{ ...input, content: input.content.slice(1) }, outputItem("")]);
+  const history = await f.open(session);
+  assert.equal(history.messages.length, 2);
+  assert.equal(history.messages[0].attachments[0].name, upload.name);
+  assert.equal(history.messages[1].attachments[0].name, outputName);
+  assert.equal(history.needsBootstrap, false);
+});
+
+test("metadata failure or mismatched ID does not break chat or authorize a different file", async (t) => {
   const f = await fixture(t); const session = await f.open();
-  for (const fault of [() => { throw new DOMException("timeout", "TimeoutError"); }, () => { throw new Error("private endpoint detail"); },
-    () => Response.json({ ok: true, path: "different", size: 1 })]) {
-    f.state.workspaceFault = fault;
-    const response = await f.post("/attachments/upload", { sessionKey: session.sessionKey, name: "a.txt", dataBase64: "YQ==" }, session);
-    assert.ok([502, 504].includes(response.status));
-    const body = await response.json(); assert.equal(body.file, undefined); assert.doesNotMatch(JSON.stringify(body), /private endpoint/);
+  f.state.filesFault = (url) => !url.pathname.endsWith("/content") ? Response.json({ id: "file-other", object: "file", filename: "secret.txt", bytes: 1 }) : null;
+  const wire = await (await f.post("/responses", { input: "make file" }, session)).text();
+  const output = ready(wire).attachments[0];
+  assert.equal(output.name, outputName); assert.equal(output.fileId, outputId);
+  assert.equal((await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: output.ticket }, session)).status, 200);
+});
+
+test("native metadata lookup deduplicates concurrent work and uses a bounded cache", async () => {
+  let count = 0;
+  const lookup = createFileMetadataLookup(configuration(), async () => {
+    count++; return Response.json({ object: "file", id: outputId, filename: outputName, bytes: 2 });
+  });
+  await Promise.all([lookup(outputId), lookup(outputId)]); await lookup(outputId);
+  assert.equal(count, 1);
+});
+
+test("larger histories retain every filename while metadata concurrency stays at four", async () => {
+  let active = 0; let peak = 0;
+  const lookup = createFileMetadataLookup(configuration(), async (url) => {
+    active++; peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    active--;
+    const id = new URL(url).pathname.split("/").at(-1);
+    return Response.json({ object: "file", id, filename: `${id}.txt`, bytes: 3 });
+  });
+  const results = await Promise.all(Array.from({ length: 12 }, (_, i) => lookup(`file-${i}`)));
+  assert.equal(peak, 4);
+  assert.deepEqual(results.map((file) => file.name), Array.from({ length: 12 }, (_, i) => `file-${i}.txt`));
+});
+
+test("file limits, duplicate receipts and malformed inputs fail before Responses", async (t) => {
+  const f = await fixture(t); const session = await f.open(); const file = await f.upload(session);
+  for (const receipts of [[file.ticket, file.ticket], [file.ticket, file.ticket, file.ticket, file.ticket], "bad"]) {
+    assert.throws(() => buildAttachmentInput("x", receipts, "conv_1", f.config), { code: "invalid_attachments" });
   }
-});
-
-test("a committed Workspace write with view_error stays successful, with an honest warning", async (t) => {
-  const f = await fixture(t); const session = await f.open(); f.state.workspaceBody = { view_error: "refresh later" };
-  const response = await f.post("/attachments/upload", { sessionKey: session.sessionKey, name: "a.txt", dataBase64: "YQ==" }, session);
-  const body = await response.json(); assert.equal(response.status, 200); assert.ok(body.file.ticket); assert.match(body.warning, /不代表已解析/);
-});
-
-test("invalid names, empty files, noncanonical Base64 and client paths fail before Workspace", async (t) => {
-  const f = await fixture(t); const session = await f.open();
-  for (const body of [{ name: "../file", dataBase64: "YQ==" }, { name: "a\r\n.txt", dataBase64: "YQ==" },
-    { name: "file", dataBase64: "" }, { name: "file", dataBase64: "%%%=" }, { name: "file", dataBase64: "YR==" },
-    { name: "file", dataBase64: "YQ==", path: "client-selected" }, { name: "broken\ud800.txt", dataBase64: "YQ==" }]) {
-    assert.equal((await f.post("/attachments/upload", { sessionKey: session.sessionKey, ...body }, session)).status, 400);
-  }
-  for (const body of [null, []]) assert.equal((await f.post("/attachments/upload", body, session)).status, 400);
-  assert.equal(f.calls.length, 0);
-});
-
-test("file and aggregate limits, duplicate receipts and attachment count are enforced server-side", async (t) => {
-  const f = await fixture(t); const session = await f.open();
-  const oversized = Buffer.alloc(5 * 1024 * 1024 + 1).toString("base64");
-  assert.equal((await f.post("/attachments/upload", { sessionKey: session.sessionKey, name: "big.bin", dataBase64: oversized }, session)).status, 413);
-  const file = await f.upload(session);
-  assert.equal((await f.post("/responses", { input: "x", attachments: [file.ticket, file.ticket] }, session)).status, 400);
-  assert.equal((await f.post("/responses", { input: "x", attachments: Array(4).fill(file.ticket) }, session)).status, 400);
-  const bigFiles = [];
-  for (let i = 0; i < 3; i++) bigFiles.push(await f.upload(session, `file-${i}.bin`, Buffer.alloc(4 * 1024 * 1024)));
-  assert.equal((await f.post("/responses", { input: "x", attachments: bigFiles.map((item) => item.ticket) }, session)).status, 413);
+  const large = Array.from({ length: 3 }, (_, i) => {
+    const payload = Buffer.from(JSON.stringify({ v: 2, kind: "inputs", cid: "conv_1", name: `${i}.pdf`, fileId: `file-${i}`, size: 4 * 1024 * 1024, exp: Date.now() + 60000 })).toString("base64url");
+    return `${payload}.${createHmac("sha256", f.config.signingSecret).update(`creekstone.files.v2\0${payload}`).digest("base64url")}`;
+  });
+  assert.throws(() => buildAttachmentInput("x", large, "conv_1", f.config), { code: "attachments_too_large" });
   assert.equal(f.state.payload, null);
 });
 
-test("oversized downloads are bounded before full buffering and missing files fail clearly", async (t) => {
-  const f = await fixture(t); const session = await f.open();
-  const output = replyAttachments(block([{ name: "result.txt", path: `${attachmentDirectory("outputs", "conv_1", f.config)}/result.txt` }]), "conv_1", f.config).attachments[0];
-  let response = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: output.ticket }, session);
-  assert.equal(response.status, 404);
-  f.state.workspaceFault = () => new Response("too big", { headers: { "Content-Length": "99999999" } });
-  response = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: output.ticket }, session);
-  assert.equal(response.status, 413);
-  let cancelled = false;
-  f.state.workspaceFault = () => new Response(new ReadableStream({ pull(controller) { controller.enqueue(new Uint8Array(1024 * 1024)); }, cancel() { cancelled = true; } }));
-  response = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: output.ticket }, session);
-  assert.equal(response.status, 413); assert.equal(cancelled, true);
+test("disabled Files affect attachments only, with unchanged model and endpoint defaults", async (t) => {
+  const config = configuration(); config.attachments = attachmentConfig({ BOIDS_FILES_ENABLED: "false" });
+  const f = await fixture(t, config); const session = await f.open();
+  assert.equal(session.attachments.enabled, false);
+  assert.equal((await f.post("/attachments/upload", { sessionKey: session.sessionKey }, session)).status, 503);
+  assert.equal((await f.post("/responses", { input: "Hello" }, session)).status, 200);
+  assert.equal(f.state.payload.input, "Hello");
+  assert.equal(config.boidsModel, "agent:@qq1006775897-1-org/qq1006775897");
 });
 
-test("transfer budgets bound concurrent memory, per-session and global attempts", () => {
-  let now = 0; const admit = createAttachmentBudget(() => now);
-  const a = admit("a", "upload");
-  assert.throws(() => admit("a", "download"), /in progress/);
-  const b = admit("b", "upload"); assert.throws(() => admit("c", "upload"), /in progress/);
-  a(); b();
-  for (let i = 1; i < 10; i++) admit("a", "upload")();
-  assert.throws(() => admit("a", "upload"), /limit reached/);
-  for (let i = 0; i < 109; i++) admit(`other${i}`, "upload")();
-  assert.throws(() => admit("last", "upload"), /limit reached/);
-  now = 3600000; assert.doesNotThrow(() => admit("a", "upload")());
+for (const [status, expectedCode] of [[401, "files_permission_denied"], [403, "files_permission_denied"], [404, "attachment_unavailable"], [429, "attachment_rate_limited"], [500, "files_unavailable"]]) {
+  test(`Files HTTP ${status} has a safe error, without provider secrets`, async (t) => {
+    const f = await fixture(t); const session = await f.open();
+    f.state.filesFault = () => new Response("secret upstream detail", { status });
+    const response = await f.post("/attachments/upload", { sessionKey: session.sessionKey, name: "a.txt", dataBase64: "YQ==" }, session);
+    const body = await response.json(); assert.equal(body.error.code, expectedCode);
+    assert.doesNotMatch(JSON.stringify(body), /secret upstream|test-boids/);
+  });
+}
+
+test("invalid upload acknowledgments, timeouts and non-JSON replies never issue receipts", async (t) => {
+  const f = await fixture(t); const session = await f.open();
+  const faults = [() => { throw new DOMException("timeout", "TimeoutError"); },
+    () => new Response("not JSON"), () => Response.json({ object: "file", id: "file-ok", filename: "wrong.txt", bytes: 1, purpose: "user_data" })];
+  for (const fault of faults) {
+    f.state.filesFault = fault;
+    const response = await f.post("/attachments/upload", { sessionKey: session.sessionKey, name: "a.txt", dataBase64: "YQ==" }, session);
+    assert.ok(response.status >= 500); assert.equal((await response.json()).file, undefined);
+  }
 });
 
-test("no download metadata is issued from an interrupted response or unfinished history item", async (t) => {
+test("unsafe names, empty or noncanonical Base64 and session mismatch never contact Files", async (t) => {
   const f = await fixture(t); const session = await f.open();
-  const text = block([{ name: "result.txt", path: `${attachmentDirectory("outputs", "conv_1", f.config)}/result.txt` }]);
-  f.state.responseFault = () => new Response(sse("response.output_text.delta", { delta: text }) + "data: [DONE]\n\n");
-  const response = await f.post("/responses", { input: "make file" }, session);
-  assert.doesNotMatch(await response.text(), /event: creekstone.attachments.ready/);
-  f.histories.set("conv_1", [{ ...item("assistant", text), status: "in_progress" }]);
-  const restored = await f.open(session);
-  assert.equal(restored.messages[0].attachments, undefined); assert.equal(restored.messages[0].complete, false);
-});
-
-test("attachment endpoints enforce Origin and HTTP methods; expired credentials do not read Workspace", async (t) => {
-  const f = await fixture(t); const session = await f.open();
-  assert.equal((await f.post("/attachments/upload", {}, session, { Origin: "https://evil.invalid" })).status, 403);
-  const expired = createConversationCredential("conv_1", f.config.signingSecret, { now: 0, ttlMs: 1 });
-  assert.equal((await f.post("/attachments/download", {}, { cookie: `creekstone_conversation=${expired}` })).status, 409);
-  const expiredFile = replyAttachments(block([{ name: "result.txt", path: `${attachmentDirectory("outputs", "conv_1", f.config)}/result.txt` }]),
-    "conv_1", { ...f.config, conversationTtlMs: -1 }).attachments[0];
-  const denied = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: expiredFile.ticket }, session);
-  assert.equal(denied.status, 410);
+  for (const body of [{ name: "../secret", dataBase64: "YQ==" }, { name: "a.txt", dataBase64: "" },
+    { name: "a.txt", dataBase64: "YR==" }, { name: "a.txt", dataBase64: "YQ==\n" }, { name: "a\r\nX.txt", dataBase64: "YQ==" }]) {
+    assert.equal((await f.post("/attachments/upload", { sessionKey: session.sessionKey, ...body }, session)).status, 400);
+  }
+  assert.equal((await f.post("/attachments/upload", { sessionKey: "other" }, session)).status, 409);
   assert.equal(f.calls.length, 0);
-  assert.throws(() => verifyAttachmentTicket("not-signed", "conv_1", f.config), /invalid/);
+});
+
+test("downloads are bounded even without Content-Length and reject changed upload sizes", async (t) => {
+  const f = await fixture(t); const session = await f.open(); const file = await f.upload(session);
+  f.storage.get(file.fileId).bytes = Buffer.from("changed");
+  const body = { sessionKey: session.sessionKey, ticket: file.ticket };
+  assert.equal((await f.post("/attachments/download", body, session)).status, 502);
+  f.state.filesFault = () => new Response("big", { headers: { "Content-Length": "99999999" } });
+  assert.equal((await f.post("/attachments/download", body, session)).status, 413);
+  let cancelled = false;
+  f.state.filesFault = () => new Response(new ReadableStream({ pull(controller) { controller.enqueue(new Uint8Array(1024 * 1024)); }, cancel() { cancelled = true; } }));
+  assert.equal((await f.post("/attachments/download", body, session)).status, 413);
+  assert.equal(cancelled, true);
+});
+
+test("attachment endpoints require signed cookie, Origin and POST", async (t) => {
+  const f = await fixture(t); const session = await f.open();
+  assert.equal((await f.post("/attachments/upload", {}, undefined)).status, 409);
+  assert.equal((await f.post("/attachments/upload", {}, session, { Origin: "https://evil.example" })).status, 403);
+  assert.equal((await fetch(`${f.base}/attachments/download`)).status, 405);
+  const cookie = `${f.config.conversationCookieName}=${createConversationCredential("conv_1", f.config.signingSecret, { now: 1, ttlMs: 1 })}`;
+  assert.equal((await f.post("/attachments/download", {}, { cookie })).status, 409);
+  assert.equal(f.calls.length, 0);
+});
+
+test("transfer budgets cap concurrency, session and global rates without storing file bodies", () => {
+  let time = 0; const budget = createAttachmentBudget(() => time);
+  const releaseA = budget("a", "upload");
+  assert.throws(() => budget("a", "download"), { code: "attachment_busy" });
+  const releaseB = budget("b", "upload");
+  assert.throws(() => budget("c", "upload"), { code: "attachment_busy" });
+  releaseA(); releaseB();
+  for (let i = 0; i < 9; i++) budget("a", "upload")();
+  assert.throws(() => budget("a", "upload"), { code: "attachment_rate_limited" });
+  time = 3600000; budget("a", "upload")();
+});
+
+test("retired text protocols are display-only and never produce file IDs or tickets", async () => {
+  const text = '{{attachment://old/output/report.pdf}} 改好了\n\n```creekstone-inputs\n{"files":[]}\n```';
+  assert.equal(attachmentDisplayText(text), "改好了");
+  assert.equal(hasRetiredAttachment('Hello\n```creekstone-inputs\n{"files":[]}\n```'), false);
+  const result = await messageAttachments([message("assistant", text)], "assistant", "conv_a", configuration(), () => assert.fail());
+  assert.equal(result.attachments, undefined); assert.match(result.attachmentWarning, /重新/);
+  assert.deepEqual(nativeAttachmentReferences([outputItem()], "assistant").map((file) => file.fileId), [outputId]);
 });

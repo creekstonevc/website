@@ -1,4 +1,4 @@
-import { DEFAULT_FILE_BYTES, MAX_ATTACHMENT_FILES, MAX_TURN_BYTES, isSafeFileName, isWorkspacePath, type AttachmentFile, type AttachmentCapabilities } from "../../lib/agent-attachments.mjs";
+import { DEFAULT_FILE_BYTES, MAX_ATTACHMENT_FILES, MAX_TURN_BYTES, isSafeFileName, isFileId, type AttachmentFile, type AttachmentCapabilities } from "../../lib/agent-attachments.mjs";
 export type { AttachmentFile, AttachmentCapabilities } from "../../lib/agent-attachments.mjs";
 
 export type Message = {
@@ -77,8 +77,8 @@ function readString(value: unknown): string {
 export function readAttachmentFiles(value: unknown): AttachmentFile[] {
   if (!Array.isArray(value) || value.length > MAX_ATTACHMENT_FILES) return [];
   return value.filter((file): file is AttachmentFile => isRecord(file) &&
-    isSafeFileName(file.name) && isWorkspacePath(file.path) && typeof file.ticket === "string" && file.ticket.length <= 6000 &&
-    (file.size === undefined || typeof file.size === "number" && Number.isSafeInteger(file.size) && file.size >= 0 && file.size <= DEFAULT_FILE_BYTES));
+    isSafeFileName(file.name) && isFileId(file.fileId) && typeof file.ticket === "string" && file.ticket.length > 0 && file.ticket.length <= 6000 &&
+    (file.size === undefined || typeof file.size === "number" && Number.isSafeInteger(file.size) && file.size >= 0));
 }
 
 export const defaultAttachmentCapabilities: AttachmentCapabilities = {
@@ -99,13 +99,13 @@ export function attachmentError(error: unknown): string {
     invalid_attachments: "附件列表无效，每条消息最多 3 个文件。",
     session_changed: "当前会话已在另一标签页切换。请重新打开此会话后重试。",
     conversation_required: "请先连接会话，再上传或下载附件。",
-    workspace_permission_denied: "附件服务权限不足，请联系 Creekstone 检查配置；文字聊天不受影响。",
+    files_permission_denied: "附件服务权限不足，请联系 Creekstone 检查配置；文字聊天不受影响。",
     attachment_busy: "另一个文件正在传输，请稍后重试。",
     attachment_rate_limited: "文件传输次数已达限制，请稍后重试。",
-    attachment_unavailable: "文件暂时无法读取，请让 Agent 确认已写回本会话的输出目录。",
+    attachment_unavailable: "文件已过期、被删除或暂时不可用，请重新上传，或让 Agent 重新生成。",
     attachment_timeout: "文件传输超时，结果尚未确认。可以重试；未发送的文件不会自动交给 Agent。",
-    workspace_unavailable: "附件服务暂时不可用，请稍后重试。",
-    workspace_invalid_response: "附件服务未确认文件，请稍后重试。",
+    files_unavailable: "附件服务暂时不可用，请稍后重试。",
+    files_invalid_response: "附件服务未确认文件，请稍后重试。",
   };
   return messages[code] || (error instanceof AgentRequestError && error.status === 429
     ? "文件传输次数已达限制，请稍后重试。" : "文件传输失败，请检查连接后重试。");
@@ -118,7 +118,7 @@ async function attachmentRequest(path: "upload" | "download", body: unknown, sig
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new AgentRequestError(response.status, payload?.error?.code || "workspace_unavailable");
+    throw new AgentRequestError(response.status, payload?.error?.code || "files_unavailable");
   }
   return response;
 }
@@ -135,7 +135,7 @@ export async function uploadAttachment(file: File, sessionKey: string, signal?: 
   const response = await attachmentRequest("upload", { sessionKey, name, dataBase64: btoa(chunks.join("")) }, signal);
   const result = await response.json();
   const uploaded = readAttachmentFiles([result.file])[0];
-  if (!uploaded || uploaded.name !== name || uploaded.size !== file.size) throw new AgentRequestError(502, "workspace_invalid_response");
+  if (!uploaded || uploaded.name !== name || uploaded.size !== file.size) throw new AgentRequestError(502, "files_invalid_response");
   return { file: uploaded, ...(typeof result.warning === "string" ? { warning: result.warning } : {}) };
 }
 
@@ -174,7 +174,7 @@ function readHistoryMessages(value: unknown): Message[] {
       !isRecord(item) ||
       (item.role !== "user" && item.role !== "assistant") ||
       typeof item.content !== "string" ||
-      !item.content.trim()
+      (!item.content.trim() && !readAttachmentFiles(item.attachments).length && !readString(item.attachmentWarning))
     ) {
       return [];
     }
@@ -359,7 +359,7 @@ export async function streamReply(
   }
 
   if (!finished) throw new AgentRequestError(502, "stream_interrupted");
-  if (!(completedOutput || streamedOutput).trim()) throw new AgentRequestError(502, "empty_response");
+  if (!(completedOutput || streamedOutput).trim() && !attachmentMetadata.attachments?.length && !attachmentMetadata.attachmentWarning) throw new AgentRequestError(502, "empty_response");
 
   return { text: completedOutput || streamedOutput, ttsTicket, ...attachmentMetadata };
   } finally {

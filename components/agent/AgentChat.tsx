@@ -17,7 +17,7 @@ import styles from "./AgentChat.module.css";
 import { useTranscriptScroll } from "./useTranscriptScroll";
 import { useAttachmentDrafts } from "./useAttachmentDrafts";
 import { FileGlyph, MessageAttachments, PendingAttachments } from "./AttachmentControls";
-import { ATTACHMENT_ONLY_INPUT, parseAttachmentReply } from "../../lib/agent-attachments.mjs";
+import { ATTACHMENT_ONLY_INPUT, attachmentDisplayText } from "../../lib/agent-attachments.mjs";
 
 import { AgentRequestError, attachmentError, defaultAttachmentCapabilities, openConversation, readAttachmentFiles, readSavedDraft, shouldSendOnEnter, streamReply, suggestions, waitingMessage, type AttachmentFile, type Message, type ConversationSession, type Recovery, type VoicePhase, type VoiceState } from "./agent-client";
 
@@ -716,7 +716,7 @@ export function AgentChat() {
           </div>}
 
           {messages.map((message, index) => {
-            const reply = parseAttachmentReply(message.content, message.role === "user" || message.complete === true);
+            const displayedText = attachmentDisplayText(message.content, message.role === "assistant");
             return (
             <article
               className={`${styles.message} ${
@@ -753,7 +753,7 @@ export function AgentChat() {
                       <>
                         <div className={styles.markdown}>
                           <Markdown remarkPlugins={[remarkGfm]}>
-                            {reply.text}
+                            {displayedText}
                           </Markdown>
                           {busy &&
                           index === messages.length - 1 &&
@@ -761,9 +761,7 @@ export function AgentChat() {
                             <span className={styles.streamCursor}>▋</span>
                           ) : null}
                         </div>
-                        {reply.state === "pending" && busy && index === messages.length - 1 &&
-                          <p className={styles.attachmentStatus} role="status">Receiving file details…</p>}
-                        <MessageAttachments files={message.attachments} references={reply.files} sessionKey={sessionKey} />
+                        <MessageAttachments files={message.attachments} sessionKey={sessionKey} />
                         {message.attachmentWarning && <p className={styles.attachmentError} role="status">{message.attachmentWarning}</p>}
                         {message.ttsTicket &&
                         !(busy && index === messages.length - 1) ? (
@@ -779,8 +777,8 @@ export function AgentChat() {
                     )}
                   </>
                 ) : (
-                  <>{reply.text && <p>{reply.text}</p>}<MessageAttachments files={message.attachments} references={reply.files} sessionKey={sessionKey} />
-                    {reply.state === "invalid" && <p className={styles.attachmentError}>附件引用不完整，请重新上传文件。</p>}</>
+                  <>{displayedText && <p>{displayedText}</p>}<MessageAttachments files={message.attachments} sessionKey={sessionKey} />
+                    {message.attachmentWarning && <p className={styles.attachmentError}>{message.attachmentWarning}</p>}</>
                 )}
               </div>
             </article>

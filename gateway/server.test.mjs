@@ -92,7 +92,7 @@ test("gateway binds responses to its signed conversation cookie and renders tick
     assert.equal(session.status, 200);
     const sessionBody = await session.json();
     const { sessionKey, sessions, attachments, ...history } = sessionBody;
-    assert.equal(attachments.enabled, false);
+    assert.equal(attachments.enabled, true);
     assert.equal(typeof sessionKey, "string");
     assert.equal(sessions[0].key, sessionKey);
     assert.deepEqual(history, {

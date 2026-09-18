@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { attachmentReferencePath, formatFileSize, type AttachmentReference } from "../../lib/agent-attachments.mjs";
+import { formatFileSize } from "../../lib/agent-attachments.mjs";
 import { attachmentError, downloadAttachment, type AttachmentFile } from "./agent-client";
 import type { AttachmentDraft } from "./useAttachmentDrafts";
 import styles from "./AgentChat.module.css";
@@ -13,7 +13,7 @@ export function FileGlyph({ attach = false }: { attach?: boolean }) {
   </svg>;
 }
 
-function DownloadFile({ file, sessionKey }: { file: AttachmentReference | AttachmentFile; sessionKey: string }) {
+function DownloadFile({ file, sessionKey }: { file: AttachmentFile; sessionKey: string }) {
   const [state, setState] = useState<"idle" | "loading" | "saved" | "error">("idle");
   const [error, setError] = useState("");
   const transfer = useRef<AbortController | null>(null);
@@ -64,16 +64,13 @@ function DownloadFile({ file, sessionKey }: { file: AttachmentReference | Attach
   </li>;
 }
 
-export function MessageAttachments({ files, references, sessionKey }: {
-  files?: AttachmentFile[]; references?: AttachmentReference[]; sessionKey: string;
+export function MessageAttachments({ files, sessionKey }: {
+  files?: AttachmentFile[]; sessionKey: string;
 }) {
-  // Parsed paths may supply display metadata, never download authority.
-  const entries = new Map<string, AttachmentReference | AttachmentFile>();
-  for (const reference of references || []) entries.set(attachmentReferencePath(reference.path), reference);
-  for (const file of files || []) entries.set(attachmentReferencePath(file.path), file);
+  const entries = new Map((files || []).map((file) => [file.fileId, file]));
   if (!entries.size) return null;
   return <ul className={styles.attachmentCards} aria-label="Message attachments">
-    {[...entries.values()].map((file) => <DownloadFile key={`${sessionKey}:${file.path}`} file={file} sessionKey={sessionKey} />)}
+    {[...entries.values()].map((file) => <DownloadFile key={`${sessionKey}:${file.fileId}`} file={file} sessionKey={sessionKey} />)}
   </ul>;
 }
 
