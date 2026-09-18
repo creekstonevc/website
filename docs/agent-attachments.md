@@ -87,7 +87,10 @@ The confirmed Boids contract is:
 Only typed annotations from the authenticated upstream grant access. Paths,
 bare IDs, Markdown links and text that resembles JSON cannot create a download.
 `index` is not assumed to be a character offset. Filename/size come from
-`GET /v1/files/{file_id}`; if metadata is unavailable, a safe basename from the
+`GET /v1/files/{file_id}`. Generated `file-out-*` IDs currently return 404 from
+that endpoint, so the Gateway obtains their UTF-8 filename from the content
+download's `Content-Disposition` header and immediately cancels the body (HEAD
+is not supported upstream). If both lookups fail, a safe basename from the
 same message or a generic label is display-only fallback. The signed `file_id`
 still determines the content fetch. Metadata lookup is time/concurrency bounded,
 deduplicated and cached, so a metadata outage does not fail the text answer.

@@ -235,6 +235,32 @@ test("native metadata lookup deduplicates concurrent work and uses a bounded cac
   assert.equal(count, 1);
 });
 
+test("generated files without a metadata endpoint use UTF-8 download headers and cancel the body", async () => {
+  let cancelled = false; const calls = [];
+  const lookup = createFileMetadataLookup(configuration(), async (url) => {
+    calls.push(url);
+    if (!url.endsWith("/content")) return new Response(null, { status: 404 });
+    return new Response(new ReadableStream({ cancel() { cancelled = true; } }), { headers: {
+      "Content-Disposition": `attachment; filename="download.txt"; filename*=UTF-8''${encodeURIComponent("官网附件验证结果.txt")}`,
+      "Content-Length": "41",
+    } });
+  });
+  assert.deepEqual(await lookup(outputId), { name: "官网附件验证结果.txt", size: 41 });
+  assert.equal(cancelled, true); assert.equal(calls.length, 2);
+  await lookup(outputId); assert.equal(calls.length, 2, "header metadata is cached");
+});
+
+test("header filename fallback rejects unsafe names and does not trust compressed transfer size", async () => {
+  for (const name of ["../secret.txt", "bad\nname.txt", "%bad.txt"]) {
+    const lookup = createFileMetadataLookup(configuration(), async (url) => url.endsWith("/content") ?
+      new Response("", { headers: { "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(name)}` } }) : new Response(null, { status: 404 }));
+    assert.equal(await lookup(outputId), null);
+  }
+  const lookup = createFileMetadataLookup(configuration(), async (url) => url.endsWith("/content") ?
+    new Response("", { headers: { "Content-Disposition": 'attachment; filename="result.txt"', "Content-Length": "17", "Content-Encoding": "gzip" } }) : new Response(null, { status: 404 }));
+  assert.deepEqual(await lookup(outputId), { name: "result.txt" });
+});
+
 test("larger histories retain every filename while metadata concurrency stays at four", async () => {
   let active = 0; let peak = 0;
   const lookup = createFileMetadataLookup(configuration(), async (url) => {

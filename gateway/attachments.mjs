@@ -112,7 +112,22 @@ async function limitedBytes(response, maxBytes) {
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
-async function fileRequest(path, options, config, fetchImpl, signal, binary = false) {
+function downloadMetadata(headers) {
+  const disposition = headers.get("content-disposition") || "";
+  const encoded = /filename\*\s*=\s*UTF-8'[^']*'([^;]+)/i.exec(disposition)?.[1];
+  let name;
+  try {
+    name = encoded ? decodeURIComponent(encoded.trim()) :
+      /filename\s*=\s*"([^"]*)"/i.exec(disposition)?.[1] || /filename\s*=\s*([^;\s]+)/i.exec(disposition)?.[1];
+  } catch { return null; }
+  if (!isSafeFileName(name)) return null;
+  const length = headers.get("content-length");
+  const size = length === null ? NaN : Number(length);
+  const encoding = headers.get("content-encoding");
+  return { name, ...(Number.isSafeInteger(size) && size >= 0 && (!encoding || encoding === "identity") ? { size } : {}) };
+}
+
+async function fileRequest(path, options, config, fetchImpl, signal, mode = "json") {
   const timeout = AbortSignal.timeout(config.attachments.timeoutMs);
   try {
     const response = await fetchImpl(`${config.boidsBaseUrl}/files${path}`, {
@@ -127,8 +142,15 @@ async function fileRequest(path, options, config, fetchImpl, signal, binary = fa
       if (response.status === 413) fail(413, "attachment_too_large", "File exceeds the service size limit");
       fail(502, "files_unavailable", "File service is unavailable");
     }
-    const bytes = await limitedBytes(response, binary ? config.attachments.maxFileBytes : 65536);
-    if (binary) return bytes;
+    if (mode === "headers") {
+      // Generated Boids file-out IDs currently support content but not metadata
+      // retrieval. Read only their download headers; never buffer the file here.
+      const metadata = downloadMetadata(response.headers);
+      await response.body?.cancel().catch(() => {});
+      return metadata;
+    }
+    const bytes = await limitedBytes(response, mode === "content" ? config.attachments.maxFileBytes : 65536);
+    if (mode === "content") return bytes;
     try { return JSON.parse(bytes.toString()); }
     catch { fail(502, "files_invalid_response", "File service returned invalid metadata"); }
   } catch (error) {
@@ -181,7 +203,13 @@ export function createFileMetadataLookup(config, fetchImpl) {
         try {
           const data = await fileRequest(`/${encodeURIComponent(fileId)}`, {}, config, fetchImpl, signal);
           if (validMetadata(data, fileId)) value = { name: data.filename, size: data.bytes };
-        } catch { /* Content downloads remain available with the signed ID. */ }
+        } catch (error) {
+          if (error.code === "attachment_unavailable" && fileId.startsWith("file-out-")) {
+            try {
+              value = await fileRequest(`/${encodeURIComponent(fileId)}/content`, {}, config, fetchImpl, signal, "headers");
+            } catch { /* Downloads can still be retried with the signed ID. */ }
+          }
+        }
         finish(value);
       };
       const abort = () => {
@@ -272,7 +300,7 @@ export async function transferAttachment({ request, response, config, conversati
     if (Object.keys(body).some((key) => !["sessionKey", "ticket"].includes(key))) fail(400, "invalid_attachment", "Unexpected download fields");
     const file = verifyAttachmentTicket(body.ticket, conversationId, config);
     if (file.size > config.attachments.maxFileBytes) fail(413, "attachment_too_large", "Files must be at most 5 MB");
-    const bytes = await fileRequest(`/${encodeURIComponent(file.fileId)}/content`, {}, config, fetchImpl, controller.signal, true);
+    const bytes = await fileRequest(`/${encodeURIComponent(file.fileId)}/content`, {}, config, fetchImpl, controller.signal, "content");
     if (file.size !== undefined && file.size !== bytes.length) fail(502, "files_invalid_response", "The file size has changed or is invalid");
     const encodedName = encodeURIComponent(file.name).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
     response.writeHead(200, {
