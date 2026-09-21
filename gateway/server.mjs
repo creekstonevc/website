@@ -6,6 +6,7 @@ import {
   messageAttachments, createFileMetadataLookup, transferAttachment,
 } from "./attachments.mjs";
 import { attachmentDisplayText } from "../lib/agent-attachments.mjs";
+import { createLiveVoiceRegistry } from "./live-voice.mjs";
 import {
   GatewayError,
   buildBoidsResponsePayload,
@@ -73,6 +74,7 @@ export function loadConfig(env = process.env) {
       "https://voice.ap-southeast-1.bytepluses.com/api/v3/tts/unidirectional",
     bytePlusSpeakerId: required("BYTEPLUS_TTS_SPEAKER_ID", env),
     bytePlusResourceId: env.BYTEPLUS_TTS_RESOURCE_ID || "seed-icl-2.0",
+    bytePlusLiveUrl: env.BYTEPLUS_TTS_LIVE_URL || "wss://voice.ap-southeast-1.bytepluses.com/api/v3/tts/bidirection",
   };
 }
 
@@ -300,6 +302,7 @@ async function proxyResponseStream(
   fetchImpl,
   bootstrapLocks,
   activeTurns,
+  liveVoices,
 ) {
   const body = await readJsonBody(request, config.requestMaxBytes);
   if (body.bootstrap !== undefined && typeof body.bootstrap !== "boolean") {
@@ -320,6 +323,8 @@ async function proxyResponseStream(
 
   let releaseBootstrap;
   let ownsTurn = false;
+  let liveVoice;
+  let voiceFinished = false;
   if (body.sessionKey !== undefined && body.sessionKey !== sessionKey(session.conversationId)) {
     throw new GatewayError(409, "session_changed", "The active conversation changed in another tab; sync history before sending");
   }
@@ -383,6 +388,9 @@ async function proxyResponseStream(
     }
     activeTurns.add(session.conversationId);
     ownsTurn = true;
+    if (!body.bootstrap && typeof body.liveVoiceId === "string") {
+      liveVoice = liveVoices.claim(body.liveVoiceId, session.conversationId);
+    }
     const controller = new AbortController();
     response.on("close", () => {
       if (!response.writableEnded) controller.abort();
@@ -448,9 +456,13 @@ async function proxyResponseStream(
         typeof parsed.payload?.delta === "string"
       ) {
         streamedText += parsed.payload.delta;
+        liveVoice?.push(parsed.payload.delta);
       }
       if (parsed.type === "response.completed") {
         const text = extractCompletedText(parsed.payload, streamedText);
+        if (!streamedText) liveVoice?.push(text);
+        liveVoice?.finish();
+        voiceFinished = true;
         const terminal = parsed.payload?.response || parsed.payload;
         const items = Array.isArray(terminal?.output) ? terminal.output : [...outputItems.values()];
         const completedItems = items.filter((item) => !["in_progress", "incomplete", "failed"].includes(item.status));
@@ -484,6 +496,7 @@ async function proxyResponseStream(
       reader.releaseLock();
     }
   } finally {
+    if (!voiceFinished) liveVoice?.cancel();
     if (ownsTurn) activeTurns.delete(session.conversationId);
     releaseBootstrap?.();
   }
@@ -588,6 +601,7 @@ async function renderTicketedTts(
 export function createGateway({
   config = loadConfig(),
   fetchImpl = fetch,
+  makeLiveVoice,
 } = {}) {
   config = { ...config, attachments: config.attachments || attachmentConfig() };
   config.fileMetadata = createFileMetadataLookup(config, fetchImpl);
@@ -596,8 +610,9 @@ export function createGateway({
   const bootstrapLocks = new Map();
   const activeTurns = new Set();
   const attachmentBudget = createAttachmentBudget();
+  const liveVoices = createLiveVoiceRegistry(config, makeLiveVoice);
 
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const requestId = randomUUID();
     response.setHeader("X-Request-Id", requestId);
 
@@ -623,6 +638,16 @@ export function createGateway({
       }
       assertOrigin(request, config);
 
+      if (["/voice/stream", "/voice/cancel"].includes(url.pathname)) {
+        const session = readConversationSession(request, config);
+        if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation before starting voice");
+        const body = await readJsonBody(request, config.requestMaxBytes);
+        if (body.sessionKey !== sessionKey(session.conversationId)) throw new GatewayError(409, "session_changed", "Conversation changed");
+        if (url.pathname === "/voice/stream") liveVoices.open(body.id, session.conversationId, response);
+        else { liveVoices.cancel(body.id, session.conversationId); sendJson(response, 200, { ok: true }); }
+        return;
+      }
+
       if (["/attachments/upload", "/attachments/download"].includes(url.pathname)) {
         const session = readConversationSession(request, config);
         if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation before transferring files");
@@ -645,6 +670,7 @@ export function createGateway({
           fetchImpl,
           bootstrapLocks,
           activeTurns,
+          liveVoices,
         );
         return;
       }
@@ -688,6 +714,8 @@ export function createGateway({
       }
     }
   });
+  server.on("close", () => liveVoices.close());
+  return server;
 }
 
 const isMain =

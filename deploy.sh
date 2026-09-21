@@ -104,10 +104,17 @@ fi
 
 install -d -m 750 -o root -g "$GATEWAY_USER" "$GATEWAY_ROOT"
 install -d -m 750 -o root -g "$GATEWAY_USER" "$GATEWAY_ROOT/gateway" "$GATEWAY_ROOT/lib"
-for module in core server attachments; do
+install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/gateway/package.json" "$GATEWAY_ROOT/package.json"
+install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/gateway/package-lock.json" "$GATEWAY_ROOT/package-lock.json"
+npm ci --prefix "$GATEWAY_ROOT" --omit=dev --ignore-scripts --no-audit --no-fund
+chown -R root:"$GATEWAY_USER" "$GATEWAY_ROOT/node_modules"
+chmod -R g+rX,o-rwx "$GATEWAY_ROOT/node_modules"
+
+for module in core server attachments live-voice; do
   install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/gateway/$module.mjs" "$GATEWAY_ROOT/gateway/$module.mjs"
 done
 install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/lib/agent-attachments.mjs" "$GATEWAY_ROOT/lib/agent-attachments.mjs"
+runuser -u "$GATEWAY_USER" -- /usr/bin/node --input-type=module -e "await import('$GATEWAY_ROOT/gateway/server.mjs')"
 
 {
   printf 'GATEWAY_HOST=127.0.0.1\n'
@@ -183,9 +190,12 @@ cat > "$AGENT_LIMITS" <<'EOF'
 limit_req_zone $binary_remote_addr zone=creekstone_agent_conversation:10m rate=6r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_agent_response:10m rate=12r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_agent_tts:10m rate=6r/m;
+limit_req_zone $binary_remote_addr zone=creekstone_voice_stream:10m rate=12r/m;
+limit_req_zone $binary_remote_addr zone=creekstone_voice_cancel:10m rate=24r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_attachment_upload:10m rate=3r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_attachment_download:10m rate=12r/m;
 limit_conn_zone $binary_remote_addr zone=creekstone_agent_connections:10m;
+limit_conn_zone $binary_remote_addr zone=creekstone_voice_connections:10m;
 EOF
 chmod 644 "$AGENT_LIMITS"
 
@@ -226,6 +236,45 @@ location = /api/agent/responses {
     proxy_buffering off;
     proxy_cache off;
     add_header X-Accel-Buffering no;
+}
+
+location = /api/agent/voice/stream {
+    limit_except POST { deny all; }
+    limit_req zone=creekstone_voice_stream burst=4 nodelay;
+    limit_req_status 429;
+    limit_conn creekstone_voice_connections 2;
+    client_max_body_size 8k;
+
+    proxy_pass http://127.0.0.1:8790/voice/stream;
+    proxy_http_version 1.1;
+    proxy_set_header Host 127.0.0.1;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 345s;
+    proxy_send_timeout 15s;
+    proxy_buffering off;
+    proxy_cache off;
+    gzip off;
+    add_header X-Accel-Buffering no;
+}
+
+location = /api/agent/voice/cancel {
+    limit_except POST { deny all; }
+    limit_req zone=creekstone_voice_cancel burst=8 nodelay;
+    limit_req_status 429;
+    client_max_body_size 8k;
+
+    proxy_pass http://127.0.0.1:8790/voice/cancel;
+    proxy_http_version 1.1;
+    proxy_set_header Host 127.0.0.1;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 15s;
+    proxy_cache off;
 }
 
 location = /api/agent/tts {

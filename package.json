@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3100",
+    "dev:agent": "node scripts/dev-agent.mjs",
     "build": "next build --webpack",
     "deploy": "bash deploy.sh",
     "gateway:dev": "node --env-file=.env.local gateway/server.mjs",
@@ -22,7 +23,8 @@
     "react-dom": "19.2.6",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "three": "^0.128.0"
+    "three": "^0.128.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.17",

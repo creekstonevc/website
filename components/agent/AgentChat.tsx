@@ -16,6 +16,7 @@ import remarkGfm from "remark-gfm";
 import styles from "./AgentChat.module.css";
 import { useTranscriptScroll } from "./useTranscriptScroll";
 import { useAttachmentDrafts } from "./useAttachmentDrafts";
+import { useLiveVoice } from "./useLiveVoice";
 import { FileGlyph, MessageAttachments, PendingAttachments } from "./AttachmentControls";
 import { ATTACHMENT_ONLY_INPUT, attachmentDisplayText } from "../../lib/agent-attachments.mjs";
 
@@ -156,6 +157,8 @@ export function AgentChat() {
   const { restore: restoreAttachments, replace: replaceAttachments } = attachmentDrafts;
   const [attachmentCapabilities, setAttachmentCapabilities] = useState(defaultAttachmentCapabilities);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const liveVoice = useLiveVoice();
+  const { start: startLiveVoice, stop: stopLiveVoice } = liveVoice;
 
   useLayoutEffect(() => {
     const anchor = prependAnchor.current;
@@ -189,6 +192,7 @@ export function AgentChat() {
   }, []);
 
   const disposeAudio = useCallback(() => {
+    stopLiveVoice();
     audioGeneration.current += 1;
     const audio = audioRef.current;
     audioRef.current = null;
@@ -201,7 +205,7 @@ export function AgentChat() {
       URL.revokeObjectURL(audioUrlRef.current);
       audioUrlRef.current = null;
     }
-  }, []);
+  }, [stopLiveVoice]);
 
   const handleVoiceToggle = async (messageIndex: number, ticket: string) => {
     const currentAudio = audioRef.current;
@@ -284,7 +288,7 @@ export function AgentChat() {
     }
   };
 
-  const renderReply = useCallback(async (input: string, bootstrap = false, attachments: AttachmentFile[] = []) => {
+  const renderReply = useCallback(async (input: string, bootstrap = false, attachments: AttachmentFile[] = [], liveVoiceId?: string) => {
     let pendingOutput = "";
     let pendingThinking = "";
     let animationFrame: number | null = null;
@@ -333,7 +337,7 @@ export function AgentChat() {
             queueFlush();
           },
         },
-        { bootstrap, sessionKey: sessionKeyRef.current, attachments },
+        { bootstrap, sessionKey: sessionKeyRef.current, attachments, liveVoiceId },
       );
 
       if (animationFrame !== null) {
@@ -512,9 +516,11 @@ export function AgentChat() {
 
     try {
       if (retry && recovery?.rebind) await openConversation({ sessionKey: sessionKeyRef.current });
-      await renderReply(input, false, attachments);
+      const liveVoiceId = await startLiveVoice(sessionKeyRef.current);
+      await renderReply(input, false, attachments, liveVoiceId);
       saveRecovery(null);
     } catch (error) {
+      stopLiveVoice();
       const rejected = error instanceof AgentRequestError &&
         (error.status === 429 || ["response_rejected", "session_changed", "conversation_busy", "invalid_attachment", "attachment_expired", "invalid_attachments", "attachments_too_large", "attachments_unavailable"].includes(error.code));
       saveRecovery({ kind: rejected ? "retry" : "sync", input,
@@ -819,6 +825,24 @@ export function AgentChat() {
         </div>
 
         <form className={styles.composer} onSubmit={handleSubmit}>
+          <div className={styles.liveVoiceToolbar}>
+            <button type="button" className={styles.liveVoiceToggle} aria-pressed={liveVoice.enabled}
+              onClick={() => { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); void liveVoice.toggle(); }}>
+              <VoiceGlyph phase="idle" />
+              <span>Live voice {liveVoice.enabled ? "on" : "off"}</span>
+            </button>
+            <span className={styles.liveVoiceStatus} role="status">
+              {liveVoice.state.phase === "error" ? liveVoice.state.error :
+                liveVoice.state.phase === "playing" ? `Speaking as Yihao writes${liveVoice.state.firstAudioMs ? ` · first audio ${(liveVoice.state.firstAudioMs / 1000).toFixed(1)}s` : ""}` :
+                liveVoice.state.phase === "connecting" ? "Connecting Yihao’s voice…" :
+                liveVoice.state.phase === "waiting" ? "Voice ready · waiting for Yihao’s words" :
+                liveVoice.state.phase === "preparing" ? "Preparing audio…" :
+                liveVoice.state.phase === "done" && liveVoice.state.firstAudioMs ? `Played · first audio ${(liveVoice.state.firstAudioMs / 1000).toFixed(1)}s · AI-generated voice` :
+                liveVoice.enabled ? "Next reply will play as it arrives · AI-generated voice" : "Listen while the next reply is being written"}
+            </span>
+            {["waiting", "connecting", "playing"].includes(liveVoice.state.phase) &&
+              <button type="button" className={styles.liveVoiceStop} onClick={stopLiveVoice}>Stop audio</button>}
+          </div>
           <label htmlFor="founder-message">
             <span>Founder input</span>
             <small id="composer-hint">{busy ? phase : "Enter to send · Shift + Enter for a new line"}</small>

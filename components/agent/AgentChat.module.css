@@ -941,6 +941,53 @@
   border-top: 1px solid rgba(229, 189, 82, 0.14);
 }
 
+.liveVoiceToolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+}
+
+.liveVoiceToggle,
+.liveVoiceStop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid rgba(229, 189, 82, 0.45);
+  background: transparent;
+  color: #e5bd52;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.liveVoiceToggle[aria-pressed="true"] {
+  background: #e5bd52;
+  color: #15130e;
+}
+
+.liveVoiceToggle:hover,
+.liveVoiceStop:hover {
+  border-color: #f3efe5;
+}
+
+.liveVoiceToggle:focus-visible,
+.liveVoiceStop:focus-visible {
+  outline: 2px solid #f3efe5;
+  outline-offset: 3px;
+}
+
+.liveVoiceStatus {
+  flex: 1 1 180px;
+  color: #bdb8aa;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
 .voiceButton {
   min-height: 34px;
   display: inline-flex;

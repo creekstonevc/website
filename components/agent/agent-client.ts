@@ -223,7 +223,7 @@ export async function openConversation(options: { reset?: boolean; sessionKey?: 
 export async function streamReply(
   input: string,
   handlers: StreamHandlers,
-  { bootstrap = false, sessionKey, attachments }: { bootstrap?: boolean; sessionKey?: string; attachments?: AttachmentFile[] } = {},
+  { bootstrap = false, sessionKey, attachments, liveVoiceId }: { bootstrap?: boolean; sessionKey?: string; attachments?: AttachmentFile[]; liveVoiceId?: string } = {},
 ): Promise<StreamResult> {
   const response = await fetch("/api/agent/responses", {
     method: "POST",
@@ -235,6 +235,7 @@ export async function streamReply(
     body: JSON.stringify({
       ...(bootstrap ? { bootstrap: true } : { input }),
       ...(sessionKey ? { sessionKey } : {}),
+      ...(!bootstrap && liveVoiceId ? { liveVoiceId } : {}),
       ...(!bootstrap && attachments?.length ? { attachments: attachments.map((file) => file.ticket) } : {}),
     }),
   });

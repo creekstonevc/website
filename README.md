@@ -16,10 +16,26 @@ npm run dev
 
 Open `http://localhost:3100`.
 
+### Local streaming-voice preview
+
+```bash
+npm run dev:agent -- --server-credentials
+```
+
+Open `http://localhost:3100/agent/`, enable **Live voice**, then send a message.
+The local gateway streams Agent text into BytePlus and plays PCM audio as it
+arrives. **Stop audio** leaves text generation running; existing **Play voice**
+replay remains available. Credentials are read over the configured `ssh creekstone`
+connection into process memory, not copied into browser code or local files.
+See [docs/live-voice.md](docs/live-voice.md) for setup, limits and verification.
+
+Production deployment installs the separately locked Gateway WebSocket dependency
+and exposes the two authenticated live-voice routes with streaming enabled.
+
 ## Production deployment
 
 Production uses a static Next.js export served by Nginx, matching the original
-Creekstone deployment model. Five exact same-origin API routes terminate at a
+Creekstone deployment model. Seven exact same-origin API routes terminate at a
 private Node gateway bound to `127.0.0.1:8790`. The gateway validates request
 bodies, binds each browser to a Boids conversation with a signed, HttpOnly
 cookie, restores recent history, forces the published Yihao Agent model,
@@ -62,6 +78,8 @@ Public routes are intentionally limited to:
 POST /api/agent/conversations
 POST /api/agent/responses
 POST /api/agent/tts
+POST /api/agent/voice/stream
+POST /api/agent/voice/cancel
 POST /api/agent/attachments/upload
 POST /api/agent/attachments/download
 ```
