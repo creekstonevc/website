@@ -4,6 +4,13 @@ import { readFileSync } from "node:fs";
 
 const deploy = readFileSync(new URL("../deploy.sh", import.meta.url), "utf8");
 
+test("root lock retains cross-platform optional native-build dependencies", () => {
+  const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
+  for (const name of ["@emnapi/core", "@emnapi/runtime"]) {
+    assert.ok(lock.packages[`node_modules/${name}`], `${name} must remain available to Linux npm ci`);
+  }
+});
+
 test("deployment installs the isolated, pinned live-voice runtime before service activation", () => {
   const manifest = JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8"));
   const lock = JSON.parse(readFileSync(new URL("package-lock.json", import.meta.url), "utf8"));
