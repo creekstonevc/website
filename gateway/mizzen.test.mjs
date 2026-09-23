@@ -6,6 +6,16 @@ import { MizzenAudio } from "./mizzen-audio.mjs";
 import { createMizzenManager } from "./mizzen.mjs";
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function waitFor(promise) {
+  // Production timers are deliberately unref'ed. Keep the isolated test alive
+  // while waiting for one, also bounding failures on Node 20's test runner.
+  let timer;
+  try {
+    return await Promise.race([promise, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Timed out waiting for audio input')), 2000);
+    })]);
+  } finally { clearTimeout(timer); }
+}
 class Socket extends EventEmitter {
   readyState = 1; bufferedAmount = 0; sent = [];
   send(text) { this.sent.push(JSON.parse(text)); }
@@ -234,7 +244,7 @@ test('idle silence has its own ended stream; reply waits for close and preserves
   });
   try {
     const opened = await connectManager(manager);
-    await keepaliveStarted;
+    await waitFor(keepaliveStarted);
     assert.deepEqual(audios[0].buffers, [Buffer.alloc(1920)]);
     assert.equal(audios[0].finishCalls, 1);
     const events = [], voice = manager.voice(event => events.push(event), 'alice', opened.videoId);
@@ -261,7 +271,7 @@ test('cancelling a reply waiting for keepalive closes its lease and never starts
     makeAudio: () => { connections++; started(); return audio; },
   });
   try {
-    const opened = await connectManager(manager); await keepaliveStarted;
+    const opened = await connectManager(manager); await waitFor(keepaliveStarted);
     const events = [], voice = manager.voice(event => events.push(event), 'alice', opened.videoId);
     voice.push('must not synthesize'); voice.finish(); voice.cancel();
     await pause(30);
