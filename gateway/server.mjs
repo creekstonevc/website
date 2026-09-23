@@ -644,7 +644,7 @@ export function createGateway({
       }
       assertOrigin(request, config);
 
-      if (/^\/video\/(capabilities|open|offer|ready|heartbeat|close|stats)$/.test(url.pathname)) {
+      if (/^\/video\/(capabilities|open|offer|ready|heartbeat|close|stats|diagnostics)$/.test(url.pathname)) {
         const session = readConversationSession(request, config);
         if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation first");
         const body = await readJsonBody(request, config.requestMaxBytes);

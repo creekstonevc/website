@@ -21,6 +21,23 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
   const stateLog = (event, entry, payload) => log({ event, videoId: entry.id, upstreamSession: entry.upstream,
     state: ["starting", "ready", "receiving", "closing", "closed", "failed"].includes(payload.state) ? payload.state : "unknown",
     code: safeCode(payload.error?.code ?? payload.error), elapsedMs: Date.now() - entry.created });
+  const clientLog = (entry, input) => {
+    if (!input || typeof input !== 'object' || (entry.clientLogCount || 0) >= 40) return;
+    const stages = ['ice_started', 'ice_complete', 'offer_sent', 'answer_applied', 'connection', 'ready', 'first_frame_timeout', 'closed'];
+    const reasons = ['none', 'client_closed', 'ice_timeout', 'ice_failed', 'open_failed', 'offer_failed', 'answer_failed', 'connection_failed', 'heartbeat_failed', 'media_failed'];
+    if (!stages.includes(input.stage)) return;
+    const bounded = (value, max) => Number.isSafeInteger(value) && value >= 0 && value <= max ? value : null;
+    entry.clientLogCount = (entry.clientLogCount || 0) + 1;
+    log({ event: 'video.client_diagnostics', videoId: entry.id, upstreamSession: entry.upstream,
+      source: 'browser', stage: input.stage, reason: reasons.includes(input.reason) ? input.reason : 'unknown',
+      elapsedMs: bounded(input.elapsedMs, 3600000), iceElapsedMs: bounded(input.iceElapsedMs, 3600000),
+      offerSent: input.offerSent === true,
+      gathering: ['new', 'gathering', 'complete'].includes(input.gathering) ? input.gathering : 'unknown',
+      connection: ['new', 'connecting', 'connected', 'disconnected', 'failed', 'closed'].includes(input.connection) ? input.connection : 'unknown',
+      candidates: Object.fromEntries(['host', 'srflx', 'prflx', 'relay'].map(type => [type, bounded(input.candidates?.[type], 1000)])),
+      iceErrorCodes: Array.isArray(input.iceErrorCodes) ? input.iceErrorCodes.slice(0, 8).map(code => bounded(code, 999)).filter(code => code !== null) : [],
+    });
+  };
   async function api(path, playback = false, method = "GET", body, idempotency) {
     const started = Date.now();
     const context = { operation: method, route: path.replace(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/, ":session"), upstreamSession: path.match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/)?.[0] ?? null };
@@ -130,7 +147,8 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
         finally { creating.delete(owner); }
       }
       const entry = own(body.videoId, owner); entry.seen = Date.now();
-      if (action === "close") { await release(entry); return { closed: true }; }
+      if (action === "close") { clientLog(entry, body.diagnostics); await release(entry); return { closed: true }; }
+      if (action === "diagnostics") { clientLog(entry, body.diagnostics); return { accepted: true }; }
       if (action === "stats") {
         if (!entry.negotiated) throw fault("video_not_ready", "Connect playback first.", 409);
         const input = body.stats, payload = { session_id: entry.upstream };

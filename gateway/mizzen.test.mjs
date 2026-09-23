@@ -187,6 +187,26 @@ test('stats uses owned upstream session and playback auth, validates counts and 
   } finally { await manager.close(); }
 });
 
+test('client diagnostics are owner-bound, whitelisted, bounded and included on close', async () => {
+  const logs = [], { manager } = managerFixture({ log: item => logs.push(item) });
+  try {
+    const opened = await manager.handle('open', 'alice', {});
+    const diagnostics = { stage: 'ice_started', reason: 'none', elapsedMs: 3, iceElapsedMs: 1,
+      candidates: { host: 1, relay: 0 }, gathering: 'gathering', connection: 'new',
+      iceErrorCodes: [701], sdp: 'PRIVATE_SDP', url: 'PRIVATE_URL', credential: 'PRIVATE_SECRET' };
+    await assert.rejects(manager.handle('diagnostics', 'bob', { ...opened, diagnostics }), { code: 'video_expired' });
+    await manager.handle('diagnostics', 'alice', { ...opened, diagnostics });
+    await manager.handle('close', 'alice', { ...opened, diagnostics: { ...diagnostics, stage: 'closed', reason: 'ice_timeout' } });
+    const reports = logs.filter(item => item.event === 'video.client_diagnostics');
+    assert.equal(reports.length, 2);
+    assert.equal(reports[1].reason, 'ice_timeout');
+    assert.equal(reports[1].upstreamSession, opened.sessionId);
+    assert.equal(reports[1].offerSent, false);
+    assert.deepEqual(reports[1].iceErrorCodes, [701]);
+    assert.equal(JSON.stringify(reports).includes('PRIVATE'), false);
+  } finally { await manager.close(); }
+});
+
 test("heartbeat preserves the original failure; delayed cleanup does not quarantine other seats", async () => {
   let abnormal = false, cleanup = false, gets = 0, serial = 0;
   const logs = [];

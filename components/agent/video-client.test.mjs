@@ -1,6 +1,44 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AvatarConnection, videoCodecs, playbackStats } from "./video-client.ts";
+import { AvatarConnection, videoCodecs, playbackStats, waitForIceGathering, iceCandidateCounts } from "./video-client.ts";
+
+test('non-trickle ICE waits for completion, rejects partial timeout and cleans listeners on abort', async () => {
+  const peer = new EventTarget(); peer.iceGatheringState = 'gathering';
+  peer.localDescription = { sdp: 'a=candidate:1 1 UDP 1 192.0.2.1 1234 typ host\r\n' };
+  const controller = new AbortController();
+  await assert.rejects(waitForIceGathering(peer, controller.signal, 5), /ICE gathering timed out/);
+  let completed = false;
+  const waiting = waitForIceGathering(peer, controller.signal, 100).then(() => { completed = true; });
+  await Promise.resolve(); assert.equal(completed, false);
+  peer.iceGatheringState = 'complete'; peer.dispatchEvent(new Event('icegatheringstatechange')); await waiting;
+  peer.iceGatheringState = 'gathering';
+  const aborting = waitForIceGathering(peer, controller.signal, 100); controller.abort();
+  await assert.rejects(aborting, /Cancelled/);
+  await assert.rejects(waitForIceGathering(peer, controller.signal, 100), /Cancelled/);
+  assert.deepEqual(iceCandidateCounts(peer.localDescription.sdp + 'a=candidate:2 1 UDP 1 192.0.2.2 1234 typ relay\r\n'),
+    { host: 1, srflx: 0, prflx: 0, relay: 1 });
+});
+
+test('heartbeat is single-flight and an intentional close cancellation never produces a failure', async () => {
+  const original = globalThis.fetch, calls = [], states = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push(url);
+    if (url.endsWith('/heartbeat')) return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+    return Response.json({ closed: true });
+  };
+  const client = new AvatarConnection('session', element(), state => states.push(state));
+  client.id = 'video';
+  try {
+    const pending = client.sendHeartbeat();
+    await client.sendHeartbeat();
+    assert.equal(calls.filter(url => url.endsWith('/heartbeat')).length, 1);
+    client.close(); await pending;
+    assert.deepEqual(states, []);
+    assert.equal(calls.filter(url => url.endsWith('/close')).length, 1);
+    await client.sendHeartbeat();
+    assert.equal(calls.filter(url => url.endsWith('/heartbeat')).length, 1);
+  } finally { client.close(); globalThis.fetch = original; }
+});
 
 test('playback telemetry uses cumulative real counters and selected-pair RTT, preserving unknowns and signed loss', () => {
   const rows = [

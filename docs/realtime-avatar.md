@@ -27,7 +27,7 @@
 
 1. 浏览器带现有签名 conversation cookie 和 `sessionKey` 请求 Gateway `/video/open`。
 2. Gateway 用独立幂等键创建 Mizzen 会话并轮询 ready，返回网站自己的 opaque videoId 和临时 ICE 凭证；上游 API Key 不下发。
-3. 浏览器建立 recvonly video + audio WebRTC，H.264 `42e01f` / packetization-mode 1，等待 ICE 收集完成，再通过 Gateway 交换 SDP。
+3. 浏览器建立 recvonly video + audio WebRTC，H.264 `42e01f` / packetization-mode 1，等待 ICE 收集完成，再通过 Gateway 交换 SDP。2026-09-23 核对对方文档 revision 3：明确不支持 Trickle ICE，无独立 candidate 上传接口；必须提交完整 offer。遵循文档示例的 15 秒 ICE 收集截止时间，超时不提交半成品 offer、不自动新建会话；界面明确提示 ICE 准备超时。
 4. 实际收到第一帧且连接成功后，才启用该会话的语音输出。自动播放受限时显示 Play video。
 5. 发消息时复用现有 Responses 流，`output_text.delta` → BytePlus 双向流式 TTS → 24kHz/16-bit/mono PCM → Gateway Mizzen WebSocket。
 6. Gateway 按 40ms / 960 samples 分包，连续 seq/sample_offset，最多八个未 ACK 包；音频按实际时长推送。同一视频会话复用一条音频输入连接，每轮只等待队列和 ACK 清空，不发送 `audio.end`。空闲每15秒发送40ms零值PCM，避免120秒静息超时；不插入待发送语音中。

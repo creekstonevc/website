@@ -29,10 +29,34 @@ async function request(action: string, sessionKey: string, body: Record<string, 
   const response = await fetch(`/api/agent/video/${action}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...body, sessionKey }), signal,
-    keepalive: action === "close",
+    keepalive: action === "close" || action === "diagnostics",
   });
   if (!response.ok) throw new Error("Video connection unavailable. Text chat is still open.");
   return response.json();
+}
+
+export function iceCandidateCounts(sdp = '') {
+  const counts = { host: 0, srflx: 0, prflx: 0, relay: 0 };
+  for (const line of sdp.split(/\r?\n/)) {
+    if (!line.startsWith('a=candidate:')) continue;
+    const type = line.match(/\styp (host|srflx|prflx|relay)(?:\s|$)/)?.[1] as keyof typeof counts | undefined;
+    if (type) counts[type]++;
+  }
+  return counts;
+}
+
+export function waitForIceGathering(pc: RTCPeerConnection, signal: AbortSignal, timeoutMs = 15000) {
+  return new Promise<void>((resolve, reject) => {
+    const done = () => { clearTimeout(timer); pc.removeEventListener('icegatheringstatechange', check); signal.removeEventListener('abort', aborted); };
+    const check = () => { if (pc.iceGatheringState === 'complete') { done(); resolve(); } };
+    const aborted = () => { done(); reject(new Error('Cancelled')); };
+    const timer = setTimeout(() => {
+      done(); reject(new Error('ICE gathering timed out. Video network preparation did not finish. Try another network or reconnect; text chat is still available.'));
+    }, timeoutMs);
+    pc.addEventListener('icegatheringstatechange', check);
+    signal.addEventListener('abort', aborted, { once: true });
+    if (signal.aborted) aborted(); else check();
+  });
 }
 
 export function videoCodecs(codecs: RTCRtpCodec[]) {
@@ -48,7 +72,14 @@ export class AvatarConnection {
   private closed = false;
   private ready = false;
   private markingReady = false;
-  private heartbeat?: ReturnType<typeof setInterval>;
+  private heartbeat?: ReturnType<typeof setTimeout>;
+  private heartbeatPending = false;
+  private startedAt = Date.now();
+  private stage = 'open';
+  private offerSent = false;
+  private iceStartedAt?: number;
+  private iceFinishedAt?: number;
+  private iceErrorCodes = new Set<number>();
   private statsTimer?: ReturnType<typeof setInterval>;
   private reportingStats = false;
   private upstreamSessionId?: string;
@@ -73,6 +104,32 @@ export class AvatarConnection {
     return request(action, this.sessionKey, { videoId: this.id, ...body },
       AbortSignal.any([this.controller.signal, AbortSignal.timeout(action === "open" ? 80000 : 20000)]));
   }
+  private diagnostics(stage: string, reason = 'none') {
+    return { stage, reason, elapsedMs: Math.max(0, Date.now() - this.startedAt),
+      candidates: iceCandidateCounts(this.pc?.localDescription?.sdp),
+      gathering: this.pc?.iceGatheringState ?? 'new', connection: this.pc?.connectionState ?? 'new', offerSent: this.offerSent,
+      iceElapsedMs: this.iceStartedAt === undefined ? 0 : Math.max(0, (this.iceFinishedAt ?? Date.now()) - this.iceStartedAt),
+      iceErrorCodes: [...this.iceErrorCodes] };
+  }
+  private trace(stage: string, reason = 'none') {
+    if (!this.id || this.closed) return;
+    void request('diagnostics', this.sessionKey, { videoId: this.id, diagnostics: this.diagnostics(stage, reason) },
+      AbortSignal.timeout(5000)).catch(() => {});
+  }
+  private scheduleHeartbeat() {
+    if (!this.closed) this.heartbeat = setTimeout(() => { void this.sendHeartbeat(); }, 15000);
+  }
+  private async sendHeartbeat() {
+    if (this.closed || this.heartbeatPending) return;
+    this.heartbeatPending = true;
+    try { await this.api('heartbeat'); }
+    catch {
+      if (!this.closed && !this.controller.signal.aborted) this.fail('Video heartbeat failed. Reconnect to continue; text chat is still available.', 'heartbeat_failed');
+    } finally {
+      this.heartbeatPending = false;
+      this.scheduleHeartbeat();
+    }
+  }
   async connect() {
     try {
       this.state("checking", "Checking video availability…");
@@ -87,8 +144,11 @@ export class AvatarConnection {
       this.upstreamSessionId = opened.sessionId;
       if (Number.isFinite(opened.expiresAt) && Number.isFinite(opened.serverNow)) this.expiresAt = Date.now() + Math.max(0, opened.expiresAt - opened.serverNow);
       if (this.closed) { void request("close", this.sessionKey, { videoId: this.id }).catch(() => {}); return; }
-      this.heartbeat = setInterval(() => { void this.api("heartbeat").catch(() => this.fail("Video session ended. Reconnect to continue.")); }, 15000);
+      this.scheduleHeartbeat();
       const pc = this.pc = new RTCPeerConnection({ iceServers: opened.iceServers, bundlePolicy: "max-bundle", iceTransportPolicy: "all" });
+      pc.onicecandidateerror = event => {
+        if (this.iceErrorCodes.size < 8 && Number.isInteger(event.errorCode)) this.iceErrorCodes.add(event.errorCode);
+      };
       this.statsTimer = setInterval(() => { void this.reportStats(); }, 3000);
       const stream = new MediaStream(); this.video.srcObject = stream;
       pc.addTransceiver("video", { direction: "recvonly" }).setCodecPreferences(codecs);
@@ -98,29 +158,35 @@ export class AvatarConnection {
         void this.play();
       };
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "failed" || pc.connectionState === "closed") this.fail("Video connection lost. Text chat is still open.");
+        this.trace('connection');
+        if (pc.connectionState === "failed" || pc.connectionState === "closed") this.fail("Video connection lost. Text chat is still open.", 'connection_failed');
         if (pc.connectionState === "connected") void this.markReady();
       };
       if (this.video.requestVideoFrameCallback) {
         this.frameCallback = this.video.requestVideoFrameCallback(() => { this.sawFrame = true; void this.markReady(); });
       } else this.video.addEventListener("loadeddata", this.onFrame, { once: true });
+      this.stage = 'ice';
+      this.state('connecting', 'Preparing network connection (ICE)…');
+      this.iceStartedAt = Date.now();
       await pc.setLocalDescription(await pc.createOffer());
-      await new Promise<void>((resolve, reject) => {
-        const done = () => { clearTimeout(timer); pc.removeEventListener("icegatheringstatechange", check); this.controller.signal.removeEventListener("abort", aborted); };
-        const check = () => { if (pc.iceGatheringState === "complete") { done(); resolve(); } };
-        const aborted = () => { done(); reject(new Error("Cancelled")); };
-        const timer = setTimeout(() => { done(); reject(new Error("Could not establish media connectivity. Text chat is still open.")); }, 15000);
-        pc.addEventListener("icegatheringstatechange", check);
-        this.controller.signal.addEventListener("abort", aborted, { once: true }); check();
-      });
+      this.trace('ice_started');
+      await waitForIceGathering(pc, this.controller.signal);
+      this.iceFinishedAt = Date.now();
+      this.trace('ice_complete');
       if (this.closed) return;
+      this.stage = 'offer'; this.offerSent = true;
+      this.trace('offer_sent');
+      this.state('connecting', 'Network ready · connecting video…');
       const answer = await this.api("offer", { sdp: pc.localDescription?.sdp });
+      this.stage = 'answer';
       await pc.setRemoteDescription({ type: "answer", sdp: answer.sdp });
+      this.trace('answer_applied');
       this.firstFrameTimer = setTimeout(() => {
-        if (!this.sawFrame) this.state("blocked", "No video frame yet · tap Play video or reconnect");
+        if (!this.sawFrame) { this.trace('first_frame_timeout'); this.state("blocked", "No video frame yet · tap Play video or reconnect"); }
       }, 20000);
     } catch (error) {
-      if (!this.closed) this.fail(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Video connection timed out. Text chat is still open.");
+      if (!this.closed) this.fail(error instanceof Error && error.name !== "TimeoutError" ? error.message : "Video connection timed out. Text chat is still open.",
+        this.stage === 'ice' && error instanceof Error && error.message.startsWith('ICE gathering timed out') ? 'ice_timeout' : `${this.stage}_failed`);
     }
   }
   private onFrame = () => { this.sawFrame = true; void this.markReady(); };
@@ -136,7 +202,7 @@ export class AvatarConnection {
   private async markReady() {
     if (this.closed || this.ready || this.markingReady || !this.sawFrame || this.pc?.connectionState !== "connected") return;
     this.markingReady = true;
-    try { await this.api("ready"); if (this.closed) return; this.ready = true; clearTimeout(this.firstFrameTimer); this.state("connected", "Live avatar · AI-generated video and voice"); }
+    try { await this.api("ready"); if (this.closed) return; this.ready = true; this.trace('ready'); clearTimeout(this.firstFrameTimer); this.state("connected", "Live avatar · AI-generated video and voice"); }
     catch { this.fail("Video could not become ready. Text chat is still open."); }
   }
   async play() {
@@ -178,17 +244,18 @@ export class AvatarConnection {
     } catch { if (!this.closed) this.fail("Video audio interrupted. Your text conversation is preserved."); }
     finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
   }
-  private fail(message: string) { this.state("error", message); this.close(); }
-  close() {
+  private fail(message: string, reason = 'media_failed') { if (this.closed) return; this.state("error", message); this.close(reason); }
+  close(reason = 'client_closed') {
     if (this.closed) return;
+    const diagnostics = this.diagnostics('closed', reason);
     this.closed = true; this.ready = false; this.controller.abort(); this.voiceController?.abort();
-    clearInterval(this.heartbeat); clearInterval(this.statsTimer); clearTimeout(this.firstFrameTimer);
+    clearTimeout(this.heartbeat); clearInterval(this.statsTimer); clearTimeout(this.firstFrameTimer);
     this.video.removeEventListener("loadeddata", this.onFrame);
     if (this.frameCallback !== undefined) this.video.cancelVideoFrameCallback(this.frameCallback);
-    if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.ontrack = null; this.pc.close(); }
+    if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.onicecandidateerror = null; this.pc.ontrack = null; this.pc.close(); }
     this.video.pause(); this.video.srcObject = null;
     if (this.voiceId) void fetch("/api/agent/voice/cancel", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: this.voiceId, sessionKey: this.sessionKey }), keepalive: true }).catch(() => {});
-    if (this.id) void request("close", this.sessionKey, { videoId: this.id }).catch(() => {});
+    if (this.id) void request("close", this.sessionKey, { videoId: this.id, diagnostics }).catch(() => {});
   }
 }

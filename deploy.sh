@@ -201,6 +201,7 @@ limit_req_zone $binary_remote_addr zone=creekstone_agent_response:10m rate=12r/m
 limit_req_zone $binary_remote_addr zone=creekstone_agent_tts:10m rate=6r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_voice_stream:10m rate=12r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_voice_cancel:10m rate=24r/m;
+limit_req_zone $binary_remote_addr zone=creekstone_video_telemetry:10m rate=60r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_attachment_upload:10m rate=3r/m;
 limit_req_zone $binary_remote_addr zone=creekstone_attachment_download:10m rate=12r/m;
 limit_conn_zone $binary_remote_addr zone=creekstone_agent_connections:10m;
@@ -284,7 +285,23 @@ location = /api/agent/voice/stream {
     add_header X-Accel-Buffering no;
 }
 
-location ~ ^/api/agent/video/(capabilities|open|offer|ready|heartbeat|close|stats)$ {
+location ~ ^/api/agent/video/(stats|diagnostics)$ {
+    limit_except POST { deny all; }
+    limit_req zone=creekstone_video_telemetry burst=12 nodelay;
+    limit_req_status 429;
+    client_max_body_size 8k;
+    rewrite ^/api/agent(/video/.*)$ $1 break;
+    proxy_pass http://127.0.0.1:8790;
+    proxy_http_version 1.1;
+    proxy_set_header Host 127.0.0.1;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 25s;
+    proxy_cache off;
+}
+
+location ~ ^/api/agent/video/(capabilities|open|offer|ready|heartbeat|close)$ {
     limit_except POST { deny all; }
     limit_req zone=creekstone_voice_cancel burst=8 nodelay;
     limit_req_status 429;
