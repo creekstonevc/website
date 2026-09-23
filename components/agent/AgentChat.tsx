@@ -19,6 +19,7 @@ import { useTranscriptScroll } from "./useTranscriptScroll";
 import { useAttachmentDrafts } from "./useAttachmentDrafts";
 import { useLiveVoice } from "./useLiveVoice";
 import { useAvatarVideo } from "./useAvatarVideo";
+import { SpeechInput, VideoExpiry, VideoSessionDetails } from "./SpeechInput";
 import { usePresenceTransition } from "./usePresenceTransition";
 import { FileGlyph, MessageAttachments, PendingAttachments } from "./AttachmentControls";
 import { ATTACHMENT_ONLY_INPUT, attachmentDisplayText } from "../../lib/agent-attachments.mjs";
@@ -163,10 +164,20 @@ export function AgentChat() {
   const liveVoice = useLiveVoice();
   const { start: startLiveVoice, stop: stopLiveVoice } = liveVoice;
   const [videoMode, setVideoMode] = useState(false);
+  const [speechMode, setSpeechMode] = useState(false);
+  const [speechActive, setSpeechActive] = useState(false);
+  const speechActiveRef = useRef(false);
   const shellRef = useRef<HTMLElement>(null);
   const transitionView = usePresenceTransition(shellRef, setVideoMode);
   const videoRef = useRef<HTMLVideoElement>(null);
   const avatar = useAvatarVideo(videoMode, sessionKey, videoRef);
+  useEffect(() => {
+    const media = videoRef.current;
+    if (!media || !speechActive) return;
+    const muted = media.muted;
+    media.muted = true;
+    return () => { media.muted = muted; };
+  }, [speechActive]);
   const greetingPlayed = useRef(new Set<string>());
   const { startReply: startAvatarReply } = avatar;
   useEffect(() => {
@@ -530,7 +541,7 @@ export function AgentChat() {
   const send = async (text?: string, retry = false) => {
     const attachments = retry ? readAttachmentFiles(recovery?.attachments) : attachmentDrafts.snapshot();
     const input = (text ?? value).trim() || (attachments.length ? ATTACHMENT_ONLY_INPUT : "");
-    if (!input || input.length > 4000 || operation.current || busy || loadingHistory || !ready || (recovery && !retry) ||
+    if (!input || input.length > 4000 || speechActiveRef.current || operation.current || busy || loadingHistory || !ready || (recovery && !retry) ||
         !retry && attachmentDrafts.hasPending() || attachments.length > 0 && !attachmentCapabilities.enabled) return;
     operation.current = true;
     const baseline = retry ? recovery?.baseline : messages.filter((item) => item.role === "user").length;
@@ -642,8 +653,18 @@ export function AgentChat() {
     }
   };
 
+  const presenceControls = <div className={styles.presenceControls} role="group" aria-label="Avatar modes">
+    <button type="button" aria-pressed={videoMode} onClick={() => {
+      if (!videoMode) { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); }
+      transitionView(!videoMode);
+    }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 5h10v10H2z M12 8l6-3v10l-6-3" /></svg>Video<span className={styles.toggleTrack} aria-hidden="true" /></button>
+    <button type="button" aria-pressed={speechMode} aria-label="Voice input" onClick={() => setSpeechMode(!speechMode)}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6" /></svg>Voice<span className={styles.toggleTrack} aria-hidden="true" />
+    </button>
+  </div>;
+
   return (
-    <main ref={shellRef} data-agent-view={videoMode ? "video" : "text"} className={`${styles.agentShell} ${videoMode ? styles.videoMode : ""}`}>
+    <main ref={shellRef} data-agent-view={videoMode ? "video" : "text"} className={`${styles.agentShell} ${videoMode ? styles.videoMode : ""} ${speechMode ? styles.speechMode : ""}`}>
       <div className={styles.noise} aria-hidden="true" />
       <div className={styles.signalField} aria-hidden="true">
         <span className={styles.signalAxisX} />
@@ -679,15 +700,6 @@ export function AgentChat() {
             <small>Founder Channel / Live</small>
           </span>
         </Link>
-        <div className={styles.modeSwitch} role="group" aria-label="Conversation view">
-          <span className={styles.modeIndicator} aria-hidden="true" />
-          <button type="button" aria-pressed={!videoMode} onClick={() => { if (videoMode) transitionView(false); }}>
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v10H8l-5 3V4Z M6 8h8 M6 11h5" /></svg>Text
-          </button>
-          <button type="button" aria-pressed={videoMode} onClick={() => { if (!videoMode) { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); transitionView(true); } }}>
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 5h10v10H2z M12 8l6-3v10l-6-3" /></svg>Video
-          </button>
-        </div>
         <Link className={styles.backLink} href="/#ai-vc-agent">
           <span aria-hidden="true">←</span>
           Back to origin
@@ -709,6 +721,7 @@ export function AgentChat() {
           />
           <span className={styles.portraitScan} aria-hidden="true" />
         </div>
+        {!videoMode && presenceControls}
         <div className={styles.identityCopy}>
           <span className={styles.identityLive}>
             <span className={styles.liveDot} />
@@ -747,13 +760,16 @@ export function AgentChat() {
           <span className={styles.stageScan} aria-hidden="true" />
           </div>
           <div className={styles.stageBottom}>
+            {videoMode && presenceControls}
             <div className={styles.stageStatus} role={videoMode ? "status" : undefined}>
               <span className={`${styles.stageSignal} ${avatar.state.phase === "connected" ? styles.stageSignalLive : ""}`} aria-hidden="true" />
               <span>{avatar.state.message}</span>
             </div>
             {avatar.state.phase === "blocked" && <button type="button" onClick={avatar.play}>Play video</button>}
             {["error", "blocked"].includes(avatar.state.phase) && <button type="button" onClick={avatar.reconnect}>Reconnect</button>}
-            <small>No camera or microphone needed. Keep typing on {" "}<span>the right.</span></small>
+            {videoMode && avatar.state.phase === 'connected' && <VideoExpiry expiresAt={avatar.state.expiresAt} />}
+            {videoMode && avatar.state.sessionId && <VideoSessionDetails key={avatar.state.sessionId} sessionId={avatar.state.sessionId} />}
+            <small>{speechMode ? 'Microphone is active only while holding Space or the talk button.' : 'No camera or microphone needed. Keep typing on the right.'}</small>
           </div>
         </div>
       </section>
@@ -823,7 +839,7 @@ export function AgentChat() {
               <div className={styles.messageBody}>
                 {message.role === "assistant" ? (
                   <>
-                    {message.thinking ? (
+                    {message.thinking && !speechMode ? (
                       <ThinkingBlock
                         text={message.thinking}
                         live={busy && index === messages.length - 1}
@@ -851,7 +867,7 @@ export function AgentChat() {
                         </div>
                         <MessageAttachments files={message.attachments} sessionKey={sessionKey} />
                         {message.attachmentWarning && <p className={styles.attachmentError} role="status">{message.attachmentWarning}</p>}
-                        {!videoMode && message.ttsTicket &&
+                        {!videoMode && !speechMode && message.ttsTicket &&
                         !(busy && index === messages.length - 1) ? (
                           <VoiceControl
                             messageIndex={index}
@@ -889,6 +905,7 @@ export function AgentChat() {
               <p>继续聊天不会重发上一条消息；未完成的回复仍可能稍后出现在历史中。</p>
             </>}
             {recovery.kind === "retry" && <button type="button" onClick={() => {
+              setSpeechMode(false);
               setValue(recovery.input || "");
               replaceAttachments(readAttachmentFiles(recovery.attachments));
               setMessages((current) => current.slice(0, -2));
@@ -917,7 +934,11 @@ export function AgentChat() {
         </div>
 
         <form className={styles.composer} onSubmit={handleSubmit}>
-          <div className={styles.liveVoiceToolbar} hidden={videoMode}>
+          {speechMode && <SpeechInput sessionKey={sessionKey} disabled={busy || !ready || loadingHistory || !!recovery}
+            onText={setValue} onFinal={text => { void send(text); }}
+            onActiveChange={active => { speechActiveRef.current = active; setSpeechActive(active); }}
+            onCaptureStart={() => { disposeAudio(); setVoice({ messageIndex: null, phase: 'idle' }); }} />}
+          <div className={styles.liveVoiceToolbar} hidden={videoMode || speechMode}>
             <button type="button" className={styles.liveVoiceToggle} aria-pressed={liveVoice.enabled}
               onClick={() => { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); void liveVoice.toggle(); }}>
               <VoiceGlyph phase="idle" />
@@ -936,12 +957,12 @@ export function AgentChat() {
               <button type="button" className={styles.liveVoiceStop} onClick={stopLiveVoice}>Stop audio</button>}
           </div>
           {videoMode && <div className={styles.videoComposerNote}>
-            <span>Text in / {avatar.state.phase === "connected" ? "video out" : "preview mode"}</span>
+            <span>{speechMode ? 'Voice' : 'Text'} in / {avatar.state.phase === "connected" ? "video out" : "preview mode"}</span>
             <span>{avatar.state.phase === "connected" ? "Sound comes from the video" : "Chat remains fully available"}</span>
           </div>}
           <label htmlFor="founder-message">
             <span>Founder input</span>
-            <small id="composer-hint">{busy ? phase : "Enter to send · Shift + Enter for a new line"}</small>
+            <small id="composer-hint">{busy ? phase : speechMode ? 'Release to send' : "Enter to send · Shift + Enter for a new line"}</small>
           </label>
           <PendingAttachments drafts={attachmentDrafts.drafts} onRemove={attachmentDrafts.remove} onRetry={attachmentDrafts.retry} />
           {attachmentDrafts.notice && <p className={styles.attachmentError} role="status">{attachmentDrafts.notice}</p>}
@@ -954,7 +975,7 @@ export function AgentChat() {
               ref={inputRef}
               rows={1}
               value={value}
-              disabled={busy || !ready || !!recovery}
+              disabled={busy || !ready || !!recovery || speechActive}
               maxLength={4000}
               placeholder="Tell me what you’re building…"
               onChange={(event) => setValue(event.target.value)}
@@ -963,7 +984,7 @@ export function AgentChat() {
               onCompositionEnd={() => { composing.current = false; compositionEnded.current = performance.now(); }}
               aria-describedby="composer-hint composer-count"
             />
-            <button type="submit" aria-label="Send message" disabled={busy || !ready || loadingHistory || !!recovery || attachmentDrafts.blocked ||
+            <button type="submit" aria-label="Send message" disabled={speechActive || busy || !ready || loadingHistory || !!recovery || attachmentDrafts.blocked ||
               (!value.trim() && !attachmentDrafts.drafts.length) || (!attachmentCapabilities.enabled && attachmentDrafts.drafts.length > 0)}>
               <span>{busy ? "Listening" : "Transmit"}</span>
               <span aria-hidden="true">{busy ? "···" : "↗"}</span>

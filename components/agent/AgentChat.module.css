@@ -1,3 +1,23 @@
+.presenceControls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; }
+.presenceControls button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid #66542d; background: #14120c; color: #b8b2a4; font: inherit; font-size: 12px; cursor: pointer; }
+.presenceControls button[aria-pressed="true"], .presenceControls button:hover { color: #f4d87d; border-color: #e5bd52; }
+.presenceControls svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.3; }
+.toggleTrack { width: 24px; height: 14px; padding: 3px; border-radius: 8px; background: #504a3b; }
+.toggleTrack::after { content: ''; display: block; width: 8px; height: 8px; border-radius: 50%; background: #b8b2a4; transition: transform 180ms ease-out; }
+button[aria-pressed="true"] .toggleTrack { background: #66542d; }
+button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); background: #f4d87d; }
+.presenceControls button:focus-visible, .speechInput button:focus-visible { outline: 2px solid #f4d87d; outline-offset: 4px; }
+.speechInput { margin: 4px 0 16px; }
+.speechInput > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 12px 14px; border: 1px solid #8a7543; background: #1c190f; color: #f4d87d; font: inherit; font-size: 14px; touch-action: none; user-select: none; transition: background 180ms, border-color 180ms; }
+.speechInput > button:hover { border-color: #e5bd52; }
+.speechInput > button:disabled { opacity: .5; }
+.speechInput svg { width: 20px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.speechInput kbd { margin-left: auto; border: 1px solid #8a7543; padding: 2px 6px; color: #c6b98e; font: inherit; font-size: 11px; }
+.speechInput[data-phase="recording"] > button { background: #e5bd52; color: #16130a; border-color: #e5bd52; }
+.speechInput[data-phase="recording"] kbd { color: #16130a; border-color: #785b17; }
+.speechInput p { min-height: 18px; margin: 8px 0 0; color: #b8b2a4; font-size: 11px; line-height: 1.5; }
+.speechInput[data-phase="error"] p { color: #e7b391; }
+.videoCountdown { color: #b8b2a4; font-size: 11px; font-variant-numeric: tabular-nums; }
 .agentShell {
   --agent-gold: #e5bd52;
   --agent-gold-light: #f4d87d;
@@ -58,6 +78,21 @@
 .videoComposerNote { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: #afa68f; font-size: 10px; }
 .videoComposerNote span:first-child { color: #e5bd52; text-transform: uppercase; letter-spacing: .12em; }
 .liveVoiceToolbar[hidden] { display: none; }
+.videoSessionDetails { width: 100%; color: #b8b2a4; font-size: 11px; }
+.videoSessionDetails summary { cursor: pointer; padding-block: 8px; }
+.videoSessionDetails code { display: block; overflow-wrap: anywhere; user-select: text; margin-bottom: 8px; }
+.videoSessionDetails > span { display: block; }
+.videoStage { overflow-y: auto; }
+.stageBottom { flex-shrink: 0; }
+
+.stageBottom .presenceControls button { min-height: 44px; color: #b8b2a4; }
+.stageBottom .presenceControls button[aria-pressed="true"], .stageBottom .presenceControls button:hover { color: #f4d87d; border-color: #e5bd52; }
+@media (min-width: 701px) {
+  .videoViewport, .stageBottom { width: min(100%, calc((100cqh - 264px) * var(--video-ratio))); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toggleTrack::after { transition: none; }
+}
 
 .agentShell *,
 .agentShell a,
@@ -193,7 +228,7 @@
   position: relative;
   z-index: 12;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   padding: 0 26px;
   border-top: 3px solid var(--agent-gold);
@@ -293,7 +328,7 @@
   grid-column: 1;
   grid-row: 2;
   display: grid;
-  grid-template-rows: auto minmax(220px, 46vh) auto 1fr;
+  grid-template-rows: auto minmax(180px, 40vh) auto auto 1fr;
   align-content: center;
   gap: 18px;
   min-width: 0;
@@ -1191,7 +1226,7 @@
 .composerControl {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: start;
+  align-items: end;
   padding-block: 8px;
   min-height: 48px;
   border-bottom: 1px solid rgba(243, 239, 229, 0.32);
@@ -1448,6 +1483,8 @@
     grid-column: 1 / -1;
   }
 
+  .identityPanel > .presenceControls { grid-column: 1 / -1; grid-row: 4; }
+
   .portraitFrame {
     grid-column: 1;
     grid-row: 2 / 4;
@@ -1625,7 +1662,7 @@
   .brand strong { font-size: 9px; letter-spacing: .1em; }
   .brand small { font-size: 7px; }
   .brand img { width: 27px; }
-  .videoMode { grid-template-columns: 1fr; grid-template-rows: 62px calc((100vw - 24px) * .5625 + 72px) minmax(0, 1fr) auto; }
+  .videoMode { grid-template-columns: 1fr; grid-template-rows: 62px calc((100vw - 24px) * .5625 + 156px) minmax(0, 1fr) auto; }
   .videoMode .identityPanel { display: block; padding: 0; border: 0; }
   .videoStage { --video-ratio: 1.777778; padding: 8px 12px; gap: 8px; container-type: normal; justify-content: start; }
   .videoViewport, .stageIdentity, .stageBottom { width: 100%; }
@@ -1671,6 +1708,29 @@
 .videoMode .videoViewport { view-transition-name: creekstone-presence; }
 .header { view-transition-name: creekstone-header; }
 @keyframes apertureLeft { from { transform: translateX(0); } to { transform: translateX(-101%); } }
+.speechMode .consoleHeader { padding: 14px; gap: 12px; }
+.speechMode .consoleHeader > div:first-child { display: none; }
+.speechMode .sessionActions { width: 100%; gap: 10px; }
+.speechMode .sessionActions select { min-width: 0; width: 0; flex: 1; }
+.speechMode .channelIntro, .speechMode .suggestions, .speechMode .messageMeta > span:last-child,
+.speechMode .composer > label, .speechMode .videoComposerNote, .speechMode .composerHint,
+.speechMode .attachmentToolbar > span { display: none; }
+.speechMode .transcript { padding: 20px 16px; }
+.speechMode .message { grid-template-columns: 1fr; gap: 6px; margin-bottom: 22px; padding-left: 0; }
+.speechMode .messageMeta { font-size: 10px; }
+.speechMode .messageBody { padding: 0; border: 0; background: transparent; }
+.speechMode .markdown { font-size: 14px; line-height: 1.65; }
+.speechMode .composer { padding: 14px 16px; }
+.speechMode .composerControl { display: none; }
+.speechMode .promptMark { display: none; }
+.speechMode .attachmentToolbar { padding-top: 10px; }
+.speechMode .attachButton { font-size: 11px; }
+@media (min-width: 901px) {
+  .speechMode { grid-template-columns: minmax(0, 1fr) clamp(320px, 29vw, 420px); }
+  .speechMode.videoMode { grid-template-columns: minmax(0, 1fr) clamp(320px, 26vw, 380px); }
+  .speechMode .console { margin: 20px 20px 20px 0; }
+}
+@media (prefers-reduced-motion: reduce) { .speechInput > button { transition: none; } }
 @keyframes apertureRight { from { transform: translateX(0); } to { transform: translateX(101%); } }
 @keyframes apertureLight { 0% { opacity: 0; transform: scaleY(.05); } 18% { opacity: 1; transform: scaleY(1); } 100% { opacity: 0; transform: scaleY(1); } }
 @keyframes presenceResolve { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

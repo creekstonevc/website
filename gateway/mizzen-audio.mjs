@@ -27,6 +27,12 @@ export class MizzenAudio {
           const expected = this.inflight.get(data.seq);
           if (!expected || data.received_samples !== expected.samples) throw new Error("invalid ack");
           this.inflight.delete(data.seq);
+          for (const waiter of this.drainers) {
+            if (waiter.onProgress && !waiter.acked && data.received_samples >= waiter.tailEnd) {
+              waiter.acked = true;
+              waiter.onProgress({ stage: "tail_acked", at: this.now(), samples: data.received_samples, seq: data.seq });
+            }
+          }
         } else if (data.type === "audio.input_ended") {
           if (!this.endSent || data.total_samples !== undefined && data.total_samples !== this.samples) throw new Error("invalid end");
           this.ended = true;
@@ -54,10 +60,21 @@ export class MizzenAudio {
   }
   finish() { this.ending = true; return this.done; }
   // End a reply, not the session input. A stopped Mizzen session cannot restart.
-  drain() {
+  drain({ tailMs = 0, onProgress } = {}) {
     if (this.closed || this.ending) return Promise.reject(new Error("Video audio input closed"));
     if (this.queue.length % 2) { this.fail(); return this.done; }
-    return new Promise((resolve, reject) => { this.drainers.push({ resolve, reject }); this.pump(); });
+    if (!Number.isInteger(tailMs) || tailMs < 0 || tailMs > 1000) return Promise.reject(new Error("Invalid audio tail"));
+    const speechEnd = this.samples + this.queue.length / 2;
+    const tailEnd = speechEnd + tailMs * 24;
+    this.push(Buffer.alloc(tailMs * 48));
+    if (this.closed) return this.done;
+    onProgress?.({ stage: "tail_queued", at: this.now(), speechEnd, tailEnd, tailMs });
+    const speechSent = this.samples >= speechEnd;
+    if (speechSent) onProgress?.({ stage: "speech_tail_sent", at: this.lastSent, samples: this.samples, seq: this.seq - 1 });
+    return new Promise((resolve, reject) => {
+      this.drainers.push({ resolve, reject, speechEnd, tailEnd, onProgress, speechSent, tailSent: false });
+      this.pump();
+    });
   }
   pump() {
     if (this.closed) return;
@@ -79,6 +96,14 @@ export class MizzenAudio {
       this.send({ type: "audio.chunk", stream_id: this.id, seq: this.seq, sample_offset: this.samples,
         sample_count: count, data: bytes.toString("base64") });
       this.samples += count; this.inflight.set(this.seq++, { samples: this.samples, at: now });
+      for (const waiter of this.drainers) {
+        for (const [flag, boundary, stage] of [["speechSent", waiter.speechEnd, "speech_tail_sent"], ["tailSent", waiter.tailEnd, "silence_tail_sent"]]) {
+          if (waiter.onProgress && !waiter[flag] && this.samples >= boundary) {
+            waiter[flag] = true;
+            waiter.onProgress({ stage, at: now, samples: this.samples, seq: this.seq - 1 });
+          }
+        }
+      }
       this.queue = this.queue.subarray(bytes.length);
       this.nextSendAt = now + count / 24 * (this.tickMs / 40);
       this.lastActivity = now;

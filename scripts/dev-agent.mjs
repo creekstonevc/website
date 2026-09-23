@@ -43,6 +43,13 @@ if (process.argv[1]?.endsWith("/dev-agent.mjs")) {
       gateway.emit("request", request, response);
     } else void handler(request, response);
   });
+  const nextUpgrade = app.getUpgradeHandler();
+  server.on('upgrade', (request, socket, head) => {
+    if (request.url?.startsWith('/api/agent/asr/stream')) {
+      request.url = request.url.slice('/api/agent'.length);
+      gateway.emit('upgrade', request, socket, head);
+    } else void nextUpgrade(request, socket, head);
+  });
   server.listen(3100, "127.0.0.1", () => console.log("Local Agent + live voice: http://localhost:3100/agent/ (production is unchanged)"));
   const close = async () => { server.close(); await gateway.stopMedia(); await app.close(); process.exit(0); };
   process.once("SIGTERM", close); process.once("SIGINT", close);

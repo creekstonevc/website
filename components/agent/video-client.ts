@@ -1,5 +1,29 @@
 export type VideoPhase = "idle" | "checking" | "preview" | "connecting" | "connected" | "blocked" | "error";
-export type VideoState = { phase: VideoPhase; message: string; feeding?: boolean };
+export type VideoState = { phase: VideoPhase; message: string; feeding?: boolean; expiresAt?: number; sessionId?: string };
+
+// No synthetic zeroes: omit the report if required browser counters are unavailable.
+export function playbackStats(report: RTCStatsReport) {
+  const rows: Record<string, unknown>[] = [];
+  report.forEach(row => rows.push(row));
+  const inbound = rows.filter(row => row.type === 'inbound-rtp');
+  const video = inbound.filter(row => (row.kind ?? row.mediaType) === 'video');
+  const audio = inbound.filter(row => (row.kind ?? row.mediaType) === 'audio');
+  const sum = (items: Record<string, unknown>[], key: string, integer = false, signed = false) => {
+    if (!items.length || items.some(row => typeof row[key] !== 'number' || !Number.isFinite(row[key]) ||
+      (!signed && (row[key] as number) < 0) || (integer && !Number.isSafeInteger(row[key])))) return null;
+    return items.reduce((total, row) => total + (row[key] as number), 0);
+  };
+  const frames_decoded = sum(video, 'framesDecoded', true), frames_dropped = sum(video, 'framesDropped', true);
+  const packets_lost = sum(inbound, 'packetsLost', true, true);
+  if (frames_decoded === null || frames_dropped === null || packets_lost === null) return null;
+  const transport = rows.find(row => row.type === 'transport' && row.id === video[0]?.transportId);
+  const pair = rows.find(row => row.type === 'candidate-pair' && row.id === transport?.selectedCandidatePairId);
+  const seconds = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+  return { frames_decoded, frames_dropped, packets_lost,
+    freeze_count: sum(video, 'freezeCount', true), freeze_seconds: sum(video, 'totalFreezesDuration'),
+    jitter_seconds: seconds(video[0]?.jitter), rtt_seconds: seconds(pair?.currentRoundTripTime),
+    concealed_samples: sum(audio, 'concealedSamples', true) };
+}
 
 async function request(action: string, sessionKey: string, body: Record<string, unknown> = {}, signal?: AbortSignal) {
   const response = await fetch(`/api/agent/video/${action}`, {
@@ -25,12 +49,16 @@ export class AvatarConnection {
   private ready = false;
   private markingReady = false;
   private heartbeat?: ReturnType<typeof setInterval>;
+  private statsTimer?: ReturnType<typeof setInterval>;
+  private reportingStats = false;
+  private upstreamSessionId?: string;
   private firstFrameTimer?: ReturnType<typeof setTimeout>;
   private frameCallback?: number;
   private voiceController?: AbortController;
   private voiceId = "";
   private feeding = false;
   private sawFrame = false;
+  private expiresAt?: number;
   private sessionKey: string;
   private video: HTMLVideoElement;
   private update: (state: VideoState) => void;
@@ -39,7 +67,7 @@ export class AvatarConnection {
   }
 
   private state(phase: VideoPhase, message: string) {
-    if (!this.closed) this.update({ phase, message, feeding: this.feeding });
+    if (!this.closed) this.update({ phase, message, feeding: this.feeding, expiresAt: this.expiresAt, sessionId: this.upstreamSessionId });
   }
   private async api(action: string, body: Record<string, unknown> = {}) {
     return request(action, this.sessionKey, { videoId: this.id, ...body },
@@ -56,9 +84,12 @@ export class AvatarConnection {
       this.state("connecting", "Preparing Yihao’s video channel · this can take a minute");
       const opened = await this.api("open");
       this.id = opened.videoId;
+      this.upstreamSessionId = opened.sessionId;
+      if (Number.isFinite(opened.expiresAt) && Number.isFinite(opened.serverNow)) this.expiresAt = Date.now() + Math.max(0, opened.expiresAt - opened.serverNow);
       if (this.closed) { void request("close", this.sessionKey, { videoId: this.id }).catch(() => {}); return; }
       this.heartbeat = setInterval(() => { void this.api("heartbeat").catch(() => this.fail("Video session ended. Reconnect to continue.")); }, 15000);
       const pc = this.pc = new RTCPeerConnection({ iceServers: opened.iceServers, bundlePolicy: "max-bundle", iceTransportPolicy: "all" });
+      this.statsTimer = setInterval(() => { void this.reportStats(); }, 3000);
       const stream = new MediaStream(); this.video.srcObject = stream;
       pc.addTransceiver("video", { direction: "recvonly" }).setCodecPreferences(codecs);
       pc.addTransceiver("audio", { direction: "recvonly" });
@@ -93,6 +124,15 @@ export class AvatarConnection {
     }
   }
   private onFrame = () => { this.sawFrame = true; void this.markReady(); };
+  private async reportStats() {
+    if (this.closed || this.reportingStats || this.pc?.connectionState !== 'connected') return;
+    this.reportingStats = true;
+    try {
+      const stats = playbackStats(await this.pc.getStats());
+      if (!this.closed && stats) await this.api('stats', { stats });
+    } catch { /* Optional telemetry must never interrupt video or chat. */ }
+    finally { this.reportingStats = false; }
+  }
   private async markReady() {
     if (this.closed || this.ready || this.markingReady || !this.sawFrame || this.pc?.connectionState !== "connected") return;
     this.markingReady = true;
@@ -142,7 +182,7 @@ export class AvatarConnection {
   close() {
     if (this.closed) return;
     this.closed = true; this.ready = false; this.controller.abort(); this.voiceController?.abort();
-    clearInterval(this.heartbeat); clearTimeout(this.firstFrameTimer);
+    clearInterval(this.heartbeat); clearInterval(this.statsTimer); clearTimeout(this.firstFrameTimer);
     this.video.removeEventListener("loadeddata", this.onFrame);
     if (this.frameCallback !== undefined) this.video.cancelVideoFrameCallback(this.frameCallback);
     if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.ontrack = null; this.pc.close(); }

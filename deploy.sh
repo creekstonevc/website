@@ -115,7 +115,7 @@ npm ci --prefix "$GATEWAY_ROOT" --omit=dev --ignore-scripts --no-audit --no-fund
 chown -R root:"$GATEWAY_USER" "$GATEWAY_ROOT/node_modules"
 chmod -R g+rX,o-rwx "$GATEWAY_ROOT/node_modules"
 
-for module in core server attachments live-voice mizzen mizzen-audio; do
+for module in core server attachments live-voice mizzen mizzen-audio asr; do
   install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/gateway/$module.mjs" "$GATEWAY_ROOT/gateway/$module.mjs"
 done
 install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/lib/agent-attachments.mjs" "$GATEWAY_ROOT/lib/agent-attachments.mjs"
@@ -209,6 +209,21 @@ EOF
 chmod 644 "$AGENT_LIMITS"
 
 cat > "$AGENT_SNIPPET" <<'EOF'
+location = /api/agent/asr/stream {
+    limit_req zone=creekstone_voice_stream burst=4 nodelay;
+    limit_req_status 429;
+    limit_conn creekstone_voice_connections 2;
+    proxy_pass http://127.0.0.1:8790/asr/stream;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Origin $http_origin;
+    proxy_set_header Host 127.0.0.1;
+    proxy_read_timeout 80s;
+    proxy_send_timeout 80s;
+    proxy_buffering off;
+}
+
 location = /api/agent/conversations {
     limit_except POST { deny all; }
     limit_req zone=creekstone_agent_conversation burst=3 nodelay;
@@ -269,7 +284,7 @@ location = /api/agent/voice/stream {
     add_header X-Accel-Buffering no;
 }
 
-location ~ ^/api/agent/video/(capabilities|open|offer|ready|heartbeat|close)$ {
+location ~ ^/api/agent/video/(capabilities|open|offer|ready|heartbeat|close|stats)$ {
     limit_except POST { deny all; }
     limit_req zone=creekstone_voice_cancel burst=8 nodelay;
     limit_req_status 429;

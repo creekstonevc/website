@@ -8,6 +8,7 @@ import {
 import { attachmentDisplayText } from "../lib/agent-attachments.mjs";
 import { BytePlusLiveVoice, createLiveVoiceRegistry } from "./live-voice.mjs";
 import { createMizzenManager, mizzenConfig } from "./mizzen.mjs";
+import { createAsrBridge } from "./asr.mjs";
 import {
   GatewayError,
   buildBoidsResponsePayload,
@@ -643,7 +644,7 @@ export function createGateway({
       }
       assertOrigin(request, config);
 
-      if (/^\/video\/(capabilities|open|offer|ready|heartbeat|close)$/.test(url.pathname)) {
+      if (/^\/video\/(capabilities|open|offer|ready|heartbeat|close|stats)$/.test(url.pathname)) {
         const session = readConversationSession(request, config);
         if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation first");
         const body = await readJsonBody(request, config.requestMaxBytes);
@@ -741,7 +742,15 @@ export function createGateway({
       }
     }
   });
-  server.stopMedia = () => { liveVoices.close(); return video.close(); };
+  const asr = createAsrBridge(config, request => {
+    assertOrigin(request, config);
+    const url = new URL(request.url, 'http://localhost');
+    const session = readConversationSession(request, config);
+    if (url.pathname !== '/asr/stream' || !session || url.searchParams.get('sessionKey') !== sessionKey(session.conversationId)) throw new Error('unauthorized');
+    return session.conversationId;
+  });
+  server.on('upgrade', asr.upgrade);
+  server.stopMedia = () => { asr.close(); liveVoices.close(); return video.close(); };
   server.on("close", () => { void server.stopMedia(); });
   return server;
 }

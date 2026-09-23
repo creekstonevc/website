@@ -45,6 +45,40 @@ test("Mizzen rejects malformed ACKs and incomplete final PCM samples", async () 
   a.emit({ type: "audio.ack", seq: 0, received_samples: 1 }); await assert.rejects(a.audio.done);
   const b = audioFixture(); b.audio.push(Buffer.alloc(1)); const done = b.audio.finish(); b.audio.pump(); await assert.rejects(done);
 });
+
+test('reply tail appends exactly 300ms silence, paces packets, waits for ACK and never ends the session', async () => {
+  let now = 0;
+  const socket = new Socket(), logs = [];
+  const audio = new MizzenAudio('wss://fixture.invalid/audio', 'test', { socketFactory: () => socket, now: () => now });
+  try {
+    socket.emit('open');
+    socket.emit('message', JSON.stringify({ stream_id: audio.id, type: 'audio.ready', max_chunk_samples: 960, max_inflight_chunks: 2 }));
+    const speech = Buffer.alloc(2000, 1);
+    audio.push(speech);
+    let drained = false;
+    const done = audio.drain({ tailMs: 300, onProgress: item => logs.push(item) }).then(() => { drained = true; });
+    const chunks = [];
+    while (audio.queue.length || audio.inflight.size) {
+      const chunk = socket.sent.at(-1);
+      assert.equal(chunk.type, 'audio.chunk');
+      chunks.push(Buffer.from(chunk.data, 'base64'));
+      const count = socket.sent.length;
+      audio.pump(); assert.equal(socket.sent.length, count);
+      assert.equal(drained, false);
+      socket.emit('message', JSON.stringify({ stream_id: audio.id, type: 'audio.ack', seq: chunk.seq, received_samples: chunk.sample_offset + chunk.sample_count }));
+      now += 40; audio.pump();
+    }
+    await done;
+    const pcm = Buffer.concat(chunks);
+    assert.deepEqual(pcm.subarray(0, speech.length), speech);
+    assert.deepEqual(pcm.subarray(speech.length), Buffer.alloc(14400));
+    assert.deepEqual(logs.map(item => item.stage), ['tail_queued', 'speech_tail_sent', 'silence_tail_sent', 'tail_acked']);
+    assert.equal(socket.sent.some(item => item.type === 'audio.end'), false);
+    assert.equal(audio.closed, false);
+    audio.push(Buffer.alloc(1920)); now += 40; audio.pump();
+    assert.equal(socket.sent.at(-1).sample_offset, 8200);
+  } finally { audio.cancel(); }
+});
 test("idle audio survives 150 seconds with silence and multiple replies never end the session input", async () => {
   let now = 0;
   const socket = new Socket();
@@ -106,7 +140,8 @@ test("video session ownership, separate keys, offer-once, PCM routing and input-
   const { manager, calls, emit, audioConnections } = managerFixture();
   try {
     const opened = await manager.handle("open", "alice", {});
-    assert.deepEqual(Object.keys(opened).sort(), ["iceServers", "videoId"]);
+    assert.deepEqual(Object.keys(opened).sort(), ["expiresAt", "iceServers", "serverNow", "sessionId", "videoId"]);
+    assert.ok(opened.expiresAt - opened.serverNow <= 550000 && opened.expiresAt > opened.serverNow);
     await assert.rejects(manager.handle("heartbeat", "bob", opened), { code: "video_expired" });
     assert.throws(() => manager.voice(() => {}, "alice", opened.videoId), { code: "video_not_ready" });
     await manager.handle("offer", "alice", { ...opened, sdp: "v=0\r\n" });
@@ -130,6 +165,26 @@ test("uncertain session creation quarantines further allocation instead of blind
   try { await assert.rejects(manager.handle("open", "a", {}), { code: "video_network" });
     await assert.rejects(manager.handle("open", "a", {}), { code: "video_cleanup" }); assert.equal(calls, 1); }
   finally { await manager.close(); }
+});
+
+test('stats uses owned upstream session and playback auth, validates counts and bounds request frequency', async () => {
+  const { manager, calls } = managerFixture();
+  try {
+    const opened = await manager.handle('open', 'alice', {});
+    await manager.handle('offer', 'alice', { ...opened, sdp: 'v=0\r\n' });
+    const stats = { frames_decoded: 250, frames_dropped: 2, packets_lost: -3, rtt_seconds: .08 };
+    await assert.rejects(manager.handle('stats', 'bob', { ...opened, stats }), { code: 'video_expired' });
+    await assert.rejects(manager.handle('stats', 'alice', { ...opened, stats: { ...stats, frames_decoded: -1 } }), { code: 'video_stats_invalid' });
+    await assert.rejects(manager.handle('stats', 'alice', { ...opened, stats: { packets_lost: 0 } }), { code: 'video_stats_invalid' });
+    await manager.handle('stats', 'alice', { ...opened, session_id: 'foreign', stats });
+    const sent = calls.find(call => call.path.endsWith('/stats'));
+    assert.equal(sent.headers.Authorization, 'Bearer playback-secret');
+    assert.equal(sent.path, `/v2/sessions/${opened.sessionId}/stats`);
+    assert.deepEqual(JSON.parse(sent.body), { session_id: opened.sessionId, ...stats,
+      freeze_count: null, concealed_samples: null, freeze_seconds: null, jitter_seconds: null });
+    assert.deepEqual(await manager.handle('stats', 'alice', { ...opened, stats }), { accepted: false });
+    assert.equal(calls.filter(call => call.path.endsWith('/stats')).length, 1);
+  } finally { await manager.close(); }
 });
 
 test("heartbeat preserves the original failure; delayed cleanup does not quarantine other seats", async () => {

@@ -125,12 +125,32 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
           const playback = await api(`/v2/sessions/${entry.upstream}/playback`, true);
           if (!Array.isArray(playback.iceServers) || playback.iceServers.length > 16) throw fault("video_protocol", "Invalid media configuration.");
           log({ event: "video.playback_ready", videoId: entry.id, upstreamSession: entry.upstream });
-          return { videoId: entry.id, iceServers: playback.iceServers };
+          return { videoId: entry.id, sessionId: entry.upstream, iceServers: playback.iceServers, expiresAt: entry.created + 550000, serverNow: Date.now() };
         } catch (error) { if (entry) await release(entry).catch(() => {}); throw error; }
         finally { creating.delete(owner); }
       }
       const entry = own(body.videoId, owner); entry.seen = Date.now();
       if (action === "close") { await release(entry); return { closed: true }; }
+      if (action === "stats") {
+        if (!entry.negotiated) throw fault("video_not_ready", "Connect playback first.", 409);
+        const input = body.stats, payload = { session_id: entry.upstream };
+        const required = ['frames_decoded', 'frames_dropped', 'packets_lost'];
+        const counts = [...required, 'freeze_count', 'concealed_samples'];
+        for (const key of [...counts, 'freeze_seconds', 'jitter_seconds', 'rtt_seconds']) {
+          const value = input?.[key];
+          if (value == null && !required.includes(key)) { payload[key] = null; continue; }
+          if (typeof value !== 'number' || !Number.isFinite(value) ||
+            (counts.includes(key) && !Number.isSafeInteger(value)) || (key !== 'packets_lost' && value < 0))
+            throw fault("video_stats_invalid", "Invalid playback statistics.", 400);
+          payload[key] = value;
+        }
+        if (entry.statsPending || Date.now() - (entry.lastStatsAt || 0) < 1000) return { accepted: false };
+        entry.statsPending = true; entry.lastStatsAt = Date.now();
+        try {
+          const result = await api(`/v2/sessions/${entry.upstream}/stats`, true, "POST", payload);
+          return { accepted: result.accepted === true };
+        } finally { entry.statsPending = false; }
+      }
       if (action === "heartbeat") {
         const status = await api(`/v1/sessions/${entry.upstream}`);
         if (!["ready", "receiving"].includes(status.state) || status.error) {
@@ -139,7 +159,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
           void release(entry).catch(() => {});
           throw fault("video_expired", "Video session ended. Reconnect when ready.", 409);
         }
-        return { state: status.state, inputActive: !!entry.active };
+        return { state: status.state, inputActive: !!entry.active, expiresAt: entry.created + 550000, serverNow: Date.now() };
       }
       if (action === "offer") {
         if (entry.offering || entry.negotiated) throw fault("video_busy", "Reconnect before creating another playback connection.", 409);
@@ -173,18 +193,22 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
     voice(emit, owner, id) {
       const entry = own(id, owner);
       if (!entry.connected || entry.active) throw fault("video_not_ready", "Video is not ready for another reply.", 409);
-      entry.active = true; let finished = false, cancelled = false;
+      entry.active = true; let finished = false, cancelled = false, draining = false;
+      const replyId = randomUUID();
       const audio = entry.audio;
       const fail = () => { if (cancelled) return; cancelled = true; emit("error", { code: "video_interrupted" }); void release(entry).catch(() => {}); };
       let tts;
       try { tts = makeTts((event, data) => {
-        if (cancelled || finished) return;
+        if (cancelled || finished || draining) return;
         if (event === "audio") {
           try {
             audio.push(Buffer.from(data.data, "base64"));
           } catch { fail(); }
         } else if (event === "done") {
-          void audio.drain().then(() => {
+          draining = true;
+          void audio.drain({ tailMs: 300, onProgress: progress => log({
+            event: "video.audio_tail", videoId: entry.id, upstreamSession: entry.upstream, replyId, ...progress,
+          }) }).then(() => {
             if (cancelled) return;
             finished = true; entry.active = false; entry.tts = null;
             emit("done", {}); // Input drained, NOT playback complete. Retain the video lease.
