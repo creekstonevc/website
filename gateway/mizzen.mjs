@@ -10,8 +10,8 @@ export function mizzenConfig(env = process.env) {
     inputKey: env.MIZZEN_INPUT_KEY || "", playbackKey: env.MIZZEN_PLAYBACK_KEY || "" };
 }
 
-export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (url, key) => new MizzenAudio(url, key),
-  makeTts = (emit) => new BytePlusLiveVoice(config, emit), pollMs = 500,
+export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (url, key, options) => new MizzenAudio(url, key, options),
+  makeTts = (emit) => new BytePlusLiveVoice(config, emit), pollMs = 500, keepaliveMs = 15000,
   log = event => process.stderr.write(`${JSON.stringify(event)}\n`) } = {}) {
   const settings = config.mizzen || mizzenConfig({});
   const entries = new Map(), creating = new Set(), rates = new Map();
@@ -74,7 +74,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
   }
   async function release(entry) {
     if (entry.closing) return entry.closing;
-    entry.closed = true; entry.audio?.cancel(); entry.tts?.cancel();
+    entry.closed = true; clearTimeout(entry.keepaliveTimer); entry.audio?.cancel(); entry.tts?.cancel();
     entry.closing = (async () => {
       try {
         await api(`/v1/sessions/${entry.upstream}`, false, "DELETE");
@@ -97,6 +97,44 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
     })();
     entry.closing.catch(() => { entry.closing = null; });
     return entry.closing;
+  }
+  function openAudio(entry, purpose, replyId = null) {
+    // Only one utterance may own the input path at a time. A successful input
+    // close releases this socket, never the video session or WebRTC connection.
+    if (entry.closed || entry.audio) throw fault("video_not_ready", "Video audio input is busy.", 409);
+    const target = new URL(`/v1/sessions/${entry.upstream}/audio`, settings.base); target.protocol = "wss:";
+    const audio = makeAudio(target.href, settings.inputKey, { onProgress: progress => log({
+      event: "video.audio_input", videoId: entry.id, upstreamSession: entry.upstream, purpose, replyId, ...progress,
+    }) });
+    entry.audio = audio;
+    log({ event: "video.audio_open", videoId: entry.id, upstreamSession: entry.upstream, purpose, replyId, streamId: audio.id });
+    void audio.done.then(() => {
+      if (entry.audio === audio) entry.audio = null;
+    }, () => {
+      if (!entry.closed) {
+        log({ event: "video.audio_input_failed", videoId: entry.id, upstreamSession: entry.upstream, purpose, replyId, streamId: audio.id });
+        void release(entry).catch(() => {});
+      }
+    });
+    return audio;
+  }
+  function scheduleKeepalive(entry) {
+    clearTimeout(entry.keepaliveTimer);
+    if (entry.closed || !entry.connected || entry.active || entry.keepalive) return;
+    entry.keepaliveTimer = setTimeout(() => {
+      if (entry.closed || entry.active) return;
+      // A small *complete* silent utterance prevents 120s idle expiry without
+      // keeping an unfinished input stream between replies. Voice waits for it.
+      entry.keepalive = (async () => {
+        const audio = openAudio(entry, "keepalive");
+        audio.push(Buffer.alloc(1920));
+        await audio.finish();
+      })();
+      void entry.keepalive.then(() => {
+        entry.keepalive = null; scheduleKeepalive(entry);
+      }, () => { void release(entry).catch(() => {}); });
+    }, keepaliveMs);
+    entry.keepaliveTimer.unref?.();
   }
   const sweep = setInterval(() => {
     for (const entry of entries.values()) {
@@ -193,50 +231,66 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
       }
       if (action === "ready") {
         if (!entry.negotiated) throw fault("video_not_ready", "Connect playback first.", 409);
-        if (!entry.audio) {
-          const target = new URL(`/v1/sessions/${entry.upstream}/audio`, settings.base); target.protocol = "wss:";
-          entry.audio = makeAudio(target.href, settings.inputKey);
-          entry.audio.done.catch(() => {
-            if (!entry.closed) {
-              log({ event: "video.audio_input_failed", videoId: entry.id, upstreamSession: entry.upstream });
-              void release(entry).catch(() => {});
-            }
-          });
-          entry.audio.push(Buffer.alloc(1920));
-        }
-        entry.connected = true; return { ready: true };
+        if (!entry.connected) { entry.connected = true; scheduleKeepalive(entry); }
+        return { ready: true };
       }
       throw fault("not_found", "Route was not found", 404);
     },
     voice(emit, owner, id) {
       const entry = own(id, owner);
       if (!entry.connected || entry.active) throw fault("video_not_ready", "Video is not ready for another reply.", 409);
-      entry.active = true; let finished = false, cancelled = false, draining = false;
+      entry.active = true; clearTimeout(entry.keepaliveTimer);
+      let finished = false, cancelled = false, draining = false, inputFinished = false;
       const replyId = randomUUID();
-      const audio = entry.audio;
-      const fail = () => { if (cancelled) return; cancelled = true; emit("error", { code: "video_interrupted" }); void release(entry).catch(() => {}); };
-      let tts;
-      try { tts = makeTts((event, data) => {
-        if (cancelled || finished || draining) return;
-        if (event === "audio") {
-          try {
-            audio.push(Buffer.from(data.data, "base64"));
-          } catch { fail(); }
-        } else if (event === "done") {
-          draining = true;
-          void audio.drain({ tailMs: 300, onProgress: progress => log({
-            event: "video.audio_tail", videoId: entry.id, upstreamSession: entry.upstream, replyId, ...progress,
-          }) }).then(() => {
-            if (cancelled) return;
-            finished = true; entry.active = false; entry.tts = null;
-            emit("done", {}); // Input drained, NOT playback complete. Retain the video lease.
-          }).catch(fail);
-        } else if (event === "error") fail();
-        else emit(event, data);
-      }); } catch { entry.active = false; void release(entry).catch(() => {}); throw fault("video_audio", "Video voice could not start. Text chat is still available."); }
-      entry.tts = tts;
-      return { push: text => tts.push(text), finish: () => tts.finish(), cancel: () => {
-        if (finished || cancelled) return; cancelled = true; tts.cancel(); audio?.cancel(); void release(entry).catch(() => {});
+      let tts, audio, pending = [], pendingCharacters = 0;
+      const fail = () => {
+        if (cancelled || finished) return;
+        cancelled = true; pending = [];
+        emit("error", { code: "video_interrupted" }); void release(entry).catch(() => {});
+      };
+      // Keep the public voice API synchronous while serializing a new reply
+      // behind an in-flight silent stream, including its server-side WS close.
+      void Promise.resolve(entry.keepalive).then(() => {
+        if (cancelled) return;
+        if (entry.closed) { fail(); return; }
+        audio = openAudio(entry, "reply", replyId);
+        void audio.done.catch(fail);
+        tts = makeTts((event, data) => {
+          if (cancelled || finished || draining) return;
+          if (event === "audio") {
+            try { audio.push(Buffer.from(data.data, "base64")); } catch { fail(); }
+          } else if (event === "done") {
+            draining = true;
+            void audio.drain({ tailMs: 300, onProgress: progress => log({
+              event: "video.audio_tail", videoId: entry.id, upstreamSession: entry.upstream, replyId, streamId: audio.id, ...progress,
+            }) }).then(() => {
+              if (!cancelled && !entry.closed) return audio.finish();
+            }).then(() => {
+              if (cancelled || entry.closed) return;
+              finished = true; entry.active = false; entry.tts = null;
+              scheduleKeepalive(entry);
+              emit("done", {}); // Input ended + socket closed, NOT playback complete.
+            }).catch(fail);
+          } else if (event === "error") fail();
+          else emit(event, data);
+        });
+        entry.tts = tts;
+        for (const text of pending) { if (cancelled) break; tts.push(text); }
+        pending = []; pendingCharacters = 0;
+        if (inputFinished && !cancelled) tts.finish();
+      }).catch(fail);
+      return { push: text => {
+        if (cancelled || finished || inputFinished) return;
+        if (tts) { try { tts.push(text); } catch { fail(); } }
+        else if ((pendingCharacters += text.length) <= 131072) pending.push(text);
+        else fail();
+      }, finish: () => {
+        if (cancelled || finished || inputFinished) return;
+        inputFinished = true;
+        try { tts?.finish(); } catch { fail(); }
+      }, cancel: () => {
+        if (finished || cancelled) return;
+        cancelled = true; pending = []; tts?.cancel(); void release(entry).catch(() => {});
       } };
     },
     close() { clearInterval(sweep); return Promise.allSettled([...entries.values()].map(release)); },

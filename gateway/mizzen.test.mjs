@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { randomUUID } from "node:crypto";
 import { MizzenAudio } from "./mizzen-audio.mjs";
 import { createMizzenManager } from "./mizzen.mjs";
 
@@ -46,10 +47,12 @@ test("Mizzen rejects malformed ACKs and incomplete final PCM samples", async () 
   const b = audioFixture(); b.audio.push(Buffer.alloc(1)); const done = b.audio.finish(); b.audio.pump(); await assert.rejects(done);
 });
 
-test('reply tail appends exactly 300ms silence, paces packets, waits for ACK and never ends the session', async () => {
+test('reply tail is ACKed before audio.end; input_ended AND socket close are required to finish', async () => {
   let now = 0;
-  const socket = new Socket(), logs = [];
-  const audio = new MizzenAudio('wss://fixture.invalid/audio', 'test', { socketFactory: () => socket, now: () => now });
+  const socket = new Socket(), logs = [], lifecycle = [];
+  const audio = new MizzenAudio('wss://fixture.invalid/audio', 'test', {
+    socketFactory: () => socket, now: () => now, onProgress: event => lifecycle.push(event),
+  });
   try {
     socket.emit('open');
     socket.emit('message', JSON.stringify({ stream_id: audio.id, type: 'audio.ready', max_chunk_samples: 960, max_inflight_chunks: 2 }));
@@ -75,11 +78,22 @@ test('reply tail appends exactly 300ms silence, paces packets, waits for ACK and
     assert.deepEqual(logs.map(item => item.stage), ['tail_queued', 'speech_tail_sent', 'silence_tail_sent', 'tail_acked']);
     assert.equal(socket.sent.some(item => item.type === 'audio.end'), false);
     assert.equal(audio.closed, false);
-    audio.push(Buffer.alloc(1920)); now += 40; audio.pump();
-    assert.equal(socket.sent.at(-1).sample_offset, 8200);
+    let finished = false;
+    const ended = audio.finish().then(() => { finished = true; });
+    assert.deepEqual(socket.sent.at(-1), { type: 'audio.end', stream_id: audio.id, total_samples: 8200 });
+    await pause(0); assert.equal(finished, false);
+    socket.emit('message', JSON.stringify({ type: 'audio.input_ended', stream_id: audio.id, total_samples: 8200 }));
+    await pause(0); assert.equal(finished, false);
+    socket.emit('close'); await ended;
+    assert.equal(finished, true);
+    assert.deepEqual(lifecycle.map(event => event.stage), ['ready', 'end_sent', 'input_ended', 'closed']);
+    assert.ok(lifecycle.every(event => event.streamId === audio.id));
+    assert.equal(lifecycle[1].afterLastAckMs, 40);
+    audio.finish(); audio.push(Buffer.alloc(1920)); now += 15000; audio.pump();
+    assert.equal(socket.sent.filter(item => item.type === 'audio.end').length, 1);
   } finally { audio.cancel(); }
 });
-test("idle audio survives 150 seconds with silence and multiple replies never end the session input", async () => {
+test("an active utterance survives TTS gaps with silence, then closes its input stream", async () => {
   let now = 0;
   const socket = new Socket();
   const audio = new MizzenAudio("wss://fixture.invalid/audio", "test", { socketFactory: () => socket, now: () => now });
@@ -97,21 +111,46 @@ test("idle audio survives 150 seconds with silence and multiple replies never en
       assert.equal(Buffer.from(chunk.data, 'base64').some(byte => byte !== 0), false);
       ack(); audio.pump(); assert.equal(audio.closed, false);
     }
-    for (let reply = 0; reply < 2; reply++) {
-      now += 100; audio.push(Buffer.alloc(100, 1));
-      let drained = false; const done = audio.drain().then(() => { drained = true; });
-      assert.equal(drained, false);
-      ack(); audio.pump(); await done;
-      assert.equal(audio.closed, false);
-    }
+    now += 100; audio.push(Buffer.alloc(100, 1));
+    let drained = false; const done = audio.drain().then(() => { drained = true; });
+    assert.equal(drained, false);
+    ack(); audio.pump(); await done;
     assert.equal(socket.sent.filter(frame => frame.type === 'audio.start').length, 1);
-    assert.equal(socket.sent.some(frame => frame.type === 'audio.end'), false);
-    audio.cancel(); const count = socket.sent.length; now += 15000; audio.pump();
+    const ended = audio.finish(); now += 40; audio.pump();
+    assert.equal(socket.sent.at(-1).type, 'audio.end');
+    socket.emit('message', JSON.stringify({ stream_id: audio.id, type: 'audio.input_ended', total_samples: audio.samples }));
+    socket.emit('close'); await ended;
+    const count = socket.sent.length; now += 15000; audio.pump();
     assert.equal(socket.sent.length, count);
   } finally { audio.cancel(); }
 });
+test('audio end times out without server close; malformed end and early close fail safely', async () => {
+  let now = 0;
+  const socket = new Socket();
+  const audio = new MizzenAudio('wss://fixture.invalid/audio', 'test', { socketFactory: () => socket, now: () => now });
+  socket.emit('open');
+  socket.emit('message', JSON.stringify({ stream_id: audio.id, type: 'audio.ready', max_chunk_samples: 960, max_inflight_chunks: 2 }));
+  const ended = audio.finish();
+  socket.emit('message', JSON.stringify({ stream_id: audio.id, type: 'audio.input_ended', total_samples: 0 }));
+  now = 25001; audio.pump(); await assert.rejects(ended);
+  const b = audioFixture(); b.audio.finish();
+  b.emit({ type: 'audio.input_ended', total_samples: 1 }); await assert.rejects(b.audio.done);
+  const c = audioFixture(); c.audio.finish(); c.socket.emit('close'); await assert.rejects(c.audio.done);
+});
+class ManagedAudio {
+  id = randomUUID(); buffers = []; finishCalls = 0; drainCalls = 0; cancelled = false;
+  constructor(autoFinish = true) {
+    this.autoFinish = autoFinish;
+    this.done = new Promise((resolve, reject) => { this.complete = resolve; this.reject = reject; });
+    this.done.catch(() => {});
+  }
+  push(bytes) { this.buffers.push(bytes); }
+  drain() { this.drainCalls++; return this.drained || Promise.resolve(); }
+  finish() { this.finishCalls++; if (this.autoFinish) this.complete(); return this.done; }
+  cancel() { this.cancelled = true; this.reject(new Error('cancelled')); }
+}
 function managerFixture(extra = {}) {
-  const calls = [], audioConnections = []; let closed = false, ttsEmit;
+  const calls = [], audioConnections = [], ttsCalls = []; let closed = false, ttsEmit;
   const manager = createMizzenManager({ mizzen: { base: "https://avatar.fixture.invalid", inputKey: "input-secret", playbackKey: "playback-secret" } }, {
     fetchImpl: async (url, options) => {
       const path = new URL(url).pathname; calls.push({ path, ...options });
@@ -123,12 +162,12 @@ function managerFixture(extra = {}) {
       return Response.json({ state: closed ? "closed" : "ready" });
     },
     makeAudio: () => {
-      const audio = { push() {}, drain: () => Promise.resolve(), finish: () => { throw new Error('must not end input between replies'); }, done: new Promise(() => {}), cancel() {} };
+      const audio = new ManagedAudio();
       audioConnections.push(audio); return audio;
     },
-    makeTts: emit => { ttsEmit = emit; return { push() {}, finish() {}, cancel() {} }; }, ...extra,
+    makeTts: emit => { ttsEmit = emit; return { push: text => ttsCalls.push(text), finish: () => ttsCalls.push('finish'), cancel: () => ttsCalls.push('cancel') }; }, ...extra,
   });
-  return { manager, calls, audioConnections, emit: (...args) => ttsEmit(...args) };
+  return { manager, calls, audioConnections, ttsCalls, emit: (...args) => ttsEmit(...args) };
 }
 test("video credentials absent is a no-upstream preview; keys never appear in capabilities", async () => {
   const manager = createMizzenManager({}, { fetchImpl: () => { throw new Error("must not fetch"); } });
@@ -147,16 +186,100 @@ test("video session ownership, separate keys, offer-once, PCM routing and input-
     await manager.handle("offer", "alice", { ...opened, sdp: "v=0\r\n" });
     await assert.rejects(manager.handle("offer", "alice", { ...opened, sdp: "v=0\r\n" }), { code: "video_busy" });
     await manager.handle("ready", "alice", opened);
+    assert.equal(audioConnections.length, 0);
     const events = [], voice = manager.voice((event, data) => events.push({ event, data }), "alice", opened.videoId);
+    await pause(0);
     emit("audio", { data: Buffer.alloc(1920).toString("base64") }); emit("done", {}); await pause(0);
     assert.deepEqual(events, [{ event: "done", data: {} }]);
     voice.cancel(); assert.equal(calls.some(call => call.method === "DELETE"), false);
     const second = manager.voice((event, data) => events.push({ event, data }), 'alice', opened.videoId);
+    await pause(0);
     emit('audio', { data: Buffer.alloc(1920).toString('base64') }); emit('done', {}); await pause(0);
     second.cancel();
-    assert.equal(audioConnections.length, 1);
+    assert.equal(audioConnections.length, 2);
+    assert.notEqual(audioConnections[0].id, audioConnections[1].id);
+    assert.ok(audioConnections.every(audio => audio.finishCalls === 1 && !audio.cancelled));
     assert.equal(events.filter(event => event.event === 'done').length, 2);
     await manager.handle("close", "alice", opened); assert.equal(calls.filter(call => call.method === "DELETE").length, 1);
+  } finally { await manager.close(); }
+});
+async function connectManager(manager) {
+  const opened = await manager.handle('open', 'alice', {});
+  await manager.handle('offer', 'alice', { ...opened, sdp: 'v=0\r\n' });
+  await manager.handle('ready', 'alice', opened);
+  return opened;
+}
+test('reply waits for tail drain and input close; duplicate done cannot end twice or start an overlapping reply', async () => {
+  const audio = new ManagedAudio(false); let drain;
+  audio.drained = new Promise(resolve => { drain = resolve; });
+  const { manager, emit, calls } = managerFixture({ makeAudio: () => audio });
+  try {
+    const opened = await connectManager(manager), events = [];
+    manager.voice(event => events.push(event), 'alice', opened.videoId);
+    await pause(0); emit('done'); emit('done'); await pause(0);
+    assert.equal(audio.drainCalls, 1); assert.equal(audio.finishCalls, 0);
+    assert.throws(() => manager.voice(() => {}, 'alice', opened.videoId), { code: 'video_not_ready' });
+    drain(); await pause(0); assert.equal(audio.finishCalls, 1);
+    assert.deepEqual(events, []);
+    audio.complete(); await pause(0); assert.deepEqual(events, ['done']);
+    assert.equal(calls.some(call => call.method === 'DELETE'), false);
+  } finally { await manager.close(); }
+});
+test('idle silence has its own ended stream; reply waits for close and preserves early text/finish', async () => {
+  const audios = [], logs = [];
+  let started;
+  const keepaliveStarted = new Promise(resolve => { started = resolve; });
+  const { manager, emit, ttsCalls, calls } = managerFixture({ keepaliveMs: 10, log: event => logs.push(event),
+    makeAudio: () => { const audio = new ManagedAudio(audios.length > 0); audios.push(audio); started(); return audio; },
+  });
+  try {
+    const opened = await connectManager(manager);
+    await keepaliveStarted;
+    assert.deepEqual(audios[0].buffers, [Buffer.alloc(1920)]);
+    assert.equal(audios[0].finishCalls, 1);
+    const events = [], voice = manager.voice(event => events.push(event), 'alice', opened.videoId);
+    voice.push('第一句。'); voice.push('第二句。'); voice.finish(); voice.finish();
+    await pause(20);
+    assert.equal(audios.length, 1); assert.deepEqual(ttsCalls, []);
+    audios[0].complete(); await pause(0);
+    assert.equal(audios.length, 2);
+    assert.deepEqual(ttsCalls, ['第一句。', '第二句。', 'finish']);
+    emit('audio', { data: Buffer.alloc(1920, 1).toString('base64') }); emit('done'); await pause(0);
+    assert.deepEqual(events, ['done']); assert.equal(audios[1].finishCalls, 1);
+    assert.deepEqual(audios[1].buffers, [Buffer.alloc(1920, 1)]);
+    assert.deepEqual(logs.filter(event => event.event === 'video.audio_open').map(event => event.purpose), ['keepalive', 'reply']);
+    assert.equal(calls.some(call => call.method === 'DELETE'), false);
+    assert.equal(JSON.stringify(logs).includes('第一句'), false);
+    assert.equal(JSON.stringify(logs).includes('secret'), false);
+  } finally { await manager.close(); }
+});
+test('cancelling a reply waiting for keepalive closes its lease and never starts queued TTS', async () => {
+  const audio = new ManagedAudio(false); let started;
+  const keepaliveStarted = new Promise(resolve => { started = resolve; });
+  let connections = 0;
+  const { manager, ttsCalls, calls } = managerFixture({ keepaliveMs: 10,
+    makeAudio: () => { connections++; started(); return audio; },
+  });
+  try {
+    const opened = await connectManager(manager); await keepaliveStarted;
+    const events = [], voice = manager.voice(event => events.push(event), 'alice', opened.videoId);
+    voice.push('must not synthesize'); voice.finish(); voice.cancel();
+    await pause(30);
+    assert.equal(connections, 1); assert.deepEqual(ttsCalls, []); assert.deepEqual(events, []);
+    assert.equal(audio.cancelled, true);
+    assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
+  } finally { await manager.close(); }
+});
+test('failed audio input emits one interruption, cleans up, and never schedules another stream', async () => {
+  const audio = new ManagedAudio(false);
+  const { manager, calls, emit } = managerFixture({ makeAudio: () => audio, keepaliveMs: 10 });
+  try {
+    const opened = await connectManager(manager), events = [];
+    manager.voice(event => events.push(event), 'alice', opened.videoId);
+    await pause(0); emit('done'); await pause(0);
+    audio.reject(new Error('provider private failure')); await pause(30);
+    assert.deepEqual(events, ['error']);
+    assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
   } finally { await manager.close(); }
 });
 test("uncertain session creation quarantines further allocation instead of blindly duplicating sessions", async () => {

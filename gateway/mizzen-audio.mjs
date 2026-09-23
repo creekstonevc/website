@@ -4,8 +4,8 @@ import WebSocket from "ws";
 // Mizzen v1: 40 ms PCM packets, real-time pacing and an eight-packet ACK window.
 // The adapter accepts unaligned provider chunks; only complete samples go out.
 export class MizzenAudio {
-  constructor(url, key, { socketFactory = (url, options) => new WebSocket(url, options), tickMs = 40, now = Date.now } = {}) {
-    this.now = now; this.drainers = [];
+  constructor(url, key, { socketFactory = (url, options) => new WebSocket(url, options), tickMs = 40, now = Date.now, onProgress } = {}) {
+    this.now = now; this.onProgress = onProgress; this.drainers = [];
     this.id = randomUUID(); this.queue = Buffer.alloc(0); this.inflight = new Map();
     this.seq = 0; this.samples = 0; this.ready = false; this.ending = false; this.ended = false;
     this.closed = false; this.lastActivity = now(); this.lastSent = now(); this.tickMs = tickMs;
@@ -23,10 +23,11 @@ export class MizzenAudio {
               !Number.isInteger(data.max_inflight_chunks) || data.max_inflight_chunks < 1) throw new Error("invalid limits");
           this.packetBytes = Math.min(960, data.max_chunk_samples) * 2;
           this.window = Math.min(8, data.max_inflight_chunks); this.ready = true;
+          this.report("ready");
         } else if (data.type === "audio.ack") {
           const expected = this.inflight.get(data.seq);
           if (!expected || data.received_samples !== expected.samples) throw new Error("invalid ack");
-          this.inflight.delete(data.seq);
+          this.inflight.delete(data.seq); this.lastAckAt = this.now();
           for (const waiter of this.drainers) {
             if (waiter.onProgress && !waiter.acked && data.received_samples >= waiter.tailEnd) {
               waiter.acked = true;
@@ -35,7 +36,7 @@ export class MizzenAudio {
           }
         } else if (data.type === "audio.input_ended") {
           if (!this.endSent || data.total_samples !== undefined && data.total_samples !== this.samples) throw new Error("invalid end");
-          this.ended = true;
+          this.ended = true; this.report("input_ended");
         } else if (data.type === "error") throw new Error("provider error");
         this.lastActivity = this.now();
       } catch { this.fail(); }
@@ -44,9 +45,12 @@ export class MizzenAudio {
     this.socket.on("close", () => {
       if (this.closed) return;
       if (!this.ended) this.fail();
-      else { this.closed = true; clearInterval(this.timer); this.resolve(); }
+      else { this.closed = true; clearInterval(this.timer); this.report("closed"); this.resolve(); }
     });
     this.timer = setInterval(() => this.pump(), Math.min(tickMs, 20)); this.timer.unref?.();
+  }
+  report(stage, extra = {}) {
+    this.onProgress?.({ stage, streamId: this.id, at: this.now(), samples: this.samples, ...extra });
   }
   send(data) {
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) return;
@@ -58,8 +62,9 @@ export class MizzenAudio {
     if (this.queue.length + bytes.length > 24000 * 2 * 120) { this.fail(); return; }
     this.queue = Buffer.concat([this.queue, bytes]);
   }
-  finish() { this.ending = true; return this.done; }
-  // End a reply, not the session input. A stopped Mizzen session cannot restart.
+  finish() { this.ending = true; this.pump(); return this.done; }
+  // Drain PCM first; finish() then ends this utterance's input WebSocket, not
+  // the video session. The next utterance must use a new socket and stream_id.
   drain({ tailMs = 0, onProgress } = {}) {
     if (this.closed || this.ending) return Promise.reject(new Error("Video audio input closed"));
     if (this.queue.length % 2) { this.fail(); return this.done; }
@@ -79,7 +84,7 @@ export class MizzenAudio {
   pump() {
     if (this.closed) return;
     const now = this.now();
-    if ((!this.ready && now - this.lastActivity > 10000) || (this.endSent && now - this.lastActivity > 25000) ||
+    if ((!this.ready && now - this.lastActivity > 10000) || (this.endSent && now - this.endSentAt > 25000) ||
       [...this.inflight.values()].some((item) => now - item.at > 10000)) { this.fail(); return; }
     if (!this.ready || this.endSent) return;
     if (!this.queue.length && !this.inflight.size) {
@@ -109,13 +114,15 @@ export class MizzenAudio {
       this.lastActivity = now;
       this.lastSent = now;
     } else if (this.ending && !this.inflight.size) {
-      this.endSent = true; this.lastActivity = now;
+      this.endSent = true; this.endSentAt = now; this.lastActivity = now;
       this.send({ type: "audio.end", stream_id: this.id, total_samples: this.samples });
+      this.report("end_sent", { afterLastAckMs: this.lastAckAt == null ? null : now - this.lastAckAt });
     }
   }
   fail() {
     if (this.closed) return;
     this.closed = true; clearInterval(this.timer); this.queue = Buffer.alloc(0);
+    this.report("interrupted");
     for (const waiter of this.drainers.splice(0)) waiter.reject(new Error("Video audio input interrupted"));
     this.socket.terminate(); this.reject(new Error("Video audio input interrupted"));
   }
