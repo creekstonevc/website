@@ -45,8 +45,39 @@ test("Mizzen rejects malformed ACKs and incomplete final PCM samples", async () 
   a.emit({ type: "audio.ack", seq: 0, received_samples: 1 }); await assert.rejects(a.audio.done);
   const b = audioFixture(); b.audio.push(Buffer.alloc(1)); const done = b.audio.finish(); b.audio.pump(); await assert.rejects(done);
 });
+test("idle audio survives 150 seconds with silence and multiple replies never end the session input", async () => {
+  let now = 0;
+  const socket = new Socket();
+  const audio = new MizzenAudio("wss://fixture.invalid/audio", "test", { socketFactory: () => socket, now: () => now });
+  const ack = () => {
+    const chunk = socket.sent.at(-1);
+    socket.emit("message", JSON.stringify({ stream_id: audio.id, type: "audio.ack", seq: chunk.seq, received_samples: chunk.sample_offset + chunk.sample_count }));
+  };
+  try {
+    socket.emit("open");
+    socket.emit("message", JSON.stringify({ stream_id: audio.id, type: "audio.ready", max_chunk_samples: 2400, max_inflight_chunks: 2 }));
+    for (let step = 0; step < 10; step++) {
+      now += 15000; audio.pump();
+      const chunk = socket.sent.at(-1);
+      assert.equal(chunk.type, 'audio.chunk');
+      assert.equal(Buffer.from(chunk.data, 'base64').some(byte => byte !== 0), false);
+      ack(); audio.pump(); assert.equal(audio.closed, false);
+    }
+    for (let reply = 0; reply < 2; reply++) {
+      now += 100; audio.push(Buffer.alloc(100, 1));
+      let drained = false; const done = audio.drain().then(() => { drained = true; });
+      assert.equal(drained, false);
+      ack(); audio.pump(); await done;
+      assert.equal(audio.closed, false);
+    }
+    assert.equal(socket.sent.filter(frame => frame.type === 'audio.start').length, 1);
+    assert.equal(socket.sent.some(frame => frame.type === 'audio.end'), false);
+    audio.cancel(); const count = socket.sent.length; now += 15000; audio.pump();
+    assert.equal(socket.sent.length, count);
+  } finally { audio.cancel(); }
+});
 function managerFixture(extra = {}) {
-  const calls = []; let closed = false, ttsEmit;
+  const calls = [], audioConnections = []; let closed = false, ttsEmit;
   const manager = createMizzenManager({ mizzen: { base: "https://avatar.fixture.invalid", inputKey: "input-secret", playbackKey: "playback-secret" } }, {
     fetchImpl: async (url, options) => {
       const path = new URL(url).pathname; calls.push({ path, ...options });
@@ -57,10 +88,13 @@ function managerFixture(extra = {}) {
       if (path.endsWith("/offer")) return Response.json({ type: "answer", sdp: "v=0\r\n", generation: 1 });
       return Response.json({ state: closed ? "closed" : "ready" });
     },
-    makeAudio: () => ({ push() {}, finish: () => Promise.resolve(), done: new Promise(() => {}), cancel() {} }),
+    makeAudio: () => {
+      const audio = { push() {}, drain: () => Promise.resolve(), finish: () => { throw new Error('must not end input between replies'); }, done: new Promise(() => {}), cancel() {} };
+      audioConnections.push(audio); return audio;
+    },
     makeTts: emit => { ttsEmit = emit; return { push() {}, finish() {}, cancel() {} }; }, ...extra,
   });
-  return { manager, calls, emit: (...args) => ttsEmit(...args) };
+  return { manager, calls, audioConnections, emit: (...args) => ttsEmit(...args) };
 }
 test("video credentials absent is a no-upstream preview; keys never appear in capabilities", async () => {
   const manager = createMizzenManager({}, { fetchImpl: () => { throw new Error("must not fetch"); } });
@@ -69,7 +103,7 @@ test("video credentials absent is a no-upstream preview; keys never appear in ca
   finally { await manager.close(); }
 });
 test("video session ownership, separate keys, offer-once, PCM routing and input-end keep playback alive", async () => {
-  const { manager, calls, emit } = managerFixture();
+  const { manager, calls, emit, audioConnections } = managerFixture();
   try {
     const opened = await manager.handle("open", "alice", {});
     assert.deepEqual(Object.keys(opened).sort(), ["iceServers", "videoId"]);
@@ -82,6 +116,11 @@ test("video session ownership, separate keys, offer-once, PCM routing and input-
     emit("audio", { data: Buffer.alloc(1920).toString("base64") }); emit("done", {}); await pause(0);
     assert.deepEqual(events, [{ event: "done", data: {} }]);
     voice.cancel(); assert.equal(calls.some(call => call.method === "DELETE"), false);
+    const second = manager.voice((event, data) => events.push({ event, data }), 'alice', opened.videoId);
+    emit('audio', { data: Buffer.alloc(1920).toString('base64') }); emit('done', {}); await pause(0);
+    second.cancel();
+    assert.equal(audioConnections.length, 1);
+    assert.equal(events.filter(event => event.event === 'done').length, 2);
     await manager.handle("close", "alice", opened); assert.equal(calls.filter(call => call.method === "DELETE").length, 1);
   } finally { await manager.close(); }
 });

@@ -4,10 +4,11 @@ import WebSocket from "ws";
 // Mizzen v1: 40 ms PCM packets, real-time pacing and an eight-packet ACK window.
 // The adapter accepts unaligned provider chunks; only complete samples go out.
 export class MizzenAudio {
-  constructor(url, key, { socketFactory = (url, options) => new WebSocket(url, options), tickMs = 40 } = {}) {
+  constructor(url, key, { socketFactory = (url, options) => new WebSocket(url, options), tickMs = 40, now = Date.now } = {}) {
+    this.now = now; this.drainers = [];
     this.id = randomUUID(); this.queue = Buffer.alloc(0); this.inflight = new Map();
     this.seq = 0; this.samples = 0; this.ready = false; this.ending = false; this.ended = false;
-    this.closed = false; this.lastActivity = Date.now(); this.lastSent = 0; this.tickMs = tickMs;
+    this.closed = false; this.lastActivity = now(); this.lastSent = now(); this.tickMs = tickMs;
     this.done = new Promise((resolve, reject) => { this.resolve = resolve; this.reject = reject; });
     this.done.catch(() => {});
     this.socket = socketFactory(url, { headers: { Authorization: `Bearer ${key}` }, handshakeTimeout: 10000, maxPayload: 16384 });
@@ -30,7 +31,7 @@ export class MizzenAudio {
           if (!this.endSent || data.total_samples !== undefined && data.total_samples !== this.samples) throw new Error("invalid end");
           this.ended = true;
         } else if (data.type === "error") throw new Error("provider error");
-        this.lastActivity = Date.now();
+        this.lastActivity = this.now();
       } catch { this.fail(); }
     });
     this.socket.on("error", () => this.fail());
@@ -52,15 +53,26 @@ export class MizzenAudio {
     this.queue = Buffer.concat([this.queue, bytes]);
   }
   finish() { this.ending = true; return this.done; }
+  // End a reply, not the session input. A stopped Mizzen session cannot restart.
+  drain() {
+    if (this.closed || this.ending) return Promise.reject(new Error("Video audio input closed"));
+    if (this.queue.length % 2) { this.fail(); return this.done; }
+    return new Promise((resolve, reject) => { this.drainers.push({ resolve, reject }); this.pump(); });
+  }
   pump() {
     if (this.closed) return;
-    const now = Date.now();
-    if ((!this.ready && now - this.lastActivity > 10000) || now - this.lastActivity > 25000 ||
+    const now = this.now();
+    if ((!this.ready && now - this.lastActivity > 10000) || (this.endSent && now - this.lastActivity > 25000) ||
       [...this.inflight.values()].some((item) => now - item.at > 10000)) { this.fail(); return; }
     if (!this.ready || this.endSent) return;
+    if (!this.queue.length && !this.inflight.size) {
+      for (const waiter of this.drainers.splice(0)) waiter.resolve();
+      // One 40ms zero-PCM packet every 15s, never inserted into queued speech.
+      if (!this.ending && now - this.lastSent >= 15000) this.queue = Buffer.alloc(1920);
+    }
     if (this.ending && this.queue.length % 2) { this.fail(); return; }
     if (this.inflight.size >= this.window || now < this.nextSendAt) return;
-    if (this.queue.length >= this.packetBytes || this.ending && this.queue.length > 0) {
+    if (this.queue.length >= this.packetBytes || (this.ending || this.drainers.length) && this.queue.length > 0) {
       const bytes = this.queue.subarray(0, Math.min(this.packetBytes, this.queue.length));
       const count = bytes.length / 2;
       if (this.samples + count > 7920000) { this.fail(); return; }
@@ -70,6 +82,7 @@ export class MizzenAudio {
       this.queue = this.queue.subarray(bytes.length);
       this.nextSendAt = now + count / 24 * (this.tickMs / 40);
       this.lastActivity = now;
+      this.lastSent = now;
     } else if (this.ending && !this.inflight.size) {
       this.endSent = true; this.lastActivity = now;
       this.send({ type: "audio.end", stream_id: this.id, total_samples: this.samples });
@@ -78,6 +91,7 @@ export class MizzenAudio {
   fail() {
     if (this.closed) return;
     this.closed = true; clearInterval(this.timer); this.queue = Buffer.alloc(0);
+    for (const waiter of this.drainers.splice(0)) waiter.reject(new Error("Video audio input interrupted"));
     this.socket.terminate(); this.reject(new Error("Video audio input interrupted"));
   }
   cancel() { this.fail(); }

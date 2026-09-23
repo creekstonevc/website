@@ -30,8 +30,8 @@
 3. 浏览器建立 recvonly video + audio WebRTC，H.264 `42e01f` / packetization-mode 1，等待 ICE 收集完成，再通过 Gateway 交换 SDP。
 4. 实际收到第一帧且连接成功后，才启用该会话的语音输出。自动播放受限时显示 Play video。
 5. 发消息时复用现有 Responses 流，`output_text.delta` → BytePlus 双向流式 TTS → 24kHz/16-bit/mono PCM → Gateway Mizzen WebSocket。
-6. Gateway 按 40ms / 960 samples 分包，连续 seq/sample_offset，最多八个未 ACK 包；音频按实际时长推送。收到所有 ACK 后才发 `audio.end`。
-7. 音视频统一从 WebRTC 播放，不再单独播放 PCM，以免重音/不同步。音频上传结束**不代表视频播放结束**，不会立即销毁会话。
+6. Gateway 按 40ms / 960 samples 分包，连续 seq/sample_offset，最多八个未 ACK 包；音频按实际时长推送。同一视频会话复用一条音频输入连接，每轮只等待队列和 ACK 清空，不发送 `audio.end`。空闲每15秒发送40ms零值PCM，避免120秒静息超时；不插入待发送语音中。
+7. 音视频统一从 WebRTC 播放，不再单独播放 PCM，以免重音/不同步。单轮音频队列清空**不代表视频播放结束**，不会立即销毁会话。离开或发生故障会释放整个会话，下一次连接创建新session，不重启已停止session。现有550秒会话上限和45秒浏览器失联回收仍保留。
 
 `/video/*` 均为同源 POST，强制 Origin、签名会话和 sessionKey；videoId 只能属于当前会话。
 切回 Text、切换会话、离开页面会关闭连接并释放上游会话。浏览器失联45秒由服务端回收；最长550秒主动回收（供应商上限600秒）。供应商的120秒音频空闲限制仍适用，心跳不伪装音频保活。

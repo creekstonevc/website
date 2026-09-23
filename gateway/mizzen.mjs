@@ -143,6 +143,17 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
       }
       if (action === "ready") {
         if (!entry.negotiated) throw fault("video_not_ready", "Connect playback first.", 409);
+        if (!entry.audio) {
+          const target = new URL(`/v1/sessions/${entry.upstream}/audio`, settings.base); target.protocol = "wss:";
+          entry.audio = makeAudio(target.href, settings.inputKey);
+          entry.audio.done.catch(() => {
+            if (!entry.closed) {
+              log({ event: "video.audio_input_failed" });
+              void release(entry).catch(() => {});
+            }
+          });
+          entry.audio.push(Buffer.alloc(1920));
+        }
         entry.connected = true; return { ready: true };
       }
       throw fault("not_found", "Route was not found", 404);
@@ -150,24 +161,20 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
     voice(emit, owner, id) {
       const entry = own(id, owner);
       if (!entry.connected || entry.active) throw fault("video_not_ready", "Video is not ready for another reply.", 409);
-      entry.active = true; let finished = false, cancelled = false, audio;
+      entry.active = true; let finished = false, cancelled = false;
+      const audio = entry.audio;
       const fail = () => { if (cancelled) return; cancelled = true; emit("error", { code: "video_interrupted" }); void release(entry).catch(() => {}); };
       let tts;
       try { tts = makeTts((event, data) => {
         if (cancelled || finished) return;
         if (event === "audio") {
           try {
-            if (!audio) {
-              const target = new URL(`/v1/sessions/${entry.upstream}/audio`, settings.base); target.protocol = "wss:";
-              audio = makeAudio(target.href, settings.inputKey); entry.audio = audio;
-              audio.done.catch(fail);
-            }
             audio.push(Buffer.from(data.data, "base64"));
           } catch { fail(); }
         } else if (event === "done") {
-          void (audio ? audio.finish() : Promise.resolve()).then(() => {
+          void audio.drain().then(() => {
             if (cancelled) return;
-            finished = true; entry.active = false; entry.audio = null; entry.tts = null;
+            finished = true; entry.active = false; entry.tts = null;
             emit("done", {}); // Input drained, NOT playback complete. Retain the video lease.
           }).catch(fail);
         } else if (event === "error") fail();
