@@ -14,9 +14,12 @@ import {
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "./AgentChat.module.css";
+import "./presence-transitions.css";
 import { useTranscriptScroll } from "./useTranscriptScroll";
 import { useAttachmentDrafts } from "./useAttachmentDrafts";
 import { useLiveVoice } from "./useLiveVoice";
+import { useAvatarVideo } from "./useAvatarVideo";
+import { usePresenceTransition } from "./usePresenceTransition";
 import { FileGlyph, MessageAttachments, PendingAttachments } from "./AttachmentControls";
 import { ATTACHMENT_ONLY_INPUT, attachmentDisplayText } from "../../lib/agent-attachments.mjs";
 
@@ -159,6 +162,27 @@ export function AgentChat() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const liveVoice = useLiveVoice();
   const { start: startLiveVoice, stop: stopLiveVoice } = liveVoice;
+  const [videoMode, setVideoMode] = useState(false);
+  const shellRef = useRef<HTMLElement>(null);
+  const transitionView = usePresenceTransition(shellRef, setVideoMode);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const avatar = useAvatarVideo(videoMode, sessionKey, videoRef);
+  const greetingPlayed = useRef(new Set<string>());
+  const { startReply: startAvatarReply } = avatar;
+  useEffect(() => {
+    if (!videoMode || avatar.state.phase !== "connected" || busy || !ready || loadingHistory || nextCursor || !sessionKey || recovery) return;
+    // Hidden bootstrap Hi is absent from the visible history. A lone completed
+    // assistant reply is the opening; never replay a later conversation turn.
+    if (messages.length !== 1 || messages[0].role !== "assistant" || !messages[0].ttsTicket || messages[0].complete === false) return;
+    const key = `creekstone.video-greeting.${sessionKey}`;
+    if (greetingPlayed.current.has(sessionKey)) return;
+    try { if (sessionStorage.getItem(key)) { greetingPlayed.current.add(sessionKey); return; } } catch { /* In-memory guard still applies. */ }
+    greetingPlayed.current.add(sessionKey);
+    void startAvatarReply(messages[0].ttsTicket).then(id => {
+      if (id) { try { sessionStorage.setItem(key, "1"); } catch { /* Optional persistence. */ } }
+      else greetingPlayed.current.delete(sessionKey);
+    });
+  }, [videoMode, avatar.state.phase, busy, ready, loadingHistory, nextCursor, sessionKey, recovery, messages, startAvatarReply]);
 
   useLayoutEffect(() => {
     const anchor = prependAnchor.current;
@@ -181,6 +205,22 @@ export function AgentChat() {
       else localStorage.removeItem(`creekstone.draft.${sessionKey}`);
     } catch { /* Private browsing or storage limits must not block sending. */ }
   }, [value, sessionKey]);
+
+  // The same composer moves between differently sized conversation columns.
+  // Re-measure wrapped lines on width changes without reacting to our own height writes.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    let width = -1;
+    const observer = new ResizeObserver(() => {
+      if (input.clientWidth === width) return;
+      width = input.clientWidth;
+      input.style.height = "auto";
+      input.style.height = `${Math.min(input.scrollHeight, 144)}px`;
+    });
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -208,6 +248,7 @@ export function AgentChat() {
   }, [stopLiveVoice]);
 
   const handleVoiceToggle = async (messageIndex: number, ticket: string) => {
+    if (videoMode) { avatar.close(); setVideoMode(false); }
     const currentAudio = audioRef.current;
     if (voice.messageIndex === messageIndex && currentAudio) {
       if (!currentAudio.paused) {
@@ -516,11 +557,12 @@ export function AgentChat() {
 
     try {
       if (retry && recovery?.rebind) await openConversation({ sessionKey: sessionKeyRef.current });
-      const liveVoiceId = await startLiveVoice(sessionKeyRef.current);
+      const liveVoiceId = videoMode ? await avatar.startReply() : await startLiveVoice(sessionKeyRef.current);
       await renderReply(input, false, attachments, liveVoiceId);
       saveRecovery(null);
     } catch (error) {
       stopLiveVoice();
+      if (videoMode) avatar.close();
       const rejected = error instanceof AgentRequestError &&
         (error.status === 429 || ["response_rejected", "session_changed", "conversation_busy", "invalid_attachment", "attachment_expired", "invalid_attachments", "attachments_too_large", "attachments_unavailable"].includes(error.code));
       saveRecovery({ kind: rejected ? "retry" : "sync", input,
@@ -601,7 +643,7 @@ export function AgentChat() {
   };
 
   return (
-    <main className={styles.agentShell}>
+    <main ref={shellRef} data-agent-view={videoMode ? "video" : "text"} className={`${styles.agentShell} ${videoMode ? styles.videoMode : ""}`}>
       <div className={styles.noise} aria-hidden="true" />
       <div className={styles.signalField} aria-hidden="true">
         <span className={styles.signalAxisX} />
@@ -637,10 +679,14 @@ export function AgentChat() {
             <small>Founder Channel / Live</small>
           </span>
         </Link>
-        <div className={styles.headerStatus}>
-          <span className={styles.liveDot} />
-          <span>Agent runtime online</span>
-          <span className={styles.headerCode}>YH.AI / 001</span>
+        <div className={styles.modeSwitch} role="group" aria-label="Conversation view">
+          <span className={styles.modeIndicator} aria-hidden="true" />
+          <button type="button" aria-pressed={!videoMode} onClick={() => { if (videoMode) transitionView(false); }}>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v10H8l-5 3V4Z M6 8h8 M6 11h5" /></svg>Text
+          </button>
+          <button type="button" aria-pressed={videoMode} onClick={() => { if (!videoMode) { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); transitionView(true); } }}>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 5h10v10H2z M12 8l6-3v10l-6-3" /></svg>Video
+          </button>
         </div>
         <Link className={styles.backLink} href="/#ai-vc-agent">
           <span aria-hidden="true">←</span>
@@ -675,10 +721,46 @@ export function AgentChat() {
           <span>World&apos;s First AI VC Agent</span>
           <p>Trained on how we think, invest, and co-build.</p>
         </div>
+        <div className={styles.videoStage} aria-hidden={!videoMode} inert={!videoMode}>
+          <div className={styles.stageIdentity}>
+            <h2>Yihao<span>.AI</span></h2>
+            <p>Same mind. A new presence.</p>
+          </div>
+          <div className={styles.videoViewport}>
+          <Image className={styles.videoPortrait} src="/yihao-agent.jpg" alt="Static portrait of Yihao Li" fill sizes="(max-width: 700px) 100vw, 60vw" />
+          <video ref={videoRef} className={styles.avatarMedia} autoPlay playsInline
+            aria-label="AI-generated Yihao avatar video" style={{ opacity: avatar.state.phase === "connected" ? 1 : 0 }} />
+          <div className={styles.stageShade} />
+          <div className={styles.stageTopline}>
+            <span>Creekstone / Presence</span>
+            <span className={styles.stageBadge}>{avatar.state.phase === "connected" ? "Live avatar" : "Preview"}</span>
+          </div>
+          <span className={styles.stageCorner} aria-hidden="true" />
+          {videoMode && ["idle", "checking", "connecting"].includes(avatar.state.phase) && (
+            <div className={styles.videoLoading} role="status" aria-live="polite">
+              <span className={styles.videoLoadingMark} aria-hidden="true" />
+              <strong>Preparing Yihao’s video</strong>
+              <span>Connecting picture and voice…</span>
+            </div>
+          )}
+          <div className={styles.stageAperture} aria-hidden="true"><span /><span /></div>
+          <span className={styles.stageScan} aria-hidden="true" />
+          </div>
+          <div className={styles.stageBottom}>
+            <div className={styles.stageStatus} role={videoMode ? "status" : undefined}>
+              <span className={`${styles.stageSignal} ${avatar.state.phase === "connected" ? styles.stageSignalLive : ""}`} aria-hidden="true" />
+              <span>{avatar.state.message}</span>
+            </div>
+            {avatar.state.phase === "blocked" && <button type="button" onClick={avatar.play}>Play video</button>}
+            {["error", "blocked"].includes(avatar.state.phase) && <button type="button" onClick={avatar.reconnect}>Reconnect</button>}
+            <small>No camera or microphone needed. Keep typing on {" "}<span>the right.</span></small>
+          </div>
+        </div>
       </section>
 
       <section
         className={styles.console}
+        data-conversation-surface
         aria-label="Conversation with Yihao AI"
       >
         <div className={styles.consoleHeader}>
@@ -769,7 +851,7 @@ export function AgentChat() {
                         </div>
                         <MessageAttachments files={message.attachments} sessionKey={sessionKey} />
                         {message.attachmentWarning && <p className={styles.attachmentError} role="status">{message.attachmentWarning}</p>}
-                        {message.ttsTicket &&
+                        {!videoMode && message.ttsTicket &&
                         !(busy && index === messages.length - 1) ? (
                           <VoiceControl
                             messageIndex={index}
@@ -825,7 +907,7 @@ export function AgentChat() {
         </div>
 
         <form className={styles.composer} onSubmit={handleSubmit}>
-          <div className={styles.liveVoiceToolbar}>
+          <div className={styles.liveVoiceToolbar} hidden={videoMode}>
             <button type="button" className={styles.liveVoiceToggle} aria-pressed={liveVoice.enabled}
               onClick={() => { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); void liveVoice.toggle(); }}>
               <VoiceGlyph phase="idle" />
@@ -843,6 +925,10 @@ export function AgentChat() {
             {["waiting", "connecting", "playing"].includes(liveVoice.state.phase) &&
               <button type="button" className={styles.liveVoiceStop} onClick={stopLiveVoice}>Stop audio</button>}
           </div>
+          {videoMode && <div className={styles.videoComposerNote}>
+            <span>Text in / {avatar.state.phase === "connected" ? "video out" : "preview mode"}</span>
+            <span>{avatar.state.phase === "connected" ? "Sound comes from the video" : "Chat remains fully available"}</span>
+          </div>}
           <label htmlFor="founder-message">
             <span>Founder input</span>
             <small id="composer-hint">{busy ? phase : "Enter to send · Shift + Enter for a new line"}</small>

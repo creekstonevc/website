@@ -6,7 +6,8 @@ import {
   messageAttachments, createFileMetadataLookup, transferAttachment,
 } from "./attachments.mjs";
 import { attachmentDisplayText } from "../lib/agent-attachments.mjs";
-import { createLiveVoiceRegistry } from "./live-voice.mjs";
+import { BytePlusLiveVoice, createLiveVoiceRegistry } from "./live-voice.mjs";
+import { createMizzenManager, mizzenConfig } from "./mizzen.mjs";
 import {
   GatewayError,
   buildBoidsResponsePayload,
@@ -52,6 +53,7 @@ export function loadConfig(env = process.env) {
     maxInputCharacters: Number(env.GATEWAY_MAX_INPUT_CHARACTERS || 4_000),
     maxTtsCharacters: Number(env.GATEWAY_MAX_TTS_CHARACTERS || 8_000),
     attachments: attachmentConfig(env),
+    mizzen: mizzenConfig(env),
     conversationCookieName:
       env.GATEWAY_CONVERSATION_COOKIE_NAME?.trim() || "creekstone_conversation",
     conversationTtlMs: Number(
@@ -610,7 +612,10 @@ export function createGateway({
   const bootstrapLocks = new Map();
   const activeTurns = new Set();
   const attachmentBudget = createAttachmentBudget();
-  const liveVoices = createLiveVoiceRegistry(config, makeLiveVoice);
+  const video = createMizzenManager(config, { fetchImpl });
+  const liveVoices = createLiveVoiceRegistry(config, (emit, context) => context.videoId
+    ? video.voice(emit, context.owner, context.videoId)
+    : makeLiveVoice ? makeLiveVoice(emit) : new BytePlusLiveVoice(config, emit));
 
   const server = createServer(async (request, response) => {
     const requestId = randomUUID();
@@ -638,12 +643,34 @@ export function createGateway({
       }
       assertOrigin(request, config);
 
+      if (/^\/video\/(capabilities|open|offer|ready|heartbeat|close)$/.test(url.pathname)) {
+        const session = readConversationSession(request, config);
+        if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation first");
+        const body = await readJsonBody(request, config.requestMaxBytes);
+        if (body.sessionKey !== sessionKey(session.conversationId)) throw new GatewayError(409, "session_changed", "Conversation changed");
+        const result = await video.handle(url.pathname.split("/").at(-1), session.conversationId, body);
+        if (response.destroyed && result.videoId) {
+          await video.handle("close", session.conversationId, result);
+        } else sendJson(response, 200, result);
+        return;
+      }
+
       if (["/voice/stream", "/voice/cancel"].includes(url.pathname)) {
         const session = readConversationSession(request, config);
         if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation before starting voice");
         const body = await readJsonBody(request, config.requestMaxBytes);
         if (body.sessionKey !== sessionKey(session.conversationId)) throw new GatewayError(409, "session_changed", "Conversation changed");
-        if (url.pathname === "/voice/stream") liveVoices.open(body.id, session.conversationId, response);
+        if (url.pathname === "/voice/stream") {
+          // Reuse an already generated, signed reply; never accept arbitrary TTS text.
+          const replay = body.ticket !== undefined ? verifyTtsTicket(body.ticket, config.signingSecret) : null;
+          if (replay && !body.videoId) throw new GatewayError(400, "video_required", "Replay requires a video connection");
+          liveVoices.open(body.id, session.conversationId, response, { videoId: body.videoId });
+          if (replay) {
+            const voice = liveVoices.claim(body.id, session.conversationId);
+            voice.push(replay.text);
+            voice.finish();
+          }
+        }
         else { liveVoices.cancel(body.id, session.conversationId); sendJson(response, 200, { ok: true }); }
         return;
       }
@@ -714,7 +741,8 @@ export function createGateway({
       }
     }
   });
-  server.on("close", () => liveVoices.close());
+  server.stopMedia = () => { liveVoices.close(); return video.close(); };
+  server.on("close", () => { void server.stopMedia(); });
   return server;
 }
 
@@ -728,4 +756,12 @@ if (isMain) {
       `${JSON.stringify({ event: "gateway.started", host: config.host, port: config.port })}\n`,
     );
   });
+  let stopping = false;
+  const shutdown = async () => {
+    if (stopping) return; stopping = true;
+    const deadline = setTimeout(() => process.exit(1), 30000); deadline.unref();
+    const drained = new Promise(resolve => server.close(resolve));
+    await server.stopMedia(); await drained; clearTimeout(deadline);
+  };
+  process.once("SIGTERM", shutdown); process.once("SIGINT", shutdown);
 }

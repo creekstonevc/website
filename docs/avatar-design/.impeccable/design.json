@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-23T00:00:00Z",
+  "title": "Design System: Creekstone Agent Presence Extension",
+  "extensions": {
+    "colorMeta": {
+      "agent-gold": { "role": "primary", "displayName": "Agent Gold", "tonalRamp": ["oklch(15% .09 88)", "oklch(26% .09 88)", "oklch(38% .09 88)", "oklch(49% .09 88)", "oklch(61% .09 88)", "oklch(72% .09 88)", "oklch(84% .09 88)", "oklch(95% .09 88)"] },
+      "agent-gold-light": { "role": "primary", "displayName": "Agent Gold Light", "tonalRamp": ["oklch(15% .07 91)", "oklch(26% .07 91)", "oklch(38% .07 91)", "oklch(49% .07 91)", "oklch(61% .07 91)", "oklch(72% .07 91)", "oklch(84% .07 91)", "oklch(95% .07 91)"] },
+      "agent-paper": { "role": "neutral", "displayName": "Agent Paper", "tonalRamp": ["oklch(15% .015 90)", "oklch(26% .015 90)", "oklch(38% .015 90)", "oklch(49% .015 90)", "oklch(61% .015 90)", "oklch(72% .015 90)", "oklch(84% .015 90)", "oklch(95% .015 90)"] },
+      "agent-ink": { "role": "neutral", "displayName": "Agent Ink", "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(49% 0 0)", "oklch(61% 0 0)", "oklch(72% 0 0)", "oklch(84% 0 0)", "oklch(95% 0 0)"] }
+    },
+    "typographyMeta": { "control": { "displayName": "Control", "purpose": "Recovery actions, desktop connection status, and phone view controls." } },
+    "shadows": [
+      { "name": "selected-view-underline", "value": "inset 0 -2px #e5bd52", "purpose": "Selected view indicator, not surface elevation." },
+      { "name": "connected-signal", "value": "0 0 15px #87bb9377", "purpose": "Connected-state signal only." }
+    ],
+    "motion": [
+      { "name": "expansion-ease", "value": "cubic-bezier(.16, 1, .3, 1)", "purpose": "Shared-surface motion and split aperture reveal." },
+      { "name": "stage-expansion", "value": "780ms", "purpose": "Composited portrait-to-landscape and conversation transition; no continuous DOM reflow." },
+      { "name": "stage-return", "value": "480ms", "purpose": "Faster return to text composition." },
+      { "name": "view-selection", "value": "500ms", "purpose": "Selected-view indicator transform; also media opacity." },
+      { "name": "reduced-motion", "value": "none", "purpose": "Disable extension transitions and entry animations under prefers-reduced-motion: reduce." }
+    ],
+    "breakpoints": [
+      { "name": "compact-desktop", "value": "900px" },
+      { "name": "stacked-phone", "value": "700px" },
+      { "name": "short-phone-height", "value": "600px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Conversation View Switch",
+      "kind": "nav",
+      "refersTo": "view-button-selected",
+      "description": "Two views of the same conversation. Sample shows Video selected; application state owns switching.",
+      "html": "<div class=\"ds-view\" role=\"group\" aria-label=\"Conversation view\"><span class=\"ds-indicator\" aria-hidden=\"true\"></span><button type=\"button\" aria-pressed=\"false\"><svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"M3 4h14v10H8l-5 3V4Z M6 8h8 M6 11h5\"/></svg>Text</button><button type=\"button\" aria-pressed=\"true\"><svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"M2 5h10v10H2z M12 8l6-3v10l-6-3\"/></svg>Video</button></div>",
+      "css": ".ds-view{position:relative;display:inline-flex;padding:3px;border:1px solid #66542d;background:#14120c;font-family:'Space Grotesk',sans-serif}.ds-view button{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:9px;width:94px;min-height:40px;border:0;border-radius:0;background:transparent;color:#b7b2a6;font:inherit;font-size:13px;transition:color 250ms}.ds-view button[aria-pressed=true]{color:#f4d87d}.ds-view button:focus-visible{outline:2px solid #e5bd52;outline-offset:-2px}.ds-view svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.3}.ds-indicator{position:absolute;inset:3px auto 3px 3px;width:94px;background:#3a3019;box-shadow:inset 0 -2px #e5bd52;transform:translateX(94px);transition:transform 500ms cubic-bezier(.22,1,.36,1)}@media(prefers-reduced-motion:reduce){.ds-indicator{transition:none}}"
+    },
+    {
+      "name": "Video Recovery Action",
+      "kind": "button",
+      "refersTo": "recovery-button",
+      "description": "Reconnect after error; the same component presents Play video when playback is blocked.",
+      "html": "<button class=\"ds-reconnect\" type=\"button\">Reconnect</button>",
+      "css": ".ds-reconnect{min-height:36px;padding:4px 10px;border:1px solid #a08a57;border-radius:0;background:#19160e;color:#f4d87d;font-family:'Space Grotesk',sans-serif;font-size:12px}.ds-reconnect:focus-visible{outline:2px solid #e5bd52;outline-offset:-2px}"
+    },
+    {
+      "name": "Video State Badge",
+      "kind": "chip",
+      "description": "Noninteractive Preview label; only connected state changes the label to Live avatar.",
+      "html": "<span class=\"ds-badge\">Preview</span>",
+      "css": ".ds-badge{display:inline-block;padding:6px 10px;border:1px solid #cbae6780;background:#09080599;color:#eee4cb;font-family:'Space Grotesk',sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:.14em}"
+    },
+    {
+      "name": "Static Preview Status",
+      "kind": "custom",
+      "description": "Honest fallback for disabled video capabilities, without implying a live avatar.",
+      "html": "<div class=\"ds-status\" role=\"status\"><span class=\"ds-signal\" aria-hidden=\"true\"></span><span>Static preview · waiting for video credentials</span></div>",
+      "css": ".ds-status{display:flex;align-items:center;gap:10px;font-family:'Space Grotesk',sans-serif;font-size:12px;color:#e7d8b0;min-width:0}.ds-signal{width:6px;height:6px;flex:0 0 auto;background:#b7a783}"
+    },
+    {
+      "name": "Composer Mode Note",
+      "kind": "custom",
+      "description": "Compact state explanation above the existing input, not a second composer.",
+      "html": "<div class=\"ds-mode-note\"><span>Text in / preview mode</span><span>Chat remains fully available</span></div>",
+      "css": ".ds-mode-note{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px;color:#afa68f;font-family:'Space Grotesk',sans-serif;font-size:10px}.ds-mode-note span:first-child{color:#e5bd52;text-transform:uppercase;letter-spacing:.12em}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Continuous Presence",
+    "overview": "Creekstone’s black-and-gold identity dossier expands into a video stage without replacing the founder conversation. The full-color Yihao portrait, Space Grotesk typography, and precise rectangular controls extend the incumbent founder channel; they do not establish a replacement brand or a new global system.\n\nThis document is scoped to the Text/Video extension in `components/agent/AgentChat.tsx`, `components/agent/AgentChat.module.css`, and `components/agent/useAvatarVideo.ts`. The connection-state copy is corroborated by `components/agent/video-client.ts`. Root `DESIGN.md` and `PRODUCT.md` remain incumbent context, not write targets. This is a source-derived record, not a claim that credentialed live playback was visually verified.",
+    "keyCharacteristics": ["One conversation and draft, expressed through two views.", "A real full-color portrait beneath a truthfully labeled video state.", "A dominant desktop stage beside the working transcript; a compact stage above it on phones.", "Bounded expansion, clip reveal, and one scan per entry, with reduced-motion alternatives."],
+    "rules": [
+      { "name": "The Honest Signal Rule", "body": "Only the connected state receives “Live avatar” and the green signal; an unavailable stream remains explicitly “Preview,” with “Static preview · waiting for video credentials” when capabilities are disabled.", "section": "colors" },
+      { "name": "The One Family Rule", "body": "Preserve the incumbent Space Grotesk family; distinguish identity from controls through scale and weight rather than introducing a second face.", "section": "typography" }
+    ],
+    "dos": ["Do preserve the same conversation, attachments, and draft when switching views.", "Do keep Yihao’s supplied portrait in full color and distinguish static preview from live media.", "Do keep text input usable when video is unavailable and expose recovery beside connection status.", "Do respect reduced motion without changing the final state or removing information."],
+    "donts": ["Don't claim live video until the connection is ready and a video frame has arrived.", "Don't duplicate the transcript or create a separate conversation for Video view.", "Don't turn entry scans into persistent decoration or require camera/microphone access.", "Don't propagate inherited decorative eyebrows, glyph icons, extreme tracking, or tiny metadata as new system rules."]
+  }
+}
+      { "name": "entry-aperture", "value": "760ms", "purpose": "Split shutter and one central registration line per Video entry." },
+      { "name": "identity-reveal", "value": "650ms 90ms", "purpose": "Subtle identity/status settling outside the landscape media frame." },

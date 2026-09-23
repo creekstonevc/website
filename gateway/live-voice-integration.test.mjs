@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import test from "node:test";
 import { createGateway, loadConfig } from "./server.mjs";
+import { createTtsTicket } from "./core.mjs";
 
 async function harness(run) {
   const voices = [];
@@ -42,6 +43,28 @@ async function harness(run) {
   try { await run({ post, session, voices }); }
   finally { server.emit("close"); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 }
+
+test("video endpoints enforce conversation ownership and disabled preview does not alter text chat", () => harness(async ({ post, session, voices }) => {
+  const a = await session(), b = await session();
+  assert.equal((await post("/video/capabilities", { sessionKey: a.sessionKey })).status, 409);
+  assert.equal((await post("/video/open", { sessionKey: b.sessionKey }, a.cookie)).status, 409);
+  const response = await post("/video/capabilities", { sessionKey: a.sessionKey }, a.cookie);
+  assert.deepEqual(await response.json(), { enabled: false, reason: "credentials_missing" });
+  assert.equal((await post("/video/open", { sessionKey: a.sessionKey }, a.cookie)).status, 503);
+  assert.equal((await post("/voice/stream", { id: randomUUID(), sessionKey: a.sessionKey, videoId: randomUUID() }, a.cookie)).status, 409);
+  const text = await post("/responses", { sessionKey: a.sessionKey, input: "hello" }, a.cookie);
+  assert.match(await text.text(), /response.completed/); assert.equal(voices.length, 0);
+}));
+
+test("opening replay rejects unsigned content and requires video", () => harness(async ({ post, session, voices }) => {
+  const user = await session();
+  const invalid = await post("/voice/stream", { id: randomUUID(), sessionKey: user.sessionKey, videoId: randomUUID(), ticket: "untrusted" }, user.cookie);
+  assert.notEqual(invalid.status, 200);
+  const ticket = createTtsTicket("Hello founder.", "test-local-voice-secret-at-least-32-characters");
+  const noVideo = await post("/voice/stream", { id: randomUUID(), sessionKey: user.sessionKey, ticket }, user.cookie);
+  assert.equal(noVideo.status, 400);
+  assert.equal(voices.length, 0);
+}));
 
 test("live audio is opt-in, server-generated only, and independent of text completion", () => harness(async ({ post, session, voices }) => {
   const user = await session();

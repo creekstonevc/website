@@ -8,6 +8,7 @@ import next from "next";
 import { createGateway, loadConfig } from "../gateway/server.mjs";
 
 export function localAgentEnvironment(remote = false) {
+  if (existsSync(".env.local")) process.loadEnvFile(".env.local");
   let credentials;
   if (remote) {
     const script = `const fs=require('node:fs'); const raw=fs.readFileSync('/etc/creekstone-agent-gateway.env','utf8');
@@ -19,10 +20,13 @@ const env={}; for(const line of raw.split('\\n')) { const i=line.indexOf('='); c
         { input: script, encoding: "utf8", stdio: ["pipe", "pipe", "ignore"], timeout: 20000 }));
     } catch { throw new Error("Could not read the permitted server credentials over SSH"); }
   } else {
-    if (existsSync(".env.local")) process.loadEnvFile(".env.local");
     credentials = process.env;
   }
-  return { ...credentials, GATEWAY_SIGNING_SECRET: randomBytes(32).toString("hex"),
+  return { ...credentials,
+    MIZZEN_INPUT_KEY: process.env.MIZZEN_INPUT_KEY,
+    MIZZEN_PLAYBACK_KEY: process.env.MIZZEN_PLAYBACK_KEY,
+    MIZZEN_BASE_URL: process.env.MIZZEN_BASE_URL,
+    GATEWAY_SIGNING_SECRET: randomBytes(32).toString("hex"),
     GATEWAY_CONVERSATION_COOKIE_NAME: "creekstone_local_conversation",
     GATEWAY_ALLOWED_ORIGINS: "http://localhost:3100,http://127.0.0.1:3100" };
 }
@@ -40,6 +44,6 @@ if (process.argv[1]?.endsWith("/dev-agent.mjs")) {
     } else void handler(request, response);
   });
   server.listen(3100, "127.0.0.1", () => console.log("Local Agent + live voice: http://localhost:3100/agent/ (production is unchanged)"));
-  const close = () => { gateway.emit("close"); server.close(); void app.close().then(() => process.exit(0)); };
+  const close = async () => { server.close(); await gateway.stopMedia(); await app.close(); process.exit(0); };
   process.once("SIGTERM", close); process.once("SIGINT", close);
 }

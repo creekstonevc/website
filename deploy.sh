@@ -78,6 +78,11 @@ BOIDS_BASE_URL="$(read_project_env BOIDS_BASE_URL)"
 BOIDS_AGENT_MODEL="$(read_project_env BOIDS_AGENT_MODEL)"
 BOIDS_FILES_ENABLED="$(read_project_env BOIDS_FILES_ENABLED)"
 GATEWAY_SIGNING_SECRET="$(read_gateway_env GATEWAY_SIGNING_SECRET)"
+for name in MIZZEN_BASE_URL MIZZEN_INPUT_KEY MIZZEN_PLAYBACK_KEY; do
+  value="$(read_project_env "$name")"
+  if [ -z "$value" ]; then value="$(read_gateway_env "$name")"; fi
+  printf -v "$name" '%s' "$value"
+done
 
 if [ -z "$BOIDS_API_KEY" ]; then
   echo "BOIDS_API_KEY is missing from $PROJECT_DIR/.env.local" >&2
@@ -110,7 +115,7 @@ npm ci --prefix "$GATEWAY_ROOT" --omit=dev --ignore-scripts --no-audit --no-fund
 chown -R root:"$GATEWAY_USER" "$GATEWAY_ROOT/node_modules"
 chmod -R g+rX,o-rwx "$GATEWAY_ROOT/node_modules"
 
-for module in core server attachments live-voice; do
+for module in core server attachments live-voice mizzen mizzen-audio; do
   install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/gateway/$module.mjs" "$GATEWAY_ROOT/gateway/$module.mjs"
 done
 install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/lib/agent-attachments.mjs" "$GATEWAY_ROOT/lib/agent-attachments.mjs"
@@ -131,6 +136,10 @@ runuser -u "$GATEWAY_USER" -- /usr/bin/node --input-type=module -e "await import
   printf 'BYTEPLUS_TTS_SPEAKER_ID=%s\n' "$BYTEPLUS_TTS_SPEAKER_ID"
   printf 'BYTEPLUS_TTS_RESOURCE_ID=%s\n' "$BYTEPLUS_TTS_RESOURCE_ID"
   printf 'BOIDS_FILES_ENABLED=%s\n' "$BOIDS_FILES_ENABLED"
+  for name in MIZZEN_BASE_URL MIZZEN_INPUT_KEY MIZZEN_PLAYBACK_KEY; do
+    value="${!name}"
+    if [ -n "$value" ]; then printf '%s=%s\n' "$name" "$value"; fi
+  done
 } > "$GATEWAY_ENV"
 chown root:"$GATEWAY_USER" "$GATEWAY_ENV"
 chmod 640 "$GATEWAY_ENV"
@@ -258,6 +267,22 @@ location = /api/agent/voice/stream {
     proxy_cache off;
     gzip off;
     add_header X-Accel-Buffering no;
+}
+
+location ~ ^/api/agent/video/(capabilities|open|offer|ready|heartbeat|close)$ {
+    limit_except POST { deny all; }
+    limit_req zone=creekstone_voice_cancel burst=8 nodelay;
+    limit_req_status 429;
+    client_max_body_size 64k;
+    rewrite ^/api/agent(/video/.*)$ $1 break;
+    proxy_pass http://127.0.0.1:8790;
+    proxy_http_version 1.1;
+    proxy_set_header Host 127.0.0.1;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 85s;
+    proxy_cache off;
 }
 
 location = /api/agent/voice/cancel {

@@ -23,6 +23,42 @@
   cursor: auto;
 }
 
+/* One persistent conversation; the identity dossier unfolds into a video stage. */
+.modeSwitch { position: relative; display: flex; padding: 3px; border: 1px solid #66542d; background: #14120c; }
+.modeSwitch button { z-index: 1; display: flex; align-items: center; justify-content: center; gap: 9px; width: 94px; min-height: 40px; border: 0; background: transparent; color: #b7b2a6; font: inherit; font-size: 13px; transition: color 250ms; }
+.modeSwitch button[aria-pressed="true"] { color: #f4d87d; }
+.modeSwitch button:focus-visible, .stageBottom button:focus-visible { outline: 2px solid #f4d87d; outline-offset: 3px; }
+.modeSwitch svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.3; }
+.modeIndicator { position: absolute; inset: 3px auto 3px 3px; width: 94px; background: #3a3019; box-shadow: inset 0 -2px #e5bd52; transition: transform 500ms cubic-bezier(.22, 1, .36, 1); }
+.videoMode .modeIndicator { transform: translateX(94px); }
+.videoStage { --video-ratio: 1.777778; position: absolute; inset: 0; z-index: 5; padding: clamp(20px, 3vw, 48px); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 22px; container-type: size; visibility: hidden; background: #080908; }
+.videoViewport { position: relative; flex: 0 0 auto; width: min(100%, calc((100cqh - 180px) * var(--video-ratio))); aspect-ratio: var(--video-ratio); overflow: hidden; isolation: isolate; background: radial-gradient(ellipse at 50% 55%, #30312c, #101210 70%); outline: 1px solid #827249; outline-offset: -1px; }
+.videoStage .videoPortrait { object-fit: contain; object-position: center; opacity: 1; }
+.avatarMedia { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #090908; transition: opacity 500ms; }
+.stageShade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, #05050599, transparent 22%, transparent 86%, #05050555); }
+.stageTopline { position: absolute; inset: 16px 18px auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #eee4cb; font-size: 10px; text-transform: uppercase; letter-spacing: .14em; }
+.stageBadge { padding: 6px 10px; border: 1px solid #cbae6780; background: #09080599; }
+.videoLoading { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; background: #050505d9; text-align: center; }
+.videoLoading strong { color: #f4d87d; font-size: 14px; font-weight: 500; }
+.videoLoading > span:last-child { color: #c2baa7; font-size: 12px; }
+.videoLoadingMark { width: 28px; height: 28px; border: 1px solid #e5bd5233; border-top-color: #e5bd52; border-right-color: #e5bd52; border-radius: 50%; animation: videoLoadingTurn 1.2s linear infinite; }
+@keyframes videoLoadingTurn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .videoLoadingMark { animation: none; } }
+.stageCorner { position: absolute; inset: 10px; border: 1px solid #ebcc7477; pointer-events: none; mask-image: linear-gradient(90deg, #000 0 16px, transparent 16px calc(100% - 16px), #000 calc(100% - 16px)); }
+.stageIdentity { width: min(100%, calc((100cqh - 180px) * var(--video-ratio))); display: flex; align-items: end; justify-content: space-between; gap: 20px; }
+.stageIdentity h2 { font-size: clamp(32px, 3.5vw, 56px); line-height: 1; letter-spacing: -.04em; font-weight: 500; margin: 0; }
+.stageIdentity h2 span { color: #e5bd52; font-weight: 300; }
+.stageIdentity p { color: #c2baa7; font-size: 12px; margin: 0; }
+.stageBottom { width: min(100%, calc((100cqh - 180px) * var(--video-ratio))); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-top: 0; }
+.stageStatus { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #e7d8b0; min-width: 0; }
+.stageSignal { width: 6px; height: 6px; flex: 0 0 auto; background: #b7a783; }
+.stageSignalLive { background: #87bb93; box-shadow: 0 0 15px #87bb9377; }
+.stageBottom small { flex-basis: 100%; color: #b0aa9c; font-size: 11px; }
+.stageBottom button { min-height: 36px; padding: 4px 10px; border: 1px solid #a08a57; background: #19160e; color: #f4d87d; font: inherit; font-size: 12px; }
+.videoComposerNote { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: #afa68f; font-size: 10px; }
+.videoComposerNote span:first-child { color: #e5bd52; text-transform: uppercase; letter-spacing: .12em; }
+.liveVoiceToolbar[hidden] { display: none; }
+
 .agentShell *,
 .agentShell a,
 .agentShell button,
@@ -401,7 +437,7 @@
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   margin: 22px 26px 18px 22px;
   border: 1px solid rgba(243, 239, 229, 0.18);
   box-shadow: 10px 10px 0 rgba(229, 189, 82, 0.075);
@@ -423,9 +459,12 @@
 
 .consoleHeader {
   display: flex;
+  min-height: 44px;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 8px 14px;
   color: rgba(243, 239, 229, 0.52);
   border-bottom: 1px solid rgba(243, 239, 229, 0.12);
   font-size: 0.52rem;
@@ -467,6 +506,7 @@
 
 .sessionActions {
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .sessionActions select {
@@ -1134,6 +1174,8 @@
 
 .composer label {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
   justify-content: space-between;
   margin-bottom: 7px;
   color: var(--agent-gold);
@@ -1149,7 +1191,8 @@
 .composerControl {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
+  padding-block: 8px;
   min-height: 48px;
   border-bottom: 1px solid rgba(243, 239, 229, 0.32);
 }
@@ -1157,13 +1200,18 @@
 .promptMark {
   color: var(--agent-gold);
   font-size: 1rem;
+  line-height: 1.45;
+  padding-block: 10px;
 }
 
 .composer textarea {
+  box-sizing: border-box;
+  display: block;
+  min-width: 0;
   width: 100%;
   max-height: 144px;
   resize: none;
-  padding: 12px 8px;
+  padding: 10px 8px;
   color: var(--agent-paper);
   outline: none;
   border: 0;
@@ -1174,7 +1222,7 @@
 }
 
 .composer textarea::placeholder {
-  color: rgba(243, 239, 229, 0.3);
+  color: rgba(243, 239, 229, 0.55);
 }
 
 .composerControl > button {
@@ -1538,4 +1586,94 @@
   .voiceBars span {
     animation: none;
   }
+}
+
+.videoMode { grid-template-columns: minmax(0, 1fr) clamp(360px, 32vw, 510px); }
+.videoMode .videoStage { visibility: visible; }
+.videoMode .identityIndex, .videoMode .portraitFrame, .videoMode .identityCopy, .videoMode .identityNote { visibility: hidden; }
+.videoMode .console { margin: 20px 20px 20px 0; box-shadow: none; }
+.videoMode .identityPanel { border-right: 0; }
+.videoMode .consoleHeader { flex-wrap: wrap; gap: 12px; padding: 14px; }
+.videoMode .consoleHeader > div:first-child { font-size: 9px; letter-spacing: .12em; }
+.videoMode .sessionActions { width: 100%; justify-content: space-between; }
+.videoMode .sessionActions select { flex: 1 1 120px; width: 0; }
+.videoMode .sessionActions button { flex: 0 0 auto; }
+.videoMode .videoComposerNote { flex-wrap: wrap; gap: 6px 12px; }
+.videoMode .composerControl { grid-template-columns: 18px minmax(0, 1fr) 42px; }
+.videoMode .composerControl > button { min-width: 42px; width: 42px; padding: 0; justify-content: center; }
+.videoMode .composerControl > button span:first-child { display: none; }
+.videoMode .transcript { padding: 18px 14px; }
+.videoMode .channelIntro { margin-bottom: 14px; padding: 6px 0 14px; }
+.videoMode .channelIntro span { display: none; }
+.videoMode .channelIntro strong { font-size: clamp(16px, 1.5vw, 22px); line-height: 1.3; text-wrap: balance; }
+.videoMode .message { grid-template-columns: 1fr; gap: 7px; }
+.videoMode .messageMeta { display: flex; gap: 12px; }
+.videoMode .userMessage { padding-left: 0; }
+.videoMode .suggestions { padding: 0 14px 12px; }
+@media (max-width: 900px) {
+  .header { grid-template-columns: 1fr auto auto; gap: 16px; }
+  .videoMode { grid-template-columns: minmax(0, 1fr) minmax(330px, 44vw); }
+  .videoStage { --video-ratio: 1.333333; padding: 20px; }
+  .stageIdentity p { display: none; }
+}
+@media (max-width: 700px) {
+  .header { grid-template-columns: 1fr auto; gap: 8px; }
+  .header .backLink { display: none; }
+  .modeSwitch button { width: 66px; min-height: 40px; gap: 6px; font-size: 12px; }
+  .modeIndicator { width: 66px; }
+  .videoMode .modeIndicator { transform: translateX(66px); }
+  .brand strong { font-size: 9px; letter-spacing: .1em; }
+  .brand small { font-size: 7px; }
+  .brand img { width: 27px; }
+  .videoMode { grid-template-columns: 1fr; grid-template-rows: 62px calc((100vw - 24px) * .5625 + 72px) minmax(0, 1fr) auto; }
+  .videoMode .identityPanel { display: block; padding: 0; border: 0; }
+  .videoStage { --video-ratio: 1.777778; padding: 8px 12px; gap: 8px; container-type: normal; justify-content: start; }
+  .videoViewport, .stageIdentity, .stageBottom { width: 100%; }
+  .stageTopline { inset: 10px 12px auto; font-size: 9px; letter-spacing: .1em; }
+  .stageBadge { padding: 4px 6px; }
+  .stageIdentity h2 { font-size: 24px; margin: 0; }
+  .stageIdentity p, .stageBottom small { display: none; }
+  .stageBottom { gap: 4px 10px; }
+  .stageStatus { font-size: 10px; gap: 6px; }
+  .stageBottom button { min-height: 28px; font-size: 10px; }
+  .videoMode .console { margin: 10px 12px 0; }
+  .videoMode .consoleHeader { padding: 9px 10px; gap: 8px; }
+  .videoMode .consoleHeader > div:first-child { display: none; }
+  .videoMode .transcript { padding: 12px; }
+  .videoMode .suggestions { display: none; }
+  .videoMode .composer { padding: 10px; }
+  .videoMode .composerHint, .videoMode .attachmentToolbar > span { display: none; }
+  .videoComposerNote { font-size: 9px; margin-bottom: 8px; }
+  .videoMode .footer { min-height: 28px; padding-block: 6px; }
+}
+@media (max-width: 700px) and (max-height: 600px) {
+  .videoMode { grid-template-rows: 54px 116px minmax(0, 1fr) 0; }
+  .videoMode .footer, .videoMode .stageTopline, .videoMode .stageIdentity { display: none; }
+  .videoStage { flex-direction: row; align-items: center; }
+  .videoViewport { width: 156px; }
+  .stageBottom { flex: 1; }
+  .videoMode .composer label, .videoMode .videoComposerNote { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modeIndicator, .avatarMedia { transition: none; }
+}
+.stageScan { position: absolute; inset: 0 auto 0 50%; width: 1px; background: #f4d87d; pointer-events: none; opacity: 0; }
+.stageAperture { position: absolute; inset: 0; pointer-events: none; display: flex; }
+.stageAperture span { width: 50%; height: 100%; background: #11130f; transform: translateX(-101%); }
+.stageAperture span:last-child { transform: translateX(101%); }
+.videoMode .stageAperture span { animation: apertureLeft 760ms cubic-bezier(.16,1,.3,1) both; }
+.videoMode .stageAperture span:last-child { animation-name: apertureRight; }
+.videoMode .stageScan { animation: apertureLight 760ms cubic-bezier(.16,1,.3,1) both; }
+.videoMode .stageIdentity, .videoMode .stageBottom { animation: presenceResolve 650ms 90ms both; }
+.console { view-transition-name: creekstone-conversation; }
+.portraitFrame { view-transition-name: creekstone-presence; }
+.videoMode .portraitFrame { view-transition-name: none; }
+.videoMode .videoViewport { view-transition-name: creekstone-presence; }
+.header { view-transition-name: creekstone-header; }
+@keyframes apertureLeft { from { transform: translateX(0); } to { transform: translateX(-101%); } }
+@keyframes apertureRight { from { transform: translateX(0); } to { transform: translateX(101%); } }
+@keyframes apertureLight { 0% { opacity: 0; transform: scaleY(.05); } 18% { opacity: 1; transform: scaleY(1); } 100% { opacity: 0; transform: scaleY(1); } }
+@keyframes presenceResolve { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .videoMode .stageScan, .videoMode .stageIdentity, .videoMode .stageBottom, .videoMode .stageAperture span { animation: none; }
 }

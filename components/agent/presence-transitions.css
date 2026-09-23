@@ -1,0 +1,36 @@
+/* View-transition pseudo-elements belong to the document, not CSS modules.
+   Scope to the Agent route; snapshots are non-interactive and short-lived. */
+:root:has([data-agent-view])::view-transition { pointer-events: none; }
+:root:has([data-agent-view])::view-transition-group(creekstone-presence),
+:root:has([data-agent-view])::view-transition-group(creekstone-conversation) {
+  animation-duration: 780ms;
+  animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+}
+:root:has([data-agent-view="text"])::view-transition-group(creekstone-presence),
+:root:has([data-agent-view="text"])::view-transition-group(creekstone-conversation) { animation-duration: 480ms; }
+:root:has([data-agent-view])::view-transition-old(creekstone-presence) {
+  animation: creekstoneSnapshotOut 190ms ease-out both;
+  object-fit: contain;
+}
+:root:has([data-agent-view])::view-transition-new(creekstone-presence) {
+  animation: creekstoneSnapshotIn 680ms cubic-bezier(.16, 1, .3, 1) both;
+  object-fit: contain;
+}
+:root:has([data-agent-view="text"])::view-transition-new(creekstone-presence) { animation-duration: 420ms; }
+:root:has([data-agent-view])::view-transition-old(creekstone-conversation) { animation: creekstoneSnapshotOut 140ms ease-out both; }
+:root:has([data-agent-view])::view-transition-new(creekstone-conversation) { animation: creekstoneSnapshotIn 450ms 100ms both; }
+:root:has([data-agent-view])::view-transition-group(creekstone-header) { animation-duration: 0ms; }
+:root:has([data-agent-view])::view-transition-old(root) { animation: creekstoneSnapshotOut 240ms both; }
+:root:has([data-agent-view])::view-transition-new(root) { animation: creekstoneSnapshotIn 420ms both; }
+@keyframes creekstoneSnapshotIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes creekstoneSnapshotOut { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  :root:has([data-agent-view])::view-transition-group(*),
+  :root:has([data-agent-view])::view-transition-old(*),
+  :root:has([data-agent-view])::view-transition-new(*) { animation-duration: 0ms; animation-delay: 0ms; }
+}
+/* Keep the Agent's document canvas dark throughout the restored transition. */
+html:has([data-agent-view]), body:has([data-agent-view]) {
+  background-color: #050505;
+  color-scheme: dark;
+}

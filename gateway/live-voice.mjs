@@ -162,7 +162,7 @@ export function createLiveVoiceRegistry(config, makeVoice = (emit) => new BytePl
   const owners = new Map();
   const starts = new Map();
   return {
-    open(id, owner, response) {
+    open(id, owner, response, options = {}) {
       if (!/^[a-f0-9-]{36}$/.test(id || "")) throw new GatewayError(400, "invalid_voice", "Invalid voice session");
       if (sessions.has(id)) throw new GatewayError(409, "voice_busy", "Voice session already exists");
       const now = Date.now();
@@ -186,7 +186,7 @@ export function createLiveVoiceRegistry(config, makeVoice = (emit) => new BytePl
           if (event === "error" || event === "done") entry.end();
         },
       };
-      voice = makeVoice(entry.emit);
+      voice = makeVoice(entry.emit, { ...options, owner });
       entry.voice = voice;
       sessions.set(id, entry); owners.set(owner, entry);
       response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store",
