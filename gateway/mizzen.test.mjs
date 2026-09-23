@@ -158,3 +158,32 @@ test("heartbeat preserves the original failure; delayed cleanup does not quarant
     assert.ok(recovered.videoId);
   } finally { await manager.close(); }
 });
+
+test("terminal sessions with retained media errors release seats; pending cleanup permits bounded reconnect", async () => {
+  let serial = 0, terminal = false;
+  const logs = [];
+  const manager = createMizzenManager({ mizzen: { base: "https://fixture.invalid", inputKey: "secret-input", playbackKey: "secret-playback" } }, {
+    pollMs: 1, log: event => logs.push(event),
+    fetchImpl: async (url, options) => {
+      if (url.endsWith('/v1/sessions')) return Response.json({ session_id: `12345678-1234-1234-1234-${String(++serial).padStart(12, '0')}`, state: 'ready' });
+      if (url.endsWith('/playback')) return Response.json({ iceServers: [] });
+      if (options.method === 'DELETE') return Response.json({});
+      return Response.json({ state: terminal ? 'failed' : 'closing', error: 'MEDIA_UNAVAILABLE' });
+    },
+  });
+  try {
+    const first = await manager.handle('open', 'alice', {});
+    await assert.rejects(manager.handle('close', 'alice', first), { code: 'video_cleanup' });
+    const second = await manager.handle('open', 'alice', {});
+    assert.notEqual(second.videoId, first.videoId);
+    const third = await manager.handle('open', 'alice', {});
+    assert.notEqual(third.videoId, second.videoId);
+    await assert.rejects(manager.handle('open', 'alice', {}), { code: 'video_busy' });
+    terminal = true;
+    await manager.close();
+    assert.ok(logs.some(event => event.event === 'video.cleanup_state' && event.state === 'failed' && event.code === 'MEDIA_UNAVAILABLE'));
+    // A different owner avoids the per-owner reconnect rate limit and proves all seats were released.
+    assert.ok((await manager.handle('open', 'bob', {})).videoId);
+    assert.ok(!JSON.stringify(logs).includes('secret-'));
+  } finally { terminal = true; await manager.close(); }
+});

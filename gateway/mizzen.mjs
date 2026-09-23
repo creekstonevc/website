@@ -17,7 +17,13 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
   const entries = new Map(), creating = new Set(), rates = new Map();
   let quarantined = false;
   const enabled = !!(settings.inputKey && settings.playbackKey);
+  const safeCode = value => typeof value === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(value) ? value : null;
+  const stateLog = (event, entry, payload) => log({ event, videoId: entry.id, upstreamSession: entry.upstream,
+    state: ["starting", "ready", "receiving", "closing", "closed", "failed"].includes(payload.state) ? payload.state : "unknown",
+    code: safeCode(payload.error?.code ?? payload.error), elapsedMs: Date.now() - entry.created });
   async function api(path, playback = false, method = "GET", body, idempotency) {
+    const started = Date.now();
+    const context = { operation: method, route: path.replace(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/, ":session"), upstreamSession: path.match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/)?.[0] ?? null };
     const base = new URL(settings.base);
     if (base.protocol !== "https:" || base.username || base.password) throw fault("video_configuration", "Video service configuration is invalid", 503);
     let response;
@@ -26,7 +32,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
         signal: AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${playback ? settings.playbackKey : settings.inputKey}`,
           ...(body ? { "Content-Type": "application/json" } : {}), ...(idempotency ? { "Idempotency-Key": idempotency } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}) });
-    } catch { throw fault("video_network", "Video service did not respond. Text chat is still available."); }
+    } catch { log({ event: "video.upstream_network", ...context, elapsedMs: Date.now() - started }); throw fault("video_network", "Video service did not respond. Text chat is still available."); }
     let payload;
     // Bounded response (ICE + SDP), never pass raw provider errors or credentials to the browser/logs.
     const reader = response.body?.getReader(); let text = "";
@@ -34,10 +40,10 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
       if (reader) { const decoder = new TextDecoder(); for (;;) { const part = await reader.read(); if (part.done) break;
         text += decoder.decode(part.value, { stream: true }); if (text.length > 131072) throw new Error("oversize"); } }
       payload = JSON.parse(text);
-    } catch { throw fault("video_protocol", "Video service returned an invalid response."); }
+    } catch { log({ event: "video.upstream_protocol", ...context, status: response.status }); throw fault("video_protocol", "Video service returned an invalid response."); }
     finally { await reader?.cancel().catch(() => {}); reader?.releaseLock(); }
     if (!response.ok) {
-      log({ event: "video.upstream_http", operation: method, api: path.startsWith("/v2") ? "playback" : "input", status: response.status });
+      log({ event: "video.upstream_http", ...context, status: response.status, code: safeCode(payload?.error?.code ?? payload?.error), elapsedMs: Date.now() - started });
       if (response.status === 404) throw fault("video_expired", "Video session expired. Reconnect to continue.", 404);
       if (response.status === 409) throw fault("video_busy", "Video service is busy or not ready. Text chat is still available.", 409);
       throw fault("video_unavailable", "Video service unavailable. Check server credentials and playback access.");
@@ -57,7 +63,8 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
         await api(`/v1/sessions/${entry.upstream}`, false, "DELETE");
         for (let attempt = 0; attempt < 3; attempt++) {
           const final = await api(`/v1/sessions/${entry.upstream}`);
-          if (!final.error && ["closed", "failed"].includes(final.state)) { entries.delete(entry.id); return; }
+          stateLog("video.cleanup_state", entry, final);
+          if (["closed", "failed"].includes(final.state)) { entries.delete(entry.id); return; }
           if (attempt < 2) await new Promise(resolve => setTimeout(resolve, pollMs));
         }
         throw fault("video_cleanup", "Video cleanup is still pending", 503);
@@ -66,8 +73,8 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
         // Retain this occupied seat until cleanup is confirmed. Do not globally
         // quarantine healthy sessions because one known lease is slow to close.
         entry.cleanupAttempts = (entry.cleanupAttempts || 0) + 1;
-        entry.retryAt = Date.now() + 10000 * entry.cleanupAttempts;
-        log({ event: "video.cleanup_pending", attempt: entry.cleanupAttempts, code: error.code || "cleanup_unconfirmed" });
+        entry.retryAt = Date.now() + Math.min(60000, 10000 * entry.cleanupAttempts);
+        log({ event: "video.cleanup_pending", videoId: entry.id, upstreamSession: entry.upstream, attempt: entry.cleanupAttempts, code: error.code || "cleanup_unconfirmed" });
         throw fault("video_cleanup", "Video cleanup is pending. Text chat remains available.", 503);
       }
     })();
@@ -77,7 +84,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
   const sweep = setInterval(() => {
     for (const entry of entries.values()) {
       if (entry.closed) {
-        if (entry.cleanupAttempts < 3 && Date.now() >= entry.retryAt) void release(entry).catch(() => {});
+        if (Date.now() >= entry.retryAt) void release(entry).catch(() => {});
       } else if (Date.now() - entry.seen > 45000 || Date.now() - entry.created > 550000) void release(entry).catch(() => {});
     }
   }, 5000); sweep.unref?.();
@@ -96,7 +103,9 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
         rates.set(owner, rate);
         creating.add(owner); let entry;
         try {
-          for (const old of entries.values()) if (old.owner === owner) await release(old);
+          // Pending cleanup still occupies a seat, but must not indefinitely block
+          // its owner from reconnecting when another bounded seat is available.
+          for (const old of entries.values()) if (old.owner === owner && (!old.closed || now >= old.retryAt)) await release(old).catch(() => {});
           if (entries.size + creating.size > 3) throw fault("video_busy", "All video seats are occupied. Text chat remains available.", 409);
           let result;
           try { result = await api("/v1/sessions", false, "POST", undefined, randomUUID()); }
@@ -104,15 +113,18 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
           if (!uuid.test(result.session_id || "")) { quarantined = true; throw fault("video_protocol", "Invalid video session response."); }
           entry = { id: randomUUID(), owner, upstream: result.session_id, created: now, seen: now, closed: false, connected: false, negotiated: false };
           entries.set(entry.id, entry);
+          stateLog("video.created", entry, result);
           const started = Date.now();
           while (result.state === "starting" && Date.now() - started < 55000) {
             await new Promise(resolve => setTimeout(resolve, pollMs));
             if (entry.closed) throw fault("video_expired", "Video startup cancelled.", 409);
             entry.seen = Date.now(); result = await api(`/v1/sessions/${entry.upstream}`);
           }
+          stateLog("video.startup_state", entry, result);
           if (result.state !== "ready" || result.error) throw fault("video_startup", "Video could not start. Text chat remains available.");
           const playback = await api(`/v2/sessions/${entry.upstream}/playback`, true);
           if (!Array.isArray(playback.iceServers) || playback.iceServers.length > 16) throw fault("video_protocol", "Invalid media configuration.");
+          log({ event: "video.playback_ready", videoId: entry.id, upstreamSession: entry.upstream });
           return { videoId: entry.id, iceServers: playback.iceServers };
         } catch (error) { if (entry) await release(entry).catch(() => {}); throw error; }
         finally { creating.delete(owner); }
@@ -122,8 +134,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
       if (action === "heartbeat") {
         const status = await api(`/v1/sessions/${entry.upstream}`);
         if (!["ready", "receiving"].includes(status.state) || status.error) {
-          const safe = value => typeof value === "string" && /^[a-zA-Z0-9_-]{1,64}$/.test(value) ? value : "unknown";
-          log({ event: "video.heartbeat_state", state: safe(status.state), code: status.error ? safe(status.error) : null });
+          stateLog("video.heartbeat_state", entry, status);
           // Cleanup must not replace the original session-state failure.
           void release(entry).catch(() => {});
           throw fault("video_expired", "Video session ended. Reconnect when ready.", 409);
@@ -138,6 +149,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
           const answer = await api(`/v2/sessions/${entry.upstream}/offer`, true, "POST", { sdp: body.sdp });
           if (answer.type !== "answer" || typeof answer.sdp !== "string" || answer.sdp.length > 65536) throw fault("video_protocol", "Invalid media answer.");
           entry.negotiated = true;
+          log({ event: "video.offer_accepted", videoId: entry.id, upstreamSession: entry.upstream });
           return { type: "answer", sdp: answer.sdp, generation: answer.generation };
         } finally { entry.offering = false; }
       }
@@ -148,7 +160,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
           entry.audio = makeAudio(target.href, settings.inputKey);
           entry.audio.done.catch(() => {
             if (!entry.closed) {
-              log({ event: "video.audio_input_failed" });
+              log({ event: "video.audio_input_failed", videoId: entry.id, upstreamSession: entry.upstream });
               void release(entry).catch(() => {});
             }
           });
