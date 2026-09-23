@@ -92,3 +92,30 @@ test("uncertain session creation quarantines further allocation instead of blind
     await assert.rejects(manager.handle("open", "a", {}), { code: "video_cleanup" }); assert.equal(calls, 1); }
   finally { await manager.close(); }
 });
+
+test("heartbeat preserves the original failure; delayed cleanup does not quarantine other seats", async () => {
+  let abnormal = false, cleanup = false, gets = 0, serial = 0;
+  const logs = [];
+  const manager = createMizzenManager({ mizzen: { base: "https://fixture.invalid", inputKey: "input", playbackKey: "playback" } }, {
+    pollMs: 1, log: event => logs.push(event),
+    fetchImpl: async (url, options) => {
+      if (url.endsWith('/v1/sessions')) return Response.json({ session_id: `12345678-1234-1234-1234-${String(++serial).padStart(12, '0')}`, state: 'ready' });
+      if (url.endsWith('/playback')) return Response.json({ iceServers: [] });
+      if (options.method === 'DELETE') { cleanup = true; return Response.json({}); }
+      if (cleanup) { gets++; return Response.json({ state: gets < 4 ? 'closing' : 'closed' }); }
+      return Response.json({ state: abnormal ? 'failed' : 'ready', error: abnormal ? 'SESSION_ENDED' : null });
+    },
+  });
+  try {
+    const first = await manager.handle('open', 'alice', {}); abnormal = true;
+    await assert.rejects(manager.handle('heartbeat', 'alice', first), { code: 'video_expired', status: 409 });
+    await pause(20);
+    assert.ok(logs.some(event => event.event === 'video.heartbeat_state' && event.code === 'SESSION_ENDED'));
+    assert.ok(logs.some(event => event.event === 'video.cleanup_pending'));
+    const second = await manager.handle('open', 'bob', {});
+    assert.ok(second.videoId);
+    // Reconnecting the owner retries its retained lease and recovers capacity.
+    const recovered = await manager.handle('open', 'alice', {});
+    assert.ok(recovered.videoId);
+  } finally { await manager.close(); }
+});

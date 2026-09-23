@@ -878,6 +878,16 @@ export function AgentChat() {
               else if (recovery.kind === "sync") void syncHistory();
               else void initializeConversation();
             }}>{recovery.kind === "retry" ? "Retry sending" : recovery.kind === "sync" ? "Sync history" : "Retry connection"}</button>
+            {recovery.kind === "sync" && <>
+              <button type="button" onClick={() => {
+                // Explicitly leave recovery without resending the uncertain turn.
+                setMessages(current => current.filter(message => message.role !== "assistant" || message.content.trim() || message.attachments?.length));
+                saveRecovery(null);
+                setReady(true);
+                requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+              }}>Continue chatting</button>
+              <p>继续聊天不会重发上一条消息；未完成的回复仍可能稍后出现在历史中。</p>
+            </>}
             {recovery.kind === "retry" && <button type="button" onClick={() => {
               setValue(recovery.input || "");
               replaceAttachments(readAttachmentFiles(recovery.attachments));

@@ -11,7 +11,8 @@ export function mizzenConfig(env = process.env) {
 }
 
 export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (url, key) => new MizzenAudio(url, key),
-  makeTts = (emit) => new BytePlusLiveVoice(config, emit), pollMs = 500 } = {}) {
+  makeTts = (emit) => new BytePlusLiveVoice(config, emit), pollMs = 500,
+  log = event => process.stderr.write(`${JSON.stringify(event)}\n`) } = {}) {
   const settings = config.mizzen || mizzenConfig({});
   const entries = new Map(), creating = new Set(), rates = new Map();
   let quarantined = false;
@@ -36,6 +37,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
     } catch { throw fault("video_protocol", "Video service returned an invalid response."); }
     finally { await reader?.cancel().catch(() => {}); reader?.releaseLock(); }
     if (!response.ok) {
+      log({ event: "video.upstream_http", operation: method, api: path.startsWith("/v2") ? "playback" : "input", status: response.status });
       if (response.status === 404) throw fault("video_expired", "Video session expired. Reconnect to continue.", 404);
       if (response.status === 409) throw fault("video_busy", "Video service is busy or not ready. Text chat is still available.", 409);
       throw fault("video_unavailable", "Video service unavailable. Check server credentials and playback access.");
@@ -53,17 +55,31 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
     entry.closing = (async () => {
       try {
         await api(`/v1/sessions/${entry.upstream}`, false, "DELETE");
-        const final = await api(`/v1/sessions/${entry.upstream}`);
-        if (final.error === "CLEANUP_UNCONFIRMED" || !["closed", "failed"].includes(final.state)) throw new Error("cleanup");
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const final = await api(`/v1/sessions/${entry.upstream}`);
+          if (!final.error && ["closed", "failed"].includes(final.state)) { entries.delete(entry.id); return; }
+          if (attempt < 2) await new Promise(resolve => setTimeout(resolve, pollMs));
+        }
+        throw fault("video_cleanup", "Video cleanup is still pending", 503);
       } catch (error) {
-        if (error.code !== "video_expired") { quarantined = true; throw fault("video_cleanup", "Video cleanup needs operator confirmation. Text chat remains available.", 503); }
-      } finally { entries.delete(entry.id); }
+        if (error.code === "video_expired") { entries.delete(entry.id); return; }
+        // Retain this occupied seat until cleanup is confirmed. Do not globally
+        // quarantine healthy sessions because one known lease is slow to close.
+        entry.cleanupAttempts = (entry.cleanupAttempts || 0) + 1;
+        entry.retryAt = Date.now() + 10000 * entry.cleanupAttempts;
+        log({ event: "video.cleanup_pending", attempt: entry.cleanupAttempts, code: error.code || "cleanup_unconfirmed" });
+        throw fault("video_cleanup", "Video cleanup is pending. Text chat remains available.", 503);
+      }
     })();
-    entry.closing.catch(() => {});
+    entry.closing.catch(() => { entry.closing = null; });
     return entry.closing;
   }
   const sweep = setInterval(() => {
-    for (const entry of entries.values()) if (Date.now() - entry.seen > 45000 || Date.now() - entry.created > 550000) void release(entry).catch(() => {});
+    for (const entry of entries.values()) {
+      if (entry.closed) {
+        if (entry.cleanupAttempts < 3 && Date.now() >= entry.retryAt) void release(entry).catch(() => {});
+      } else if (Date.now() - entry.seen > 45000 || Date.now() - entry.created > 550000) void release(entry).catch(() => {});
+    }
   }, 5000); sweep.unref?.();
 
   return {
@@ -106,7 +122,11 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
       if (action === "heartbeat") {
         const status = await api(`/v1/sessions/${entry.upstream}`);
         if (!["ready", "receiving"].includes(status.state) || status.error) {
-          await release(entry); throw fault("video_expired", "Video session ended. Reconnect when ready.", 409);
+          const safe = value => typeof value === "string" && /^[a-zA-Z0-9_-]{1,64}$/.test(value) ? value : "unknown";
+          log({ event: "video.heartbeat_state", state: safe(status.state), code: status.error ? safe(status.error) : null });
+          // Cleanup must not replace the original session-state failure.
+          void release(entry).catch(() => {});
+          throw fault("video_expired", "Video session ended. Reconnect when ready.", 409);
         }
         return { state: status.state, inputActive: !!entry.active };
       }
