@@ -7,7 +7,7 @@ export function SpeechInput({ sessionKey, disabled, onText, onFinal, onCaptureSt
   onFinal: (text: string) => void;
   onCaptureStart: () => void; onActiveChange: (active: boolean) => void;
 }) {
-  const [state, setState] = useState<AsrState>({ phase: 'idle', message: 'Hold Space to speak · release to send' });
+  const [state, setState] = useState<AsrState>({ phase: 'idle', message: 'Hold to speak · release to send' });
   const current = useRef<AsrCapture | null>(null);
   const held = useRef(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -43,7 +43,7 @@ export function SpeechInput({ sessionKey, disabled, onText, onFinal, onCaptureSt
       event.preventDefault(); start();
     };
     const up = (event: KeyboardEvent) => { if (event.code === 'Space' && held.current) { event.preventDefault(); finish(); } };
-    const blur = () => { cancel(); setState({ phase: 'idle', message: 'Recording cancelled · hold Space to retry' }); };
+    const blur = () => { cancel(); setState({ phase: 'idle', message: 'Recording cancelled · hold to retry' }); };
     const visibility = () => { if (document.hidden) blur(); };
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur);
     document.addEventListener('visibilitychange', visibility);
@@ -81,16 +81,20 @@ export function VideoExpiry({ expiresAt }: { expiresAt?: number }) {
   </span>;
 }
 
-export function VideoSessionDetails({ sessionId }: { sessionId: string }) {
+export function VideoSessionDetails({ sessionId }: { sessionId?: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
-  return <details className={styles.videoSessionDetails}>
-    <summary>Video session</summary>
-    <code>{sessionId}</code>
-    <button type="button" onClick={async () => {
+  return <div className={styles.videoSessionDetails} role="group" aria-label="Video session">
+    <span className={styles.videoSessionLabel}>Video session</span>
+    <div className={styles.videoSessionRow}>
+    <code>{sessionId || 'Awaiting session ID…'}</code>
+    <button className={styles.copySession} type="button" disabled={!sessionId} aria-label={copied ? 'Session ID copied' : 'Copy session ID'}
+      title={copied ? 'Copied' : 'Copy session ID'} onClick={async () => {
+      if (!sessionId) return;
       try { await navigator.clipboard.writeText(sessionId); setCopied(true); setFailed(false); }
-      catch { setFailed(true); }
-    }}>{copied ? 'Copied' : 'Copy session ID'}</button>
-    <span role="status">{failed ? 'Select the session ID above to copy it manually.' : copied ? 'Session ID copied.' : ''}</span>
-  </details>;
+      catch { setCopied(false); setFailed(true); }
+    }}><svg viewBox="0 0 24 24" aria-hidden="true">{copied ? <path d="m5 12 4 4L19 6" /> : <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4H4v12h4" /></>}</svg></button>
+    </div>
+    <span className={failed ? undefined : styles.copyStatusHidden} role="status">{failed ? 'Select the session ID above to copy it manually.' : copied ? 'Session ID copied.' : ''}</span>
+  </div>;
 }

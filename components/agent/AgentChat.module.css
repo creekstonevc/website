@@ -1,4 +1,6 @@
-.presenceControls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; }
+.presenceControls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 8px; width: 100%; }
+.presenceControls:has(.liveVoiceToolbar[hidden]) { grid-template-columns: 1fr; }
+.presenceControls > button { min-width: 0; }
 .presenceControls button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid #66542d; background: #14120c; color: #b8b2a4; font: inherit; font-size: 12px; cursor: pointer; }
 .presenceControls button[aria-pressed="true"], .presenceControls button:hover { color: #f4d87d; border-color: #e5bd52; }
 .presenceControls svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.3; }
@@ -71,6 +73,8 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
 .stageIdentity p { color: #c2baa7; font-size: 12px; margin: 0; }
 .stageBottom { width: min(100%, calc((100cqh - 180px) * var(--video-ratio))); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-top: 0; }
 .stageStatus { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #e7d8b0; min-width: 0; }
+.videoViewport .stageStatus { position: absolute; z-index: 3; inset: auto 12px 12px; width: fit-content; max-width: calc(100% - 24px); min-width: 0; margin: 0; padding: 5px 7px; align-items: flex-start; gap: 6px; font-size: 11px; line-height: 1.4; color: #e7d8b0; pointer-events: none; overflow-wrap: anywhere; }
+.videoViewport .stageStatus .stageSignal { margin-top: 5px; }
 .stageSignal { width: 6px; height: 6px; flex: 0 0 auto; background: #b7a783; }
 .stageSignalLive { background: #87bb93; box-shadow: 0 0 15px #87bb9377; }
 .stageBottom small { flex-basis: 100%; color: #b0aa9c; font-size: 11px; }
@@ -79,8 +83,15 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
 .videoComposerNote span:first-child { color: #e5bd52; text-transform: uppercase; letter-spacing: .12em; }
 .liveVoiceToolbar[hidden] { display: none; }
 .videoSessionDetails { width: 100%; color: #b8b2a4; font-size: 11px; }
-.videoSessionDetails summary { cursor: pointer; padding-block: 8px; }
-.videoSessionDetails code { display: block; overflow-wrap: anywhere; user-select: text; margin-bottom: 8px; }
+.videoSessionLabel { display: block; line-height: 16px; }
+.videoSessionRow { display: flex; align-items: center; gap: 4px; height: 44px; }
+.videoSessionDetails code { min-width: 0; max-height: 44px; overflow: auto; overflow-wrap: anywhere; user-select: text; line-height: 16px; }
+.stageBottom .videoSessionDetails .copySession { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #d6bc76; cursor: pointer; }
+.copySession svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.copySession:hover { color: #fff0b9; }
+.stageBottom .copySession:disabled { opacity: .35; cursor: default; }
+.copySession:focus-visible { outline: 1px solid #e5bd52; outline-offset: -3px; }
+.copyStatusHidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .videoSessionDetails > span { display: block; }
 .videoStage { overflow-y: auto; }
 .stageBottom { flex-shrink: 0; }
@@ -1023,6 +1034,12 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
   gap: 8px 14px;
   margin-bottom: 14px;
 }
+.presenceControls .liveVoiceToolbar:not([hidden]) { display: contents; }
+.presenceControls .liveVoiceStatus { grid-column: 1 / -1; text-align: left; }
+.presenceControls .liveVoiceStatus[hidden] { display: none; }
+.presenceControls .liveVoiceStop { grid-column: 1 / -1; }
+.presenceControls .liveVoiceToggle { min-width: 0; padding-inline: 6px; gap: 6px; white-space: nowrap; }
+.presenceControls .liveVoiceToggle[aria-pressed="true"] { background: #14120c; color: #f4d87d; }
 
 .liveVoiceToggle,
 .liveVoiceStop {
@@ -1223,6 +1240,18 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
   font: inherit;
 }
 
+.inputModeBar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 16px; }
+.inputModeBar > small { color: #aaa38f; font-size: 10px; line-height: 1.5; }
+.inputModes { position: relative; display: grid; grid-template-columns: repeat(2, 80px); border-bottom: 1px solid #75613b; }
+.inputModes button { position: relative; display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 8px; background: transparent; border: 0; color: #b9b2a3; font: inherit; font-size: 13px; cursor: pointer; transition: color 180ms; }
+.inputModes button[aria-pressed="true"] { color: #f3d376; }
+.inputModes button:hover { color: #fff0b9; }
+.inputModes button:focus-visible { outline: 1px solid #f3d376; outline-offset: 3px; }
+.inputModes svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.inputModeMarker { position: absolute; bottom: -1px; left: 0; width: 80px; height: 2px; background: #e5bd52; transition: transform 320ms cubic-bezier(.16,1,.3,1); }
+.inputModes[data-voice="true"] .inputModeMarker { transform: translateX(80px); }
+.agentShell[data-transition-kind="input"] .composer { view-transition-name: var(--agent-input-transition); }
+@media (prefers-reduced-motion: reduce) { .inputModeMarker, .inputModes button { transition: none; } }
 .composerControl {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
@@ -1702,11 +1731,11 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
 .videoMode .stageAperture span:last-child { animation-name: apertureRight; }
 .videoMode .stageScan { animation: apertureLight 760ms cubic-bezier(.16,1,.3,1) both; }
 .videoMode .stageIdentity, .videoMode .stageBottom { animation: presenceResolve 650ms 90ms both; }
-.console { view-transition-name: creekstone-conversation; }
-.portraitFrame { view-transition-name: creekstone-presence; }
+.console { view-transition-name: var(--agent-conversation-transition); }
+.portraitFrame { view-transition-name: var(--agent-presence-transition); }
 .videoMode .portraitFrame { view-transition-name: none; }
-.videoMode .videoViewport { view-transition-name: creekstone-presence; }
-.header { view-transition-name: creekstone-header; }
+.videoMode .videoViewport { view-transition-name: var(--agent-presence-transition); }
+.header { view-transition-name: var(--agent-header-transition); }
 @keyframes apertureLeft { from { transform: translateX(0); } to { transform: translateX(-101%); } }
 .speechMode .consoleHeader { padding: 14px; gap: 12px; }
 .speechMode .consoleHeader > div:first-child { display: none; }
@@ -1731,6 +1760,79 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
   .speechMode .console { margin: 20px 20px 20px 0; }
 }
 @media (prefers-reduced-motion: reduce) { .speechInput > button { transition: none; } }
+/* Phone: conversation first. Do not stack the desktop dossier above the chat. */
+@media (max-width: 700px) {
+  .agentShell, .videoMode { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px auto minmax(0, 1fr); }
+  .header { padding-inline: 16px; }
+  .header .backLink { display: flex; min-width: 44px; min-height: 44px; justify-content: center; align-items: center; }
+  .identityPanel { grid-template-columns: 48px minmax(0, 1fr); grid-template-rows: 52px auto; padding: 10px 16px; gap: 8px 12px; }
+  .identityIndex, .identityNote, .footer { display: none; }
+  .portraitFrame { grid-column: 1; grid-row: 1; min-height: 0; height: 52px; width: 48px; box-shadow: none; }
+  .portraitFrame::before, .portraitFrame::after, .portraitScan { display: none; }
+  .portraitFrame img { object-position: center 20%; }
+  .identityCopy { grid-column: 2; grid-row: 1; }
+  .identityCopy h1 { font-size: 24px; line-height: 1.1; margin: 3px 0 0; }
+  .identityCopy > p { display: none; }
+  .identityLive { font-size: 9px; }
+  .identityPanel > .presenceControls { grid-row: 2; grid-column: 1 / -1; gap: 8px; }
+  .presenceControls button { min-height: 44px; }
+  .presenceControls .liveVoiceStatus { font-size: 11px; }
+  .console, .videoMode .console, .speechMode .console { margin: 0; border: 0; border-top: 1px solid #55492e; }
+  .consoleHeader, .speechMode .consoleHeader, .videoMode .consoleHeader { padding: 4px 12px; gap: 0; }
+  .consoleHeader > div:first-child { display: none; }
+  .sessionActions { width: 100%; gap: 8px; }
+  .sessionActions select { flex: 1; width: 0; min-width: 0; min-height: 44px; font-size: 12px; letter-spacing: .02em; }
+  .sessionActions button { flex: 0 0 auto; max-width: none; min-height: 44px; font-size: 10px; letter-spacing: .04em; white-space: nowrap; padding-inline: 10px; }
+  .channelIntro { display: none; }
+  .transcript, .speechMode .transcript, .videoMode .transcript { padding: 16px; }
+  .message, .videoMode .message { margin: 0 0 22px; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+  .messageMeta > span:last-child { display: none; }
+  .messageBody, .speechMode .messageBody { padding: 0; border: 0; background: transparent; }
+  .markdown, .speechMode .markdown, .messageBody { font-size: 16px; line-height: 1.65; }
+  .suggestions { padding: 0 16px 8px; }
+  .suggestions button { min-height: 44px; }
+  .composer, .speechMode .composer, .videoMode .composer { padding: 8px 16px max(10px, env(safe-area-inset-bottom)); }
+  .inputModeBar { margin-bottom: 6px; }
+  .inputModeBar > small { display: none; }
+  .inputModes button { min-height: 44px; }
+  .composerControl, .videoMode .composerControl { grid-template-columns: minmax(0, 1fr) 44px; padding-block: 4px; }
+  .promptMark { display: none; }
+  .composer textarea { padding: 10px 8px 10px 0; font-size: 16px; max-height: 96px; }
+  .composerControl > button, .videoMode .composerControl > button { min-width: 44px; width: 44px; height: 44px; padding: 0; justify-content: center; }
+  .attachmentToolbar, .speechMode .attachmentToolbar { padding-top: 4px; }
+  .attachmentToolbar > span { display: none; }
+  .attachButton, .speechMode .attachButton { min-height: 44px; font-size: 12px; }
+  .speechInput { margin: 4px 0; }
+  .speechInput > button { min-height: 56px; justify-content: center; font-size: 16px; }
+  .speechInput kbd { display: none; }
+  .speechInput p { margin: 8px 0 0; font-size: 12px; text-align: center; }
+  .videoMode .identityPanel { display: block; max-height: 38dvh; overflow-y: auto; }
+  .videoMode .identityCopy, .videoMode .portraitFrame { display: none; }
+  .videoStage { flex-direction: column; padding: 8px 12px; gap: 6px; }
+  .videoMode .videoStage { position: relative; inset: auto; }
+  .stageIdentity { display: none; }
+  .videoViewport { width: min(100%, calc(27dvh * 1.777778)); flex-shrink: 0; }
+  .stageBottom { width: 100%; align-items: center; }
+  .stageBottom .presenceControls { width: 112px; flex: 0 0 112px; }
+  .stageBottom .presenceControls button { font-size: 12px; }
+  .stageBottom .toggleTrack { flex-shrink: 0; }
+  .stageStatus { flex: 1; min-width: 140px; font-size: 11px; }
+  .stageBottom button { min-height: 44px; }
+}
+@media (max-width: 700px) and (max-height: 600px) {
+  .agentShell, .videoMode { grid-template-rows: 40px auto minmax(0, 1fr); }
+  .identityPanel { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto; padding-block: 4px; }
+  .portraitFrame { display: none; }
+  .identityCopy { grid-column: 1; grid-row: 1; }
+  .identityCopy h1 { font-size: 18px; }
+  .identityLive { display: none; }
+  .identityPanel > .presenceControls { grid-column: 2; grid-row: 1; width: auto; }
+  .presenceControls .liveVoiceStatus, .suggestions { display: none; }
+  .videoMode .identityPanel { max-height: 26dvh; }
+  .videoStage { flex-direction: row; align-items: center; }
+  .videoViewport { width: min(36vw, 156px); }
+  .stageBottom { flex: 1; }
+}
 @keyframes apertureRight { from { transform: translateX(0); } to { transform: translateX(101%); } }
 @keyframes apertureLight { 0% { opacity: 0; transform: scaleY(.05); } 18% { opacity: 1; transform: scaleY(1); } 100% { opacity: 0; transform: scaleY(1); } }
 @keyframes presenceResolve { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

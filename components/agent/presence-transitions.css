@@ -1,5 +1,12 @@
 /* View-transition pseudo-elements belong to the document, not CSS modules.
    Scope to the Agent route; snapshots are non-interactive and short-lived. */
+/* Custom properties keep these identifiers out of CSS Modules' name mangling. */
+:root:has([data-agent-view]) {
+  --agent-presence-transition: creekstone-presence;
+  --agent-conversation-transition: creekstone-conversation;
+  --agent-header-transition: creekstone-header;
+  --agent-input-transition: creekstone-input;
+}
 :root:has([data-agent-view])::view-transition { pointer-events: none; }
 :root:has([data-agent-view])::view-transition-group(creekstone-presence),
 :root:has([data-agent-view])::view-transition-group(creekstone-conversation) {
@@ -9,21 +16,47 @@
 :root:has([data-agent-view="text"])::view-transition-group(creekstone-presence),
 :root:has([data-agent-view="text"])::view-transition-group(creekstone-conversation) { animation-duration: 480ms; }
 :root:has([data-agent-view])::view-transition-old(creekstone-presence) {
-  animation: creekstoneSnapshotOut 190ms ease-out both;
-  object-fit: contain;
+  animation: creekstoneSharedOut 780ms cubic-bezier(.16, 1, .3, 1) both;
 }
 :root:has([data-agent-view])::view-transition-new(creekstone-presence) {
-  animation: creekstoneSnapshotIn 680ms cubic-bezier(.16, 1, .3, 1) both;
-  object-fit: contain;
+  animation: creekstoneSharedIn 780ms cubic-bezier(.16, 1, .3, 1) both;
 }
-:root:has([data-agent-view="text"])::view-transition-new(creekstone-presence) { animation-duration: 420ms; }
+:root:has([data-agent-view="text"])::view-transition-old(creekstone-presence),
+:root:has([data-agent-view="text"])::view-transition-new(creekstone-presence) { animation-duration: 480ms; }
+/* Both snapshots must fill the SAME interpolated bounds. Default auto height
+   preserves two different aspect ratios and lets the portrait escape the frame. */
+:root:has([data-agent-view])::view-transition-group(creekstone-presence) { overflow: clip; }
+:root:has([data-agent-view])::view-transition-image-pair(creekstone-presence) { overflow: clip; isolation: isolate; }
+:root:has([data-agent-view])::view-transition-old(creekstone-presence),
+:root:has([data-agent-view])::view-transition-new(creekstone-presence) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  mix-blend-mode: normal;
+}
 :root:has([data-agent-view])::view-transition-old(creekstone-conversation) { animation: creekstoneSnapshotOut 140ms ease-out both; }
 :root:has([data-agent-view])::view-transition-new(creekstone-conversation) { animation: creekstoneSnapshotIn 450ms 100ms both; }
 :root:has([data-agent-view])::view-transition-group(creekstone-header) { animation-duration: 0ms; }
 :root:has([data-agent-view])::view-transition-old(root) { animation: creekstoneSnapshotOut 240ms both; }
 :root:has([data-agent-view])::view-transition-new(root) { animation: creekstoneSnapshotIn 420ms both; }
+/* Keep a solid source underneath the destination crossfade: no background leak. */
+@keyframes creekstoneSharedOut { from { opacity: 1; } to { opacity: 1; } }
+@keyframes creekstoneSharedIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes creekstoneSnapshotIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes creekstoneSnapshotOut { to { opacity: 0; } }
+:root:has([data-transition-kind="input"])::view-transition-group(creekstone-input),
+:root:has([data-transition-kind="input"])::view-transition-group(creekstone-conversation),
+:root:has([data-transition-kind="input"])::view-transition-group(creekstone-presence) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(.16,1,.3,1);
+}
+:root:has([data-transition-kind="input"])::view-transition-old(creekstone-input),
+:root:has([data-transition-kind="input"])::view-transition-old(creekstone-conversation) { animation: creekstoneSnapshotOut 180ms ease-out both; }
+:root:has([data-transition-kind="input"])::view-transition-new(creekstone-input),
+:root:has([data-transition-kind="input"])::view-transition-new(creekstone-conversation) { animation: creekstoneSnapshotIn 320ms ease-out both; }
+:root:has([data-transition-kind="input"])::view-transition-old(creekstone-presence) { animation: none; opacity: 0; }
+:root:has([data-transition-kind="input"])::view-transition-new(creekstone-presence) { animation: none; opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   :root:has([data-agent-view])::view-transition-group(*),
   :root:has([data-agent-view])::view-transition-old(*),

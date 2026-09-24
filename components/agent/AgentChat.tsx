@@ -168,7 +168,10 @@ export function AgentChat() {
   const [speechActive, setSpeechActive] = useState(false);
   const speechActiveRef = useRef(false);
   const shellRef = useRef<HTMLElement>(null);
-  const transitionView = usePresenceTransition(shellRef, setVideoMode);
+  const transitionView = usePresenceTransition(shellRef, useCallback((enabled: boolean, kind: "video" | "input") => {
+    if (kind === "input") setSpeechMode(enabled);
+    else setVideoMode(enabled);
+  }, []));
   const videoRef = useRef<HTMLVideoElement>(null);
   const avatar = useAvatarVideo(videoMode, sessionKey, videoRef);
   useEffect(() => {
@@ -658,9 +661,23 @@ export function AgentChat() {
       if (!videoMode) { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); }
       transitionView(!videoMode);
     }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 5h10v10H2z M12 8l6-3v10l-6-3" /></svg>Video<span className={styles.toggleTrack} aria-hidden="true" /></button>
-    <button type="button" aria-pressed={speechMode} aria-label="Voice input" onClick={() => setSpeechMode(!speechMode)}>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6" /></svg>Voice<span className={styles.toggleTrack} aria-hidden="true" />
-    </button>
+          <div className={styles.liveVoiceToolbar} hidden={videoMode || speechMode}>
+            <button type="button" className={styles.liveVoiceToggle} aria-pressed={liveVoice.enabled} aria-label={`Live voice ${liveVoice.enabled ? "on" : "off"}`}
+              onClick={() => { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); void liveVoice.toggle(); }}>
+              <span>Live voice</span><span className={styles.toggleTrack} aria-hidden="true" />
+            </button>
+            <span className={styles.liveVoiceStatus} role="status" hidden={!liveVoice.enabled && liveVoice.state.phase !== "error"}>
+              {liveVoice.state.phase === "error" ? liveVoice.state.error :
+                liveVoice.state.phase === "playing" ? `Speaking as Yihao writes${liveVoice.state.firstAudioMs ? ` · first audio ${(liveVoice.state.firstAudioMs / 1000).toFixed(1)}s` : ""}` :
+                liveVoice.state.phase === "connecting" ? "Connecting Yihao’s voice…" :
+                liveVoice.state.phase === "waiting" ? "Voice ready · waiting for Yihao’s words" :
+                liveVoice.state.phase === "preparing" ? "Preparing audio…" :
+                liveVoice.state.phase === "done" && liveVoice.state.firstAudioMs ? `Played · first audio ${(liveVoice.state.firstAudioMs / 1000).toFixed(1)}s · AI-generated voice` :
+                liveVoice.enabled ? "Next reply will play as it arrives · AI-generated voice" : "Listen while the next reply is being written"}
+            </span>
+            {["waiting", "connecting", "playing"].includes(liveVoice.state.phase) &&
+              <button type="button" className={styles.liveVoiceStop} onClick={stopLiveVoice}>Stop audio</button>}
+          </div>
   </div>;
 
   return (
@@ -711,7 +728,7 @@ export function AgentChat() {
           <span>Identity dossier</span>
           <span>001</span>
         </div>
-        <div className={styles.portraitFrame}>
+        <div className={styles.portraitFrame} data-presence-portrait>
           <Image
             src="/yihao-agent.jpg"
             alt="Yihao Li"
@@ -721,7 +738,6 @@ export function AgentChat() {
           />
           <span className={styles.portraitScan} aria-hidden="true" />
         </div>
-        {!videoMode && presenceControls}
         <div className={styles.identityCopy}>
           <span className={styles.identityLive}>
             <span className={styles.liveDot} />
@@ -730,6 +746,7 @@ export function AgentChat() {
           <h1>Yihao.AI</h1>
           <p>Investor · AI Avatar</p>
         </div>
+        {!videoMode && presenceControls}
         <div className={styles.identityNote}>
           <span>World&apos;s First AI VC Agent</span>
           <p>Trained on how we think, invest, and co-build.</p>
@@ -739,8 +756,8 @@ export function AgentChat() {
             <h2>Yihao<span>.AI</span></h2>
             <p>Same mind. A new presence.</p>
           </div>
-          <div className={styles.videoViewport}>
-          <Image className={styles.videoPortrait} src="/yihao-agent.jpg" alt="Static portrait of Yihao Li" fill sizes="(max-width: 700px) 100vw, 60vw" />
+          <div className={styles.videoViewport} data-presence-video>
+          {avatar.state.phase === "preview" && <Image className={styles.videoPortrait} src="/yihao-agent.jpg" alt="Static portrait of Yihao Li" fill sizes="(max-width: 700px) 100vw, 60vw" />}
           <video ref={videoRef} className={styles.avatarMedia} autoPlay playsInline
             aria-label="AI-generated Yihao avatar video" style={{ opacity: avatar.state.phase === "connected" ? 1 : 0 }} />
           <div className={styles.stageShade} />
@@ -756,19 +773,17 @@ export function AgentChat() {
               <span>Connecting picture and voice…</span>
             </div>
           )}
-          <div className={styles.stageAperture} aria-hidden="true"><span /><span /></div>
-          <span className={styles.stageScan} aria-hidden="true" />
-          </div>
-          <div className={styles.stageBottom}>
-            {videoMode && presenceControls}
             <div className={styles.stageStatus} role={videoMode ? "status" : undefined}>
               <span className={`${styles.stageSignal} ${avatar.state.phase === "connected" ? styles.stageSignalLive : ""}`} aria-hidden="true" />
               <span>{avatar.state.message}</span>
             </div>
+          </div>
+          <div className={styles.stageBottom}>
+            {videoMode && presenceControls}
             {avatar.state.phase === "blocked" && <button type="button" onClick={avatar.play}>Play video</button>}
             {["error", "blocked"].includes(avatar.state.phase) && <button type="button" onClick={avatar.reconnect}>Reconnect</button>}
             {videoMode && avatar.state.phase === 'connected' && <VideoExpiry expiresAt={avatar.state.expiresAt} />}
-            {videoMode && avatar.state.sessionId && <VideoSessionDetails key={avatar.state.sessionId} sessionId={avatar.state.sessionId} />}
+            {videoMode && <VideoSessionDetails key={avatar.state.sessionId || 'pending'} sessionId={avatar.state.sessionId} />}
             <small>{speechMode ? 'Microphone is active only while holding Space or the talk button.' : 'No camera or microphone needed. Keep typing on the right.'}</small>
           </div>
         </div>
@@ -933,37 +948,25 @@ export function AgentChat() {
           ))}
         </div>
 
-        <form className={styles.composer} onSubmit={handleSubmit}>
+        <form className={styles.composer} onSubmit={handleSubmit} data-input-surface>
+          <div className={styles.inputModeBar}>
+            <div className={styles.inputModes} role="group" aria-label="Input mode" data-voice={speechMode}>
+              <span className={styles.inputModeMarker} aria-hidden="true" />
+              <button type="button" aria-label="Text input" aria-pressed={!speechMode}
+                onClick={() => { if (speechMode) transitionView(false, "input"); }}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14M12 5v14M8 19h8" /></svg>Text
+              </button>
+              <button type="button" aria-label="Voice input" aria-pressed={speechMode}
+                onClick={() => { if (!speechMode) transitionView(true, "input"); }}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6" /></svg>Voice
+              </button>
+            </div>
+            {!speechMode && <small id="composer-hint">{busy ? phase : 'Enter to send · Shift + Enter for a new line'}</small>}
+          </div>
           {speechMode && <SpeechInput sessionKey={sessionKey} disabled={busy || !ready || loadingHistory || !!recovery}
             onText={setValue} onFinal={text => { void send(text); }}
             onActiveChange={active => { speechActiveRef.current = active; setSpeechActive(active); }}
             onCaptureStart={() => { disposeAudio(); setVoice({ messageIndex: null, phase: 'idle' }); }} />}
-          <div className={styles.liveVoiceToolbar} hidden={videoMode || speechMode}>
-            <button type="button" className={styles.liveVoiceToggle} aria-pressed={liveVoice.enabled}
-              onClick={() => { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); void liveVoice.toggle(); }}>
-              <VoiceGlyph phase="idle" />
-              <span>Live voice {liveVoice.enabled ? "on" : "off"}</span>
-            </button>
-            <span className={styles.liveVoiceStatus} role="status">
-              {liveVoice.state.phase === "error" ? liveVoice.state.error :
-                liveVoice.state.phase === "playing" ? `Speaking as Yihao writes${liveVoice.state.firstAudioMs ? ` · first audio ${(liveVoice.state.firstAudioMs / 1000).toFixed(1)}s` : ""}` :
-                liveVoice.state.phase === "connecting" ? "Connecting Yihao’s voice…" :
-                liveVoice.state.phase === "waiting" ? "Voice ready · waiting for Yihao’s words" :
-                liveVoice.state.phase === "preparing" ? "Preparing audio…" :
-                liveVoice.state.phase === "done" && liveVoice.state.firstAudioMs ? `Played · first audio ${(liveVoice.state.firstAudioMs / 1000).toFixed(1)}s · AI-generated voice` :
-                liveVoice.enabled ? "Next reply will play as it arrives · AI-generated voice" : "Listen while the next reply is being written"}
-            </span>
-            {["waiting", "connecting", "playing"].includes(liveVoice.state.phase) &&
-              <button type="button" className={styles.liveVoiceStop} onClick={stopLiveVoice}>Stop audio</button>}
-          </div>
-          {videoMode && <div className={styles.videoComposerNote}>
-            <span>{speechMode ? 'Voice' : 'Text'} in / {avatar.state.phase === "connected" ? "video out" : "preview mode"}</span>
-            <span>{avatar.state.phase === "connected" ? "Sound comes from the video" : "Chat remains fully available"}</span>
-          </div>}
-          <label htmlFor="founder-message">
-            <span>Founder input</span>
-            <small id="composer-hint">{busy ? phase : speechMode ? 'Release to send' : "Enter to send · Shift + Enter for a new line"}</small>
-          </label>
           <PendingAttachments drafts={attachmentDrafts.drafts} onRemove={attachmentDrafts.remove} onRetry={attachmentDrafts.retry} />
           {attachmentDrafts.notice && <p className={styles.attachmentError} role="status">{attachmentDrafts.notice}</p>}
           <div className={styles.composerControl}>
@@ -972,6 +975,7 @@ export function AgentChat() {
             </span>
             <textarea
               id="founder-message"
+              aria-label="Message to Yihao"
               ref={inputRef}
               rows={1}
               value={value}
@@ -982,7 +986,7 @@ export function AgentChat() {
               onKeyDown={handleKeyDown}
               onCompositionStart={() => { composing.current = true; }}
               onCompositionEnd={() => { composing.current = false; compositionEnded.current = performance.now(); }}
-              aria-describedby="composer-hint composer-count"
+              aria-describedby="composer-hint"
             />
             <button type="submit" aria-label="Send message" disabled={speechActive || busy || !ready || loadingHistory || !!recovery || attachmentDrafts.blocked ||
               (!value.trim() && !attachmentDrafts.drafts.length) || (!attachmentCapabilities.enabled && attachmentDrafts.drafts.length > 0)}>
@@ -999,12 +1003,7 @@ export function AgentChat() {
               aria-describedby="attachment-hint"><FileGlyph attach /> Attach files</button>
             <span id="attachment-hint">{attachmentCapabilities.enabled ? "5 MB / file · 3 files · 10 MB total" : "Attachments unavailable · text chat is open"}</span>
           </div>
-          <div className={styles.composerHint}>
-            <span>Drafts stay in this browser.</span>
-            <span id="composer-count" role={value.length >= 4000 ? "status" : undefined}>
-              {value.length.toLocaleString()} / 4,000{value.length >= 4000 ? " · Character limit reached" : ""}
-            </span>
-          </div>
+          {value.length >= 4000 && <p className={styles.attachmentError} role="status">Character limit reached · 4,000 characters maximum</p>}
         </form>
       </section>
 
