@@ -961,7 +961,7 @@ export function AgentChat() {
             </div>
             {!speechMode && <small id="composer-hint">{busy ? phase : 'Enter to send · Shift + Enter for a new line'}</small>}
           </div>
-          {speechMode && <SpeechInput sessionKey={sessionKey} disabled={busy || !ready || loadingHistory || !!recovery}
+          {speechMode && <SpeechInput sessionKey={sessionKey} draft={value} disabled={busy || !ready || loadingHistory || !!recovery}
             onText={setValue} onFinal={text => { void send(text, false, "speech"); }}
             onActiveChange={active => { speechActiveRef.current = active; setSpeechActive(active); }}
             onCaptureReady={() => {

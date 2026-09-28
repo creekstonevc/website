@@ -10,15 +10,24 @@ button[aria-pressed="true"] .toggleTrack { background: #66542d; }
 button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); background: #f4d87d; }
 .presenceControls button:focus-visible, .speechInput button:focus-visible { outline: 2px solid #f4d87d; outline-offset: 4px; }
 .speechInput { margin: 4px 0 16px; }
-.speechInput > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 12px 14px; border: 1px solid #8a7543; background: #1c190f; color: #f4d87d; font: inherit; font-size: 14px; touch-action: none; user-select: none; transition: background 180ms, border-color 180ms; }
+.speechInput > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 12px 14px; border: 1px solid #8a7543; background: #1c190f; color: #f4d87d; font: inherit; font-size: 14px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: background 180ms, border-color 180ms, color 180ms; }
 .speechInput > button:hover { border-color: #e5bd52; }
 .speechInput > button:disabled { opacity: .5; }
-.speechInput svg { width: 20px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.5; }
-.speechInput kbd { margin-left: auto; border: 1px solid #8a7543; padding: 2px 6px; color: #c6b98e; font: inherit; font-size: 11px; }
+.speechInput svg { width: 20px; height: 24px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.speechInput > button kbd { margin-left: auto; border: 1px solid #8a7543; padding: 2px 6px; color: #c6b98e; font: inherit; font-size: 11px; }
 .speechInput[data-phase="recording"] > button { background: #e5bd52; color: #16130a; border-color: #e5bd52; }
-.speechInput[data-phase="recording"] kbd { color: #16130a; border-color: #785b17; }
-.speechInput p { min-height: 18px; margin: 8px 0 0; color: #b8b2a4; font-size: 11px; line-height: 1.5; }
-.speechInput[data-phase="error"] p { color: #e7b391; }
+.speechInput[data-phase="recording"] > button kbd { color: #16130a; border-color: #785b17; }
+.speechInput .speechStatus { min-height: 1.5em; margin: 8px 0 0; color: #b8b2a4; font-size: 12px; line-height: 1.5; }
+.speechCancelHint { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-height: 3em; margin: 0 0 8px; color: #f2a388; font-size: 12px; font-weight: 500; line-height: 1.5; visibility: hidden; }
+.speechCancelHint[data-visible="true"] { visibility: visible; }
+.speechCancelHint kbd { border: 1px solid #a5634e; padding: 0 5px; color: inherit; font: inherit; }
+.speechInput:not([data-input="keyboard"]) .speechCancelHint { color: #e8be97; }
+.speechInput[data-phase="error"] .speechStatus { color: #e7b391; }
+.speechInput[data-cancel-pending="true"] > button { background: #302018; border-color: #e7b391; color: #f6c8ad; }
+.speechInput[data-cancel-pending="true"] .speechCancelHint, .speechInput[data-cancel-pending="true"] > button kbd { color: #f6c8ad; }
+.speechInput[data-cancel-pending="true"] > button kbd { border-color: #e7b391; }
+.speechInput[data-input="touch"][data-cancel-pending="true"] > button { background: #38241b; border-color: #edba99; color: #fad0b7; }
+.speechInput[data-input="touch"][data-cancel-pending="true"] .speechCancelHint { color: #fad0b7; }
 .videoCountdown { color: #b8b2a4; font-size: 11px; font-variant-numeric: tabular-nums; }
 .agentShell {
   --agent-gold: #e5bd52;
@@ -1810,8 +1819,9 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
   .attachButton, .speechMode .attachButton { min-height: 44px; font-size: 12px; }
   .speechInput { margin: 4px 0; }
   .speechInput > button { min-height: 56px; justify-content: center; font-size: 16px; }
-  .speechInput kbd { display: none; }
-  .speechInput p { margin: 8px 0 0; font-size: 12px; text-align: center; }
+  .speechInput > button kbd { display: none; }
+  .speechCancelHint { justify-content: center; text-align: center; }
+  .speechInput .speechStatus { margin: 8px 0 0; font-size: 12px; text-align: center; }
   .videoMode .identityPanel { display: block; max-height: 38dvh; overflow-y: auto; }
   .videoMode .identityCopy, .videoMode .portraitFrame { display: none; }
   .videoStage { flex-direction: column; padding: 8px 12px; gap: 6px; }

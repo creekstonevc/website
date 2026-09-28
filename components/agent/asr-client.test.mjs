@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { AsrCapture } from './asr-client.ts';
 
-function fixture() {
+function fixture({ resume = async () => {} } = {}) {
   const names = ['navigator', 'AudioContext', 'AudioWorkletNode', 'WebSocket', 'location'];
   const saved = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   let grant; const sockets = [], contexts = [], nodes = [], states = [], texts = [], submissions = [], ready = [];
@@ -12,7 +12,7 @@ function fixture() {
   class Context {
     constructor() { contexts.push(this); }
     audioWorklet = { addModule: async () => {} };
-    resume = async () => {}; close = async () => { this.closed = true; };
+    resume = resume; close = async () => { this.closed = true; };
     createMediaStreamSource = () => ({ connect() {} });
     createGain = () => ({ gain: {}, connect() {} });
   }
@@ -42,6 +42,36 @@ function fixture() {
     restore: () => { capture.cancel(); for (const name of names) { if (saved[name]) Object.defineProperty(globalThis, name, saved[name]); else delete globalThis[name]; } },
   };
 }
+
+test('cancel before audio context resumes never requests microphone access', async () => {
+  let resume;
+  const f = fixture({ resume: () => new Promise(resolve => { resume = resolve; }) });
+  try {
+    const start = f.capture.start('session'); f.capture.cancel(); resume(); await start;
+    assert.ok(f.contexts[0].closed); assert.equal(f.sockets.length, 0);
+    assert.equal(f.track.stopped, false, 'no microphone stream was ever requested');
+    assert.deepEqual(f.ready, []);
+  } finally { f.restore(); }
+});
+
+test('cancelling recording or finalization closes resources without accepting late results', async () => {
+  for (const finishing of [false, true]) {
+    const f = fixture();
+    try {
+      const start = f.capture.start('session'); await Promise.resolve(); f.grant(); await start;
+      const socket = f.sockets[0], late = socket.onmessage;
+      late({ data: JSON.stringify({ type: 'ready' }) });
+      late({ data: JSON.stringify({ type: 'partial', text: 'Before cancel' }) });
+      if (finishing) f.capture.finish();
+      f.capture.cancel(); f.capture.finish();
+      late({ data: JSON.stringify({ type: 'final', text: 'Never submit' }) });
+      f.nodes[0].port.onmessage({ data: new ArrayBuffer(3200) });
+      assert.ok(socket.closed); assert.ok(f.track.stopped); assert.ok(f.contexts[0].closed);
+      assert.deepEqual(f.texts, ['Before cancel']); assert.deepEqual(f.submissions, []);
+      assert.equal(socket.sent.length, finishing ? 1 : 0, 'cancel must not flush ASR finish/audio');
+    } finally { f.restore(); }
+  }
+});
 
 test('release while permission is pending stops late microphone and never opens ASR', async () => {
   const f = fixture();

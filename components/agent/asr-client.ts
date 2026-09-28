@@ -25,6 +25,7 @@ export class AsrCapture {
       // Create/resume synchronously within the keyboard/pointer gesture (Safari).
       const context = this.context = new AudioContext({ sampleRate: 16000 });
       await context.resume();
+      if (this.closed || !this.held) return;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       if (this.closed || !this.held) { stream.getTracks().forEach(track => track.stop()); return; }
       this.stream = stream;
@@ -78,6 +79,7 @@ export class AsrCapture {
     this.held = false; clearTimeout(this.timer);
     if (!this.recorded) { this.cancel(); this.update({ phase: 'idle', message: 'Hold Space until Listening appears.' }); return; }
     this.update({ phase: 'finishing', message: 'Finalizing your words…' });
+    if (this.closed) return; // UI cancellation may win during the phase update.
     this.node?.port.postMessage('stop');
     this.finishTimer = setTimeout(() => this.fail('Recognition timed out. Your draft is preserved.'), 12000);
   }

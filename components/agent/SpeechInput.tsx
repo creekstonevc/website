@@ -1,68 +1,143 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { AsrCapture, type AsrState } from './asr-client';
 import styles from './AgentChat.module.css';
 
-export function SpeechInput({ sessionKey, disabled, onText, onFinal, onCaptureReady, onActiveChange }: {
-  sessionKey: string; disabled: boolean; onText: (text: string) => void;
+export function SpeechInput({ sessionKey, disabled, draft, onText, onFinal, onCaptureReady, onActiveChange }: {
+  sessionKey: string; disabled: boolean; draft: string; onText: (text: string) => void;
   onFinal: (text: string) => void;
   onCaptureReady: () => void; onActiveChange: (active: boolean) => void;
 }) {
   const [state, setState] = useState<AsrState>({ phase: 'idle', message: 'Hold to speak · release to send' });
+  const [cancelPending, setCancelPending] = useState(false);
+  const [inputKind, setInputKind] = useState<'keyboard' | 'touch' | 'mouse'>('keyboard');
+  const hintId = useId();
   const current = useRef<AsrCapture | null>(null);
   const held = useRef(false);
+  const active = useRef(false);
+  const cancelIntent = useRef(false);
+  const pointer = useRef<number | null>(null);
+  const keyboardHold = useRef(false);
+  const previousDraft = useRef('');
   const button = useRef<HTMLButtonElement>(null);
   useEffect(() => { button.current?.focus({ preventScroll: true }); }, []);
-  const callbacks = useRef({ onText, onFinal, onCaptureReady, onActiveChange });
-  useEffect(() => { callbacks.current = { onText, onFinal, onCaptureReady, onActiveChange }; }, [onText, onFinal, onCaptureReady, onActiveChange]);
-  const actions = useRef({ start: () => {}, finish: () => {} });
+  const callbacks = useRef({ draft, onText, onFinal, onCaptureReady, onActiveChange });
+  useEffect(() => { callbacks.current = { draft, onText, onFinal, onCaptureReady, onActiveChange }; }, [draft, onText, onFinal, onCaptureReady, onActiveChange]);
+  const actions = useRef<{ start: () => boolean; finish: () => void; cancel: () => boolean }>({ start: () => false, finish: () => {}, cancel: () => false });
+  const setCancelIntent = (outside: boolean) => { cancelIntent.current = outside; setCancelPending(outside); };
+  const outsideButton = (event: { clientX: number; clientY: number; currentTarget: HTMLButtonElement }) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
+  };
   useEffect(() => {
-    const cancel = () => { held.current = false; current.current?.cancel(); current.current = null; callbacks.current.onActiveChange(false); };
+    const resetGesture = () => {
+      held.current = false; keyboardHold.current = false; pointer.current = null;
+      cancelIntent.current = false; setCancelPending(false);
+    };
+    const cancel = (notify = true, restoreDraft = true) => {
+      const wasActive = active.current;
+      // Invalidate before closing: neither late ASR results nor pointer-up may send.
+      const capture = current.current; current.current = null; active.current = false;
+      resetGesture(); capture?.cancel();
+      if (wasActive) {
+        if (restoreDraft) callbacks.current.onText(previousDraft.current);
+        callbacks.current.onActiveChange(false);
+        if (notify) setState({ phase: 'idle', message: 'Recording cancelled · nothing sent' });
+      }
+      return wasActive;
+    };
     const start = () => {
-      if (disabled || !sessionKey || held.current) return;
-      cancel(); held.current = true;
+      if (disabled || !sessionKey || held.current) return false;
+      const savedDraft = active.current ? previousDraft.current : callbacks.current.draft;
+      cancel(false); held.current = true; active.current = true; previousDraft.current = savedDraft;
       callbacks.current.onActiveChange(true);
       const capture = new AsrCapture(next => {
+        if (current.current !== capture) return;
+        // The recording limit can finalize without pointer-up. A pending cancel
+        // must still win, even if an ASR final arrives before the finger lifts.
+        if ((next.phase === 'finishing' || next.phase === 'idle') && cancelIntent.current) { cancel(); return; }
         setState(next);
+        active.current = next.phase === 'preparing' || next.phase === 'recording' || next.phase === 'finishing';
+        if (next.phase === 'error') { current.current = null; resetGesture(); }
         callbacks.current.onActiveChange(next.phase === 'preparing' || next.phase === 'recording' || next.phase === 'finishing');
       }, (text, final) => {
+        if (current.current !== capture) return;
         callbacks.current.onText(text);
         if (final) {
-          held.current = false;
+          current.current = null; resetGesture();
           if (text.trim()) callbacks.current.onFinal(text);
         }
-      }, () => callbacks.current.onCaptureReady());
+      }, () => { if (current.current === capture) callbacks.current.onCaptureReady(); });
       current.current = capture;
       void capture.start(sessionKey);
+      return true;
     };
-    const finish = () => { if (!held.current) return; held.current = false; current.current?.finish(); };
-    actions.current = { start, finish };
+    const finish = () => { if (!held.current) return; resetGesture(); current.current?.finish(); };
+    actions.current = { start, finish, cancel };
     const down = (event: KeyboardEvent) => {
+      if ((event.key === 'Escape' || event.key === 'Backspace') && active.current && !event.isComposing &&
+          !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault(); cancel(); return;
+      }
       const target = event.target as HTMLElement | null;
       if (event.code !== 'Space' || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey ||
           target?.closest('textarea, input, select, a, [contenteditable="true"], button:not([data-hold-to-talk])')) return;
-      event.preventDefault(); start();
+      event.preventDefault();
+      if (start()) { keyboardHold.current = true; setInputKind('keyboard'); }
     };
-    const up = (event: KeyboardEvent) => { if (event.code === 'Space' && held.current) { event.preventDefault(); finish(); } };
-    const blur = () => { cancel(); setState({ phase: 'idle', message: 'Recording cancelled · hold to retry' }); };
+    const up = (event: KeyboardEvent) => { if (event.code === 'Space' && keyboardHold.current) { event.preventDefault(); finish(); } };
+    const blur = () => { cancel(); };
     const visibility = () => { if (document.hidden) blur(); };
     window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur);
     document.addEventListener('visibilitychange', visibility);
     return () => {
-      cancel(); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
+      // Conversation changes own their draft; do not restore an old draft into
+      // a newly selected conversation during effect cleanup.
+      cancel(true, false); actions.current = { start: () => false, finish: () => {}, cancel: () => false };
+      window.removeEventListener('keydown', down); window.removeEventListener('keyup', up);
       window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', visibility);
     };
   }, [disabled, sessionKey]);
-  return <div className={styles.speechInput} data-phase={state.phase}>
-    <button ref={button} type="button" data-hold-to-talk disabled={disabled} aria-label="Hold to speak, release to send"
+  const capturing = state.phase === 'preparing' || state.phase === 'recording';
+  const keyboardInput = inputKind === 'keyboard';
+  const showCancelHint = !disabled && (capturing || (keyboardInput && state.phase === 'finishing'));
+  const cancelHintId = `${hintId}-cancel`;
+  return <div className={styles.speechInput} data-phase={state.phase} data-cancel-pending={cancelPending} data-input={inputKind}>
+    <p id={cancelHintId} className={styles.speechCancelHint} data-visible={showCancelHint} aria-hidden={!showCancelHint} role="status">
+      {showCancelHint && (keyboardInput ? <><kbd>Esc</kbd><span> / </span><kbd>Backspace</kbd><span> to cancel</span></>
+        : <span>{cancelPending
+          ? inputKind === 'touch' ? 'Lift your finger to cancel · slide back to continue' : 'Release to cancel · move back to continue'
+          : inputKind === 'touch' ? 'Slide off the button to cancel' : 'Move off the button to cancel'}</span>)}
+    </p>
+    <button ref={button} type="button" data-hold-to-talk disabled={disabled}
+      aria-label={cancelPending ? 'Release to cancel recording' : 'Hold to speak, release to send'}
+      aria-describedby={showCancelHint ? `${cancelHintId} ${hintId}` : hintId}
       aria-pressed={state.phase === 'recording'}
-      onPointerDown={event => { if (event.button !== 0) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); actions.current.start(); }}
-      onPointerUp={() => actions.current.finish()} onLostPointerCapture={() => actions.current.finish()}
-      onPointerCancel={() => { held.current = false; current.current?.cancel(); callbacks.current.onActiveChange(false); setState({ phase: 'idle', message: 'Recording cancelled' }); }}>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6" /></svg>
-      <span>{state.phase === 'recording' ? 'Listening' : state.phase === 'preparing' ? 'Connecting' : 'Hold to speak'}</span>
-      <kbd>Space</kbd>
+      onPointerDown={event => {
+        if (event.button !== 0 || !event.isPrimary) return;
+        event.preventDefault();
+        if (!actions.current.start()) return;
+        pointer.current = event.pointerId; setInputKind(event.pointerType === 'mouse' ? 'mouse' : 'touch');
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={event => {
+        if (pointer.current === event.pointerId && held.current) setCancelIntent(outsideButton(event));
+      }}
+      onPointerUp={event => {
+        if (pointer.current !== event.pointerId) return;
+        if (outsideButton(event)) actions.current.cancel(); else actions.current.finish();
+      }}
+      onLostPointerCapture={event => { if (pointer.current === event.pointerId) actions.current.cancel(); }}
+      onPointerCancel={event => { if (pointer.current === event.pointerId) actions.current.cancel(); }}
+      onContextMenu={event => event.preventDefault()}>
+      <svg viewBox="0 0 24 24" aria-hidden="true">{cancelPending ? <path d="m6 6 12 12M18 6 6 18" /> : <><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6" /></>}</svg>
+      <span>{cancelPending ? 'Release to cancel' : state.phase === 'recording' ? 'Listening' : state.phase === 'preparing' ? 'Connecting' : state.phase === 'finishing' ? 'Recognizing…' : 'Hold to speak'}</span>
+      {keyboardInput && <kbd>Space</kbd>}
     </button>
-    <p role="status">{disabled ? 'Available when Yihao finishes replying' : state.message}</p>
+    <p id={hintId} className={styles.speechStatus} role="status">{disabled ? 'Available when Yihao finishes replying' : cancelPending
+      ? ''
+      : capturing ? state.phase === 'preparing' ? 'Connecting · keep holding'
+        : keyboardInput ? 'Release Space to send' : inputKind === 'touch' ? 'Lift your finger to send' : 'Release to send'
+      : state.phase === 'finishing' ? 'Recognizing…' : state.message}</p>
   </div>;
 }
 
