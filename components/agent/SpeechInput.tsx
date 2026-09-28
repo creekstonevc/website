@@ -101,16 +101,17 @@ export function SpeechInput({ sessionKey, disabled, draft, onText, onFinal, onCa
   const keyboardInput = inputKind === 'keyboard';
   const showCancelHint = !disabled && (capturing || (keyboardInput && state.phase === 'finishing'));
   const cancelHintId = `${hintId}-cancel`;
-  return <div className={styles.speechInput} data-phase={state.phase} data-cancel-pending={cancelPending} data-input={inputKind}>
+  return <div className={styles.speechInput} data-phase={state.phase} data-cancel-pending={cancelPending} data-input={inputKind} data-cancel-hint={showCancelHint}>
     <p id={cancelHintId} className={styles.speechCancelHint} data-visible={showCancelHint} aria-hidden={!showCancelHint} role="status">
       {showCancelHint && (keyboardInput ? <><kbd>Esc</kbd><span> / </span><kbd>Backspace</kbd><span> to cancel</span></>
-        : <span>{cancelPending
-          ? inputKind === 'touch' ? 'Lift your finger to cancel · slide back to continue' : 'Release to cancel · move back to continue'
-          : inputKind === 'touch' ? 'Slide off the button to cancel' : 'Move off the button to cancel'}</span>)}
+        : cancelPending ? <>
+          <span className={styles.speechCancelDetail}>{inputKind === 'touch' ? 'Lift your finger to cancel · slide back to continue' : 'Release to cancel · move back to continue'}</span>
+          <span className={styles.speechCancelCompact}>{inputKind === 'touch' ? 'Lift to cancel · slide back to resume' : 'Release to cancel · move back to resume'}</span>
+        </> : <span>{inputKind === 'touch' ? 'Slide off the button to cancel' : 'Move off the button to cancel'}</span>)}
     </p>
     <button ref={button} type="button" data-hold-to-talk disabled={disabled}
       aria-label={cancelPending ? 'Release to cancel recording' : 'Hold to speak, release to send'}
-      aria-describedby={showCancelHint ? `${cancelHintId} ${hintId}` : hintId}
+      aria-describedby={showCancelHint ? cancelHintId : hintId}
       aria-pressed={state.phase === 'recording'}
       onPointerDown={event => {
         if (event.button !== 0 || !event.isPrimary) return;

@@ -754,7 +754,7 @@ export function AgentChat() {
             <h2>Yihao<span>.AI</span></h2>
             <p>Same mind. A new presence.</p>
           </div>
-          <div className={styles.videoViewport} data-presence-video>
+          <div className={styles.videoViewport} data-presence-video data-recovery={["error", "blocked"].includes(avatar.state.phase)}>
           {avatar.state.phase === "preview" && <Image className={styles.videoPortrait} src="/yihao-agent.jpg" alt="Static portrait of Yihao Li" fill sizes="(max-width: 700px) 100vw, 60vw" />}
           <video ref={videoRef} className={styles.avatarMedia} autoPlay playsInline
             aria-label="AI-generated Yihao avatar video" style={{ opacity: avatar.state.phase === "connected" ? 1 : 0 }} />
@@ -771,6 +771,10 @@ export function AgentChat() {
               <span>Connecting picture and voice…</span>
             </div>
           )}
+            {["error", "blocked"].includes(avatar.state.phase) && <div className={styles.stageRecovery}>
+              {avatar.state.phase === "blocked" && <button className={styles.stageRecoveryPlayback} type="button" onClick={avatar.play}>Play video</button>}
+              <button type="button" onClick={avatar.reconnect}>Reconnect</button>
+            </div>}
             <div className={styles.stageStatus} role={videoMode ? "status" : undefined}>
               <span className={`${styles.stageSignal} ${avatar.state.phase === "connected" ? styles.stageSignalLive : ""}`} aria-hidden="true" />
               <span>{avatar.state.message}</span>
@@ -778,8 +782,7 @@ export function AgentChat() {
           </div>
           <div className={styles.stageBottom}>
             {videoMode && presenceControls}
-            {avatar.state.phase === "blocked" && <button type="button" onClick={avatar.play}>Play video</button>}
-            {["error", "blocked"].includes(avatar.state.phase) && <button type="button" onClick={avatar.reconnect}>Reconnect</button>}
+            {avatar.state.phase === "blocked" && <button className={styles.stageRecoveryInline} type="button" onClick={avatar.play}>Play video</button>}
             {videoMode && avatar.state.phase === 'connected' && <VideoExpiry expiresAt={avatar.state.expiresAt} />}
             {videoMode && <VideoSessionDetails key={avatar.state.sessionId || 'pending'} sessionId={avatar.state.sessionId} />}
             <small>{speechMode ? 'Microphone is active only while holding Space or the talk button.' : 'No camera or microphone needed. Keep typing on the right.'}</small>

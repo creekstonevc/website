@@ -190,6 +190,7 @@ test('touch cancellation hint stays above the button, including when sliding out
   f.pointer('onPointerMove', { clientY: 0 });
   assert.equal(f.button.props['aria-label'], 'Release to cancel recording');
   assert.match(JSON.stringify(f.cancelHint), /Lift your finger to cancel/);
+  assert.match(JSON.stringify(f.cancelHint), /Lift to cancel · slide back to resume/);
   assert.doesNotMatch(JSON.stringify(f.status), /cancel/);
   f.pointer('onPointerMove');
   assert.match(JSON.stringify(f.cancelHint), /Slide off the button to cancel/);
@@ -227,6 +228,7 @@ test('mouse-button hold uses move-off instructions, not Space cancellation instr
   assert.equal(f.cancelHint.props['data-visible'], true);
   f.pointer('onPointerMove', { pointerType: 'mouse', clientY: 0 });
   assert.match(JSON.stringify(f.cancelHint), /Release to cancel/);
+  assert.match(JSON.stringify(f.cancelHint), /Release to cancel · move back to resume/);
   f.destroy();
 });
 
@@ -243,5 +245,38 @@ test('touch → Space → mouse switches instructions per hold without leaking o
   f.pointer('onPointerDown', { pointerType: 'mouse' }); f.act(() => f.captures[2].ready());
   assert.match(JSON.stringify(f.cancelHint), /Move off/);
   assert.doesNotMatch(JSON.stringify(f.tree), /Backspace|Esc|Space/);
+  f.destroy();
+});
+
+test('shared hint slot switches between cancellation guidance and status for touch and keyboard', () => {
+  const f = fixture();
+  const check = cancel => {
+    assert.equal(f.tree.props['data-cancel-hint'], cancel);
+    assert.equal(f.cancelHint.props['data-visible'], cancel);
+    assert.equal(f.button.props['aria-describedby'], cancel ? f.cancelHint.props.id : f.status.props.id);
+  };
+  check(false);
+  f.pointer('onPointerDown'); check(true);
+  const capture = f.captures[0];
+  f.act(() => capture.ready()); check(true);
+  f.pointer('onPointerMove', { clientY: 0 }); check(true);
+  f.pointer('onPointerUp', { clientY: 0 }); check(false);
+  assert.match(JSON.stringify(f.status), /Recording cancelled · nothing sent/);
+  assert.deepEqual(f.submissions, []);
+  f.pointer('onPointerDown'); check(true);
+  f.pointer('onPointerUp'); check(false);
+  assert.match(JSON.stringify(f.status), /Recognizing/);
+  f.act(() => f.captures[1].update({ phase: 'error', message: 'Microphone unavailable' })); check(false);
+  assert.match(JSON.stringify(f.status), /Microphone unavailable/);
+  f.props.disabled = true; f.render(); check(false);
+  assert.match(JSON.stringify(f.status), /Available when Yihao finishes replying/);
+  f.props.disabled = false; f.render();
+  f.key('keydown', ' '); check(true);
+  assert.match(JSON.stringify(f.cancelHint), /Esc/);
+  assert.match(JSON.stringify(f.cancelHint), /Backspace/);
+  f.act(() => f.captures[2].ready()); check(true);
+  f.key('keyup', ' '); check(true);
+  f.key('keydown', 'Escape'); check(false);
+  assert.match(JSON.stringify(f.status), /Recording cancelled · nothing sent/);
   f.destroy();
 });
