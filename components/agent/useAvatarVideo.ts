@@ -17,6 +17,7 @@ export function useAvatarVideo(enabled: boolean, sessionKey: string, element: Re
   return { state, reconnect: () => setAttempt(value => value + 1),
     play: () => void connection.current?.play(),
     startReply: useCallback((ticket?: string) => connection.current?.startReply(ticket) ?? Promise.resolve(undefined), []),
+    startTextReply: useCallback(() => connection.current?.startTextReply() ?? Promise.resolve(undefined), []),
     interrupt: useCallback(() => connection.current?.interrupt() ?? Promise.resolve(), []),
     close: useCallback(() => {
       connection.current?.close();

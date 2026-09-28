@@ -106,6 +106,45 @@ test('already-ended speech stays muted after empty input, until a later reply ac
     assert.deepEqual(calls, []);
   } finally { client.close(); globalThis.fetch = saved; }
 });
+test('submitted text soft-interrupts the old reply and opens its video voice only after the old input closes', async () => {
+  const saved = globalThis.fetch, calls = [], streams = []; let endOld;
+  const media = { ...element(), muted: false }, client = new AvatarConnection('session', media, () => {});
+  client.id = 'video'; client.ready = true;
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    if (url.endsWith('/voice/stream')) return new Response(new ReadableStream({ start(controller) { streams.push(controller); } }));
+    if (url.endsWith('/voice/interrupt')) return new Promise(resolve => { endOld = () => resolve(Response.json({ ok: true })); });
+    return Response.json({});
+  };
+  const frame = (index, event) => streams[index].enqueue(new TextEncoder().encode(`event: ${event}\ndata: {}\n\n`));
+  try {
+    const oldId = await client.startReply();
+    assert.equal(media.muted, false, 'no text has been submitted yet');
+    const next = client.startTextReply();
+    assert.equal(media.muted, true, 'submission mutes immediately'); await tick();
+    assert.deepEqual(calls.map(call => call.url), ['/api/agent/voice/stream', '/api/agent/voice/interrupt']);
+    assert.equal(calls[1].body.id, oldId);
+    frame(0, 'done'); streams[0].close(); endOld();
+    const nextId = await next;
+    assert.match(nextId, /^[a-f0-9-]{36}$/); assert.notEqual(nextId, oldId);
+    assert.equal(media.muted, true);
+    assert.equal(calls.at(-1).body.videoId, 'video', 'same video session is retained');
+    frame(1, 'audio_started'); await tick(); assert.equal(media.muted, false);
+    frame(1, 'done'); streams[1].close(); await tick();
+    assert.equal(client.closed, false);
+    assert.equal(calls.filter(call => call.url.endsWith('/voice/interrupt')).length, 1);
+  } finally { client.close(); globalThis.fetch = saved; }
+});
+test('normal speech/greeting start does not implicitly interrupt or mute an existing reply', async () => {
+  const saved = globalThis.fetch, calls = [];
+  const media = { ...element(), muted: false }, client = new AvatarConnection('session', media, () => {});
+  client.ready = true; client.feeding = true;
+  globalThis.fetch = async url => { calls.push(url); return Response.json({}); };
+  try {
+    assert.equal(await client.startReply(), undefined);
+    assert.equal(media.muted, false); assert.deepEqual(calls, []);
+  } finally { client.close(); globalThis.fetch = saved; }
+});
 test('interrupt during SSE opening waits for registration and never aborts the old stream first', async () => {
   const saved = globalThis.fetch, calls = []; let respond, signal;
   const media = { ...element(), muted: false }, client = new AvatarConnection('session', media, () => {});
@@ -142,7 +181,8 @@ test("unconfigured preview never opens RTC/audio, preserves chat availability an
   const client = new AvatarConnection("signed-session", element(), state => states.push(state));
   try {
     await client.connect(); assert.equal(states.at(-1).phase, "preview");
-    assert.equal(await client.startReply(), undefined); client.close();
+    assert.equal(await client.startReply(), undefined);
+    assert.equal(await client.startTextReply(), undefined); assert.equal(states.at(-1).phase, "preview"); client.close();
     assert.deepEqual(requests, ["/api/agent/video/capabilities"]);
   } finally { client.close(); globalThis.fetch = previous; }
 });

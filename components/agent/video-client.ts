@@ -212,6 +212,13 @@ export class AvatarConnection {
     try { await this.video.play(); if (this.ready) this.state("connected", "Live avatar · AI-generated video and voice"); }
     catch { this.state("blocked", "Tap Play video to enable video and sound"); }
   }
+  // Only explicit text submission uses this path. ASR keeps its independent
+  // Ready-time interrupt; greeting playback must not trigger interruption.
+  async startTextReply(): Promise<string | undefined> {
+    if (!this.ready || this.closed) return undefined;
+    await this.interrupt();
+    return this.startReply();
+  }
   async startReply(ticket?: string): Promise<string | undefined> {
     // Do not open a second input until the truncated input has ACKed and closed.
     if (this.interruption) await this.interruption;

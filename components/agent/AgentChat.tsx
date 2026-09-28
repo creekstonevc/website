@@ -534,7 +534,7 @@ export function AgentChat() {
     void initializeConversation({ reset: true });
   };
 
-  const send = async (text?: string, retry = false) => {
+  const send = async (text?: string, retry = false, source: "text" | "speech" = "text") => {
     const attachments = retry ? readAttachmentFiles(recovery?.attachments) : attachmentDrafts.snapshot();
     const input = (text ?? value).trim() || (attachments.length ? ATTACHMENT_ONLY_INPUT : "");
     if (!input || input.length > 4000 || speechActiveRef.current || operation.current || busy || loadingHistory || !ready || (recovery && !retry) ||
@@ -564,7 +564,12 @@ export function AgentChat() {
 
     try {
       if (retry && recovery?.rebind) await openConversation({ sessionKey: sessionKeyRef.current });
-      const liveVoiceId = videoMode ? await avatar.startReply() : await startLiveVoice(sessionKeyRef.current);
+      // Typed submissions interrupt here, only after all send guards pass.
+      // Speech already interrupted at ASR Ready; its final transcript must not
+      // trigger a second interruption when it is automatically submitted.
+      const liveVoiceId = videoMode
+        ? await (source === "text" ? avatar.startTextReply() : avatar.startReply())
+        : await startLiveVoice(sessionKeyRef.current);
       await renderReply(input, false, attachments, liveVoiceId);
       saveRecovery(null);
     } catch (error) {
@@ -957,7 +962,7 @@ export function AgentChat() {
             {!speechMode && <small id="composer-hint">{busy ? phase : 'Enter to send · Shift + Enter for a new line'}</small>}
           </div>
           {speechMode && <SpeechInput sessionKey={sessionKey} disabled={busy || !ready || loadingHistory || !!recovery}
-            onText={setValue} onFinal={text => { void send(text); }}
+            onText={setValue} onFinal={text => { void send(text, false, "speech"); }}
             onActiveChange={active => { speechActiveRef.current = active; setSpeechActive(active); }}
             onCaptureReady={() => {
               disposeAudio(); setVoice({ messageIndex: null, phase: 'idle' });
