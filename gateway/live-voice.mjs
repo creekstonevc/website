@@ -206,6 +206,14 @@ export function createLiveVoiceRegistry(config, makeVoice = (emit) => new BytePl
         cancel: () => { entry.emit("done", {}); entry.end(); } };
     },
     cancel(id, owner) { const entry = sessions.get(id); if (entry?.owner === owner) { entry.emit("done", {}); entry.end(); } },
+    async interrupt(id, owner) {
+      const entry = sessions.get(id);
+      // A completed input has nothing left to truncate; never target a newer
+      // voice by owner alone. Late duplicate requests are harmless.
+      if (!entry || entry.owner !== owner) return;
+      if (typeof entry.voice.interrupt !== "function") throw new GatewayError(400, "video_required", "Soft interruption requires video");
+      await entry.voice.interrupt();
+    },
     close() { for (const entry of sessions.values()) entry.end(); },
   };
 }

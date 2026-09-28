@@ -98,14 +98,15 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
     entry.closing.catch(() => { entry.closing = null; });
     return entry.closing;
   }
-  function openAudio(entry, purpose, replyId = null) {
+  function openAudio(entry, purpose, replyId = null, onProgress) {
     // Only one utterance may own the input path at a time. A successful input
     // close releases this socket, never the video session or WebRTC connection.
     if (entry.closed || entry.audio) throw fault("video_not_ready", "Video audio input is busy.", 409);
     const target = new URL(`/v1/sessions/${entry.upstream}/audio`, settings.base); target.protocol = "wss:";
-    const audio = makeAudio(target.href, settings.inputKey, { onProgress: progress => log({
-      event: "video.audio_input", videoId: entry.id, upstreamSession: entry.upstream, purpose, replyId, ...progress,
-    }) });
+    const audio = makeAudio(target.href, settings.inputKey, { onProgress: progress => {
+      log({ event: "video.audio_input", videoId: entry.id, upstreamSession: entry.upstream, purpose, replyId, ...progress });
+      onProgress?.(progress);
+    } });
     entry.audio = audio;
     log({ event: "video.audio_open", videoId: entry.id, upstreamSession: entry.upstream, purpose, replyId, streamId: audio.id });
     void audio.done.then(() => {
@@ -240,7 +241,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
       const entry = own(id, owner);
       if (!entry.connected || entry.active) throw fault("video_not_ready", "Video is not ready for another reply.", 409);
       entry.active = true; clearTimeout(entry.keepaliveTimer);
-      let finished = false, cancelled = false, draining = false, inputFinished = false;
+      let finished = false, cancelled = false, draining = false, inputFinished = false, interrupted = false, interruptPromise;
       const replyId = randomUUID();
       let tts, audio, pending = [], pendingCharacters = 0;
       const fail = () => {
@@ -248,15 +249,24 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
         cancelled = true; pending = [];
         emit("error", { code: "video_interrupted" }); void release(entry).catch(() => {});
       };
+      const complete = () => {
+        if (cancelled || finished || entry.closed) return;
+        finished = true; entry.active = false; entry.tts = null;
+        scheduleKeepalive(entry);
+        emit("done", interrupted ? { interrupted: true } : {});
+      };
       // Keep the public voice API synchronous while serializing a new reply
       // behind an in-flight silent stream, including its server-side WS close.
       void Promise.resolve(entry.keepalive).then(() => {
-        if (cancelled) return;
+        if (cancelled || interrupted) return;
         if (entry.closed) { fail(); return; }
-        audio = openAudio(entry, "reply", replyId);
+        audio = openAudio(entry, "reply", replyId, progress => {
+          if (progress.stage === "first_pcm_sent" && !interrupted && !cancelled && !finished)
+            emit("audio_started", {}); // Input sent, NOT a playback boundary.
+        });
         void audio.done.catch(fail);
         tts = makeTts((event, data) => {
-          if (cancelled || finished || draining) return;
+          if (cancelled || finished || draining || interrupted) return;
           if (event === "audio") {
             try { audio.push(Buffer.from(data.data, "base64")); } catch { fail(); }
           } else if (event === "done") {
@@ -264,32 +274,41 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
             void audio.drain({ tailMs: 300, onProgress: progress => log({
               event: "video.audio_tail", videoId: entry.id, upstreamSession: entry.upstream, replyId, streamId: audio.id, ...progress,
             }) }).then(() => {
-              if (!cancelled && !entry.closed) return audio.finish();
+              if (!cancelled && !entry.closed && !interrupted) return audio.finish();
             }).then(() => {
-              if (cancelled || entry.closed) return;
-              finished = true; entry.active = false; entry.tts = null;
-              scheduleKeepalive(entry);
-              emit("done", {}); // Input ended + socket closed, NOT playback complete.
+              if (!interrupted) complete(); // Input ended + socket closed, NOT playback complete.
             }).catch(fail);
           } else if (event === "error") fail();
           else emit(event, data);
         });
         entry.tts = tts;
-        for (const text of pending) { if (cancelled) break; tts.push(text); }
+        for (const text of pending) { if (cancelled || interrupted) break; tts.push(text); }
         pending = []; pendingCharacters = 0;
-        if (inputFinished && !cancelled) tts.finish();
+        if (inputFinished && !cancelled && !interrupted) tts.finish();
       }).catch(fail);
       return { push: text => {
-        if (cancelled || finished || inputFinished) return;
+        if (cancelled || finished || inputFinished || interrupted) return;
         if (tts) { try { tts.push(text); } catch { fail(); } }
         else if ((pendingCharacters += text.length) <= 131072) pending.push(text);
         else fail();
       }, finish: () => {
-        if (cancelled || finished || inputFinished) return;
+        if (cancelled || finished || inputFinished || interrupted) return;
         inputFinished = true;
         try { tts?.finish(); } catch { fail(); }
+      }, interrupt: () => {
+        if (interruptPromise) return interruptPromise;
+        if (finished || cancelled) return Promise.resolve();
+        interrupted = true; pending = []; pendingCharacters = 0; tts?.cancel();
+        log({ event: "video.soft_interrupt", videoId: entry.id, upstreamSession: entry.upstream, replyId, streamId: audio?.id ?? null });
+        // Keep this reply's seat until ACK + input_ended + WS close. If still
+        // waiting for keepalive, skip opening a speech stream altogether.
+        interruptPromise = (async () => {
+          try { if (audio) await audio.interrupt(); else await entry.keepalive; complete(); }
+          catch (error) { fail(); throw error; }
+        })();
+        return interruptPromise;
       }, cancel: () => {
-        if (finished || cancelled) return;
+        if (finished || cancelled || interrupted) return;
         cancelled = true; pending = []; tts?.cancel(); void release(entry).catch(() => {});
       } };
     },

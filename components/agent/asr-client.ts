@@ -13,8 +13,9 @@ export class AsrCapture {
   private finishTimer?: ReturnType<typeof setTimeout>;
   private update: (state: AsrState) => void;
   private transcript: (text: string, final: boolean) => void;
-  constructor(update: (state: AsrState) => void, transcript: (text: string, final: boolean) => void) {
-    this.update = update; this.transcript = transcript;
+  private onReady: () => void;
+  constructor(update: (state: AsrState) => void, transcript: (text: string, final: boolean) => void, onReady = () => {}) {
+    this.update = update; this.transcript = transcript; this.onReady = onReady;
   }
   async start(sessionKey: string) {
     this.update({ phase: 'preparing', message: 'Preparing microphone… keep holding' });
@@ -51,6 +52,7 @@ export class AsrCapture {
             };
             context.createMediaStreamSource(stream).connect(node);
             const mute = context.createGain(); mute.gain.value = 0; node.connect(mute).connect(context.destination);
+            this.onReady();
             this.update({ phase: 'recording', message: 'Listening · release to finish' });
             this.timer = setTimeout(() => this.finish(), 55000);
           } else if (data.type === 'partial' || data.type === 'final') {

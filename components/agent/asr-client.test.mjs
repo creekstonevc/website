@@ -7,7 +7,7 @@ import { AsrCapture } from './asr-client.ts';
 function fixture() {
   const names = ['navigator', 'AudioContext', 'AudioWorkletNode', 'WebSocket', 'location'];
   const saved = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
-  let grant; const sockets = [], contexts = [], nodes = [], states = [], texts = [], submissions = [];
+  let grant; const sockets = [], contexts = [], nodes = [], states = [], texts = [], submissions = [], ready = [];
   const track = { stopped: false, stop() { this.stopped = true; } };
   class Context {
     constructor() { contexts.push(this); }
@@ -36,8 +36,8 @@ function fixture() {
       assert.ok(track.stopped);
       submissions.push(text);
     }
-  });
-  return { capture, sockets, contexts, nodes, states, texts, submissions, track,
+  }, () => ready.push('ready'));
+  return { capture, sockets, contexts, nodes, states, texts, submissions, track, ready,
     grant: () => grant({ getTracks: () => [track] }),
     restore: () => { capture.cancel(); for (const name of names) { if (saved[name]) Object.defineProperty(globalThis, name, saved[name]); else delete globalThis[name]; } },
   };
@@ -49,6 +49,7 @@ test('release while permission is pending stops late microphone and never opens 
     const start = f.capture.start('session'); await Promise.resolve();
     f.capture.finish(); f.grant(); await start;
     assert.ok(f.track.stopped); assert.ok(f.contexts[0].closed); assert.equal(f.sockets.length, 0);
+    assert.deepEqual(f.ready, []);
   } finally { f.restore(); }
 });
 
@@ -56,7 +57,10 @@ test('partial text arrives live; release flushes microphone; stale callbacks can
   const f = fixture();
   try {
     const start = f.capture.start('session'); await Promise.resolve(); f.grant(); await start;
+    assert.deepEqual(f.ready, [], 'mic permission and socket creation alone must not interrupt output');
     const socket = f.sockets[0]; socket.onmessage({ data: JSON.stringify({ type: 'ready' }) });
+    socket.onmessage({ data: JSON.stringify({ type: 'ready' }) });
+    assert.deepEqual(f.ready, ['ready']);
     assert.equal(f.states.at(-1).phase, 'recording');
     socket.onmessage({ data: JSON.stringify({ type: 'partial', text: 'hello' }) });
     assert.deepEqual(f.texts, ['hello']);
@@ -72,6 +76,19 @@ test('partial text arrives live; release flushes microphone; stale callbacks can
     assert.deepEqual(f.texts, ['hello', 'Hello founder.']);
     assert.deepEqual(f.submissions, ['Hello founder.']);
   } finally { f.restore(); }
+});
+test('release or ASR error before ready never interrupts the previous voice', async () => {
+  for (const reason of ['release', 'error']) {
+    const f = fixture();
+    try {
+      const start = f.capture.start('session'); await Promise.resolve(); f.grant(); await start;
+      const socket = f.sockets[0], late = socket.onmessage;
+      if (reason === 'release') f.capture.finish();
+      else late({ data: JSON.stringify({ type: 'error' }) });
+      late({ data: JSON.stringify({ type: 'ready' }) });
+      assert.deepEqual(f.ready, []);
+    } finally { f.restore(); }
+  }
 });
 
 test('blank final and cancelled captures never submit', async () => {

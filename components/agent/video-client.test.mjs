@@ -63,6 +63,79 @@ test("only the documented H264 packetization and profile are advertised", () => 
     { ...h264, sdpFmtpLine: "profile-level-id=42e01f;packetization-mode=0" }]), [h264]);
 });
 function element() { return { srcObject: null, play: async () => {}, pause() {}, addEventListener() {}, removeEventListener() {}, cancelVideoFrameCallback() {} }; }
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+test('soft interrupt latches mute, waits for graceful end and ignores stale audio/errors before next reply', async () => {
+  const saved = globalThis.fetch, calls = [], streams = [], states = []; let ended;
+  const media = { ...element(), muted: false }, client = new AvatarConnection('session', media, state => states.push(state));
+  client.id = 'video'; client.ready = true;
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    if (url.endsWith('/voice/stream')) return new Response(new ReadableStream({ start(controller) { streams.push(controller); } }));
+    if (url.endsWith('/voice/interrupt')) return new Promise(resolve => { ended = () => resolve(Response.json({ ok: true })); });
+    return Response.json({});
+  };
+  const frame = (index, text) => streams[index].enqueue(new TextEncoder().encode(`event: ${text}\ndata: {}\n\n`));
+  try {
+    const old = await client.startReply(); frame(0, 'audio_started'); await tick(); assert.equal(media.muted, false);
+    const interrupt = client.interrupt(); assert.equal(media.muted, true);
+    assert.equal(client.interrupt(), interrupt);
+    const next = client.startReply(); await tick();
+    assert.equal(calls.filter(call => call.url.endsWith('/voice/stream')).length, 1);
+    frame(0, 'audio_started'); frame(0, 'error'); await tick();
+    assert.equal(media.muted, true); assert.equal(client.closed, false);
+    frame(0, 'done'); streams[0].close(); ended(); await interrupt;
+    const nextId = await next;
+    assert.notEqual(nextId, old); assert.equal(media.muted, true);
+    assert.equal(calls.find(call => call.url.endsWith('/voice/interrupt')).body.id, old);
+    frame(1, 'ready'); await tick(); assert.equal(media.muted, true, 'opening a new SSE is not new audio');
+    frame(1, 'audio_started'); await tick(); assert.equal(media.muted, false);
+    frame(1, 'done'); streams[1].close(); await tick();
+    assert.equal(client.closed, false); assert.equal(client.feeding, false);
+    assert.equal(states.some(state => state.phase === 'error'), false);
+    assert.equal(calls.some(call => /\/(close|cancel)$/.test(call.url)), false);
+  } finally { client.close(); globalThis.fetch = saved; }
+});
+test('already-ended speech stays muted after empty input, until a later reply actually sends audio', async () => {
+  const saved = globalThis.fetch, calls = [];
+  const media = { ...element(), muted: false }, client = new AvatarConnection('session', media, () => {});
+  client.ready = true; client.id = 'video';
+  globalThis.fetch = async url => { calls.push(url); return Response.json({}); };
+  try {
+    await client.interrupt(); await client.play();
+    assert.equal(media.muted, true); assert.equal(client.closed, false);
+    assert.deepEqual(calls, []);
+  } finally { client.close(); globalThis.fetch = saved; }
+});
+test('interrupt during SSE opening waits for registration and never aborts the old stream first', async () => {
+  const saved = globalThis.fetch, calls = []; let respond, signal;
+  const media = { ...element(), muted: false }, client = new AvatarConnection('session', media, () => {});
+  client.ready = true; client.id = 'video';
+  globalThis.fetch = async (url, options) => {
+    calls.push(url);
+    if (url.endsWith('/voice/stream')) { signal = options.signal; return new Promise(resolve => { respond = resolve; }); }
+    assert.equal(signal.aborted, false, 'interrupt must be accepted before closing the SSE');
+    return Response.json({});
+  };
+  try {
+    const opening = client.startReply(), interrupt = client.interrupt();
+    await tick(); assert.deepEqual(calls, ['/api/agent/voice/stream']);
+    respond(new Response('event: done\ndata: {}\n\n'));
+    assert.match(await opening, /^[a-f0-9-]{36}$/, 'accepted greeting stays marked as played even if interrupted'); await interrupt;
+    assert.equal(calls.filter(url => url.endsWith('/voice/interrupt')).length, 1);
+    assert.equal(media.muted, true); assert.equal(client.closed, false);
+  } finally { globalThis.fetch = async () => Response.json({}); client.close(); globalThis.fetch = saved; }
+});
+test('failed soft end safely closes video without unmuting or starting another input', async () => {
+  const saved = globalThis.fetch;
+  const media = { ...element(), muted: false }, states = [], client = new AvatarConnection('session', media, state => states.push(state));
+  client.ready = true; client.id = 'video'; client.voiceId = 'old';
+  globalThis.fetch = async url => url.endsWith('/voice/interrupt') ? new Response('', { status: 502 }) : Response.json({});
+  try {
+    const interrupt = client.interrupt(), next = client.startReply(); await interrupt;
+    assert.equal(await next, undefined); assert.equal(media.muted, true); assert.equal(client.closed, true);
+    assert.equal(states.at(-1).phase, 'error');
+  } finally { client.close(); globalThis.fetch = saved; }
+});
 test("unconfigured preview never opens RTC/audio, preserves chat availability and releases no foreign session", async () => {
   const previous = globalThis.fetch, requests = [], states = [];
   globalThis.fetch = async (url) => { requests.push(url); return Response.json({ enabled: false }); };

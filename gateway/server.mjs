@@ -656,7 +656,7 @@ export function createGateway({
         return;
       }
 
-      if (["/voice/stream", "/voice/cancel"].includes(url.pathname)) {
+      if (["/voice/stream", "/voice/cancel", "/voice/interrupt"].includes(url.pathname)) {
         const session = readConversationSession(request, config);
         if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation before starting voice");
         const body = await readJsonBody(request, config.requestMaxBytes);
@@ -672,7 +672,11 @@ export function createGateway({
             voice.finish();
           }
         }
-        else { liveVoices.cancel(body.id, session.conversationId); sendJson(response, 200, { ok: true }); }
+        else {
+          if (url.pathname === "/voice/interrupt") await liveVoices.interrupt(body.id, session.conversationId);
+          else liveVoices.cancel(body.id, session.conversationId);
+          sendJson(response, 200, { ok: true });
+        }
         return;
       }
 

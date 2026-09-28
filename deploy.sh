@@ -317,20 +317,21 @@ location ~ ^/api/agent/video/(capabilities|open|offer|ready|heartbeat|close)$ {
     proxy_cache off;
 }
 
-location = /api/agent/voice/cancel {
+location ~ ^/api/agent/voice/(cancel|interrupt)$ {
     limit_except POST { deny all; }
     limit_req zone=creekstone_voice_cancel burst=8 nodelay;
     limit_req_status 429;
     client_max_body_size 8k;
 
-    proxy_pass http://127.0.0.1:8790/voice/cancel;
+    rewrite ^/api/agent(/voice/.*)$ $1 break;
+    proxy_pass http://127.0.0.1:8790;
     proxy_http_version 1.1;
     proxy_set_header Host 127.0.0.1;
     proxy_set_header Origin $http_origin;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header Connection "";
     proxy_connect_timeout 5s;
-    proxy_read_timeout 15s;
+    proxy_read_timeout 50s;
     proxy_cache off;
 }
 

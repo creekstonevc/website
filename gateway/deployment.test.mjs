@@ -22,7 +22,7 @@ test("deployment installs the isolated, pinned live-voice runtime before service
 
 test("deployment keeps text and audio streams independently admitted and unbuffered", () => {
   const stream = deploy.match(/location = \/api\/agent\/voice\/stream \{([\s\S]*?)\n\}/)?.[1];
-  const cancel = deploy.match(/location = \/api\/agent\/voice\/cancel \{([\s\S]*?)\n\}/)?.[1];
+  const cancel = deploy.match(/location ~ \^\/api\/agent\/voice\/\(cancel\|interrupt\)\$ \{([\s\S]*?)\n\}/)?.[1];
   assert.ok(stream && cancel);
   assert.match(stream, /limit_conn creekstone_voice_connections 2/);
   assert.match(stream, /proxy_buffering off/);
@@ -34,4 +34,6 @@ test("deployment keeps text and audio streams independently admitted and unbuffe
     assert.match(block, /limit_req_status 429/);
   }
   assert.doesNotMatch(cancel, /limit_conn /);
+  assert.match(cancel, /proxy_read_timeout 50s/);
+  assert.match(cancel, /rewrite \^\/api\/agent/);
 });

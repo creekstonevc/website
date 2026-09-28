@@ -2,25 +2,25 @@ import { useEffect, useRef, useState } from 'react';
 import { AsrCapture, type AsrState } from './asr-client';
 import styles from './AgentChat.module.css';
 
-export function SpeechInput({ sessionKey, disabled, onText, onFinal, onCaptureStart, onActiveChange }: {
+export function SpeechInput({ sessionKey, disabled, onText, onFinal, onCaptureReady, onActiveChange }: {
   sessionKey: string; disabled: boolean; onText: (text: string) => void;
   onFinal: (text: string) => void;
-  onCaptureStart: () => void; onActiveChange: (active: boolean) => void;
+  onCaptureReady: () => void; onActiveChange: (active: boolean) => void;
 }) {
   const [state, setState] = useState<AsrState>({ phase: 'idle', message: 'Hold to speak · release to send' });
   const current = useRef<AsrCapture | null>(null);
   const held = useRef(false);
   const button = useRef<HTMLButtonElement>(null);
   useEffect(() => { button.current?.focus({ preventScroll: true }); }, []);
-  const callbacks = useRef({ onText, onFinal, onCaptureStart, onActiveChange });
-  useEffect(() => { callbacks.current = { onText, onFinal, onCaptureStart, onActiveChange }; }, [onText, onFinal, onCaptureStart, onActiveChange]);
+  const callbacks = useRef({ onText, onFinal, onCaptureReady, onActiveChange });
+  useEffect(() => { callbacks.current = { onText, onFinal, onCaptureReady, onActiveChange }; }, [onText, onFinal, onCaptureReady, onActiveChange]);
   const actions = useRef({ start: () => {}, finish: () => {} });
   useEffect(() => {
     const cancel = () => { held.current = false; current.current?.cancel(); current.current = null; callbacks.current.onActiveChange(false); };
     const start = () => {
       if (disabled || !sessionKey || held.current) return;
       cancel(); held.current = true;
-      callbacks.current.onCaptureStart(); callbacks.current.onActiveChange(true);
+      callbacks.current.onActiveChange(true);
       const capture = new AsrCapture(next => {
         setState(next);
         callbacks.current.onActiveChange(next.phase === 'preparing' || next.phase === 'recording' || next.phase === 'finishing');
@@ -30,7 +30,7 @@ export function SpeechInput({ sessionKey, disabled, onText, onFinal, onCaptureSt
           held.current = false;
           if (text.trim()) callbacks.current.onFinal(text);
         }
-      });
+      }, () => callbacks.current.onCaptureReady());
       current.current = capture;
       void capture.start(sessionKey);
     };

@@ -174,17 +174,10 @@ export function AgentChat() {
   }, []));
   const videoRef = useRef<HTMLVideoElement>(null);
   const avatar = useAvatarVideo(videoMode, sessionKey, videoRef);
-  useEffect(() => {
-    const media = videoRef.current;
-    if (!media || !speechActive) return;
-    const muted = media.muted;
-    media.muted = true;
-    return () => { media.muted = muted; };
-  }, [speechActive]);
   const greetingPlayed = useRef(new Set<string>());
   const { startReply: startAvatarReply } = avatar;
   useEffect(() => {
-    if (!videoMode || avatar.state.phase !== "connected" || busy || !ready || loadingHistory || nextCursor || !sessionKey || recovery) return;
+    if (!videoMode || speechActive || avatar.state.phase !== "connected" || busy || !ready || loadingHistory || nextCursor || !sessionKey || recovery) return;
     // Hidden bootstrap Hi is absent from the visible history. A lone completed
     // assistant reply is the opening; never replay a later conversation turn.
     if (messages.length !== 1 || messages[0].role !== "assistant" || !messages[0].ttsTicket || messages[0].complete === false) return;
@@ -196,7 +189,7 @@ export function AgentChat() {
       if (id) { try { sessionStorage.setItem(key, "1"); } catch { /* Optional persistence. */ } }
       else greetingPlayed.current.delete(sessionKey);
     });
-  }, [videoMode, avatar.state.phase, busy, ready, loadingHistory, nextCursor, sessionKey, recovery, messages, startAvatarReply]);
+  }, [videoMode, speechActive, avatar.state.phase, busy, ready, loadingHistory, nextCursor, sessionKey, recovery, messages, startAvatarReply]);
 
   useLayoutEffect(() => {
     const anchor = prependAnchor.current;
@@ -966,7 +959,10 @@ export function AgentChat() {
           {speechMode && <SpeechInput sessionKey={sessionKey} disabled={busy || !ready || loadingHistory || !!recovery}
             onText={setValue} onFinal={text => { void send(text); }}
             onActiveChange={active => { speechActiveRef.current = active; setSpeechActive(active); }}
-            onCaptureStart={() => { disposeAudio(); setVoice({ messageIndex: null, phase: 'idle' }); }} />}
+            onCaptureReady={() => {
+              disposeAudio(); setVoice({ messageIndex: null, phase: 'idle' });
+              if (videoMode) void avatar.interrupt();
+            }} />}
           <PendingAttachments drafts={attachmentDrafts.drafts} onRemove={attachmentDrafts.remove} onRetry={attachmentDrafts.retry} />
           {attachmentDrafts.notice && <p className={styles.attachmentError} role="status">{attachmentDrafts.notice}</p>}
           <div className={styles.composerControl}>

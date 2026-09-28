@@ -58,7 +58,18 @@
 - 自动化测试覆盖 ACK 门控、输入结束及关闭确认、连续多轮、保活与新回复串行、等待期间取消、异常关闭/超时、唯一 stream ID、保持原视频 session。
 - 2026-09-23 使用服务端配置做真实协议冒烟：独立测试 session `c66fb4a5-0166-46c0-adfa-f4a3bfe1da3f` 中依次发送1秒合成音+300ms静音、40ms静音保活、第二段1秒合成音+300ms静音。三个不同 stream 均收到 `audio.input_ended` 并正常关闭输入连接，随后 session 均为 `ready`；测试结束后 DELETE 并确认 `closed`。这证明连接可逐段复用同一视频会话，不等同于已验证 WebRTC 实际尾音。
 
-## 现阶段限制
+## ASR Ready 触发的软打断（供应商协议不变）
+
+- ASR 确认就绪并建立采集节点后，停止本地独立 TTS 播放、静音 WebRTC 音轨，调用同源 `POST /api/agent/voice/interrupt`，参数为当前语音订阅 `id` 和 `sessionKey`。接口沿用 Origin、签名 cookie、会话归属校验；只作用于指定的旧订阅，重复或已结束的 id 不影响下一轮。
+- 网关停止旧 TTS，拒绝迟到的文本与音频，并丢弃尚未提交的本地 PCM（包括正常结束时追加的静音尾巴）。已发送的分片仍等待 ACK；随后以实际已发送的 `total_samples` 发送 `audio.end`，等待 `audio.input_ended` 和输入 WebSocket 正常关闭。不调用供应商的 `audio.cancel` 或 DELETE，不更换视频 session / WebRTC 连接。
+- 如果尚未发送任何采样，用一个40ms零值 PCM 完成有效的静音输入，不依赖未约定的零采样 end；如果仍在等待独立保活流，则让该保活流正常结束，不新建旧回复的语音流。
+- 软打断过程中下一轮语音启动需等待上述结束确认；旧 SSE 的迟到状态、音频标记及关闭回调不能覆盖新一轮。旧 SSE 不提前 abort，否则原有断线清理会关闭整个视频 session。
+- ASR 松开、识别为空或取消后保持静音，不续播旧声音。下一轮的第一包 PCM 真正发出时，网关通过 SSE `audio_started` 通知浏览器恢复音轨。该事件是**新音频输入开始**，不是精确的远端播放边界；正常结束依然发送300ms尾部静音。
+- 新日志 `video.soft_interrupt` 关联 `replyId/streamId/upstreamSession`；`video.audio_input` 的 `soft_interrupt.discardedSamples` 记录丢弃采样量，`first_pcm_sent/end_sent/input_ended/closed` 记录输入时序，不记录文本、PCM或密钥。
+- **能力边界**：已经提交给供应商或进入 WebRTC 缓冲的旧音视频仍会排空，人物可能继续动嘴片刻。不能保证2秒内静息，也不能把 ACK 当成播放完成；录音很短时，新音频恢复音轨仍可能遇到对方残留尾段。严格立即清空或精确恢复声音仍需要对方提供队列清空/播放边界能力。协议失败或超时才回收异常视频会话，文字聊天保留。
+- 2026-09-28 真实协议验证：测试 session `6f68fb6c-ac25-4901-98fc-eaea3926e259` 排队8秒合成 PCM，在4800采样（0.2秒）发出后软打断，丢弃187200采样（7.8秒）。等待 ACK 后以4800采样 end，收到输入结束及关闭确认，session 仍为 `ready`；同 session 的下一段40ms静音正常结束。最终 DELETE 并确认 `closed`。该测试未采集用户语音，不代表已验证浏览器实际静息延迟。
+
+## 其他现阶段限制
 
 - 真实环境的媒体启动、ICE、播放连接及 stats 已联调；协议回归覆盖权限隔离、PCM分包/ACK与逐轮输入生命周期。尾音/尾帧是否完整仍须结合实际 WebRTC 播放验收，输入 ACK 不能代替听感检查。
 - 无录像/重播功能。历史消息的 Play voice 会回到 Text 模式后播放，避免双音轨。

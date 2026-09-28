@@ -91,6 +91,11 @@ test("live voice requires signed conversation, matching session and one-time own
   assert.deepEqual(voices[0].text, []);
   await post("/voice/cancel", { id, sessionKey: b.sessionKey }, b.cookie);
   assert.equal(voices[0].cancelled, false);
+  assert.equal((await post('/voice/interrupt', { id, sessionKey: a.sessionKey })).status, 409);
+  assert.equal((await post('/voice/interrupt', { id, sessionKey: b.sessionKey }, a.cookie)).status, 409);
+  assert.equal((await post('/voice/interrupt', { id, sessionKey: b.sessionKey }, b.cookie)).status, 200);
+  assert.equal(voices[0].cancelled, false);
+  assert.equal((await post('/voice/interrupt', { id, sessionKey: a.sessionKey }, a.cookie)).status, 400, 'non-video voice is not soft-interruptible');
   await post("/voice/cancel", { id, sessionKey: a.sessionKey }, a.cookie);
   assert.equal(voices[0].cancelled, true);
   await audio.text();

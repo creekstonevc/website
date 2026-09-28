@@ -60,9 +60,24 @@ export class MizzenAudio {
   push(bytes) {
     if (this.closed || this.ending) return;
     if (this.queue.length + bytes.length > 24000 * 2 * 120) { this.fail(); return; }
+    if (bytes.length && this.firstQueuedSample === undefined) this.firstQueuedSample = this.samples + this.queue.length / 2;
     this.queue = Buffer.concat([this.queue, bytes]);
   }
   finish() { this.ending = true; this.pump(); return this.done; }
+  // Soft interruption: discard only PCM that has NOT left this process. ACKs
+  // still account for every transmitted sample; never cancel the video session.
+  interrupt() {
+    if (this.closed || this.interrupting) return this.done;
+    this.interrupting = true;
+    const discardedSamples = Math.floor(this.queue.length / 2);
+    this.queue = Buffer.alloc(0); this.ending = true;
+    for (const waiter of this.drainers.splice(0)) waiter.resolve();
+    // If interrupted before the first speech packet, end a valid silent input
+    // instead of depending on undocumented zero-sample stream semantics.
+    if (!this.samples && !this.endSent) this.queue = Buffer.alloc(1920);
+    this.report("soft_interrupt", { discardedSamples });
+    this.pump(); return this.done;
+  }
   // Drain PCM first; finish() then ends this utterance's input WebSocket, not
   // the video session. The next utterance must use a new socket and stream_id.
   drain({ tailMs = 0, onProgress } = {}) {
@@ -101,6 +116,9 @@ export class MizzenAudio {
       this.send({ type: "audio.chunk", stream_id: this.id, seq: this.seq, sample_offset: this.samples,
         sample_count: count, data: bytes.toString("base64") });
       this.samples += count; this.inflight.set(this.seq++, { samples: this.samples, at: now });
+      if (!this.reportedFirstPcm && this.firstQueuedSample !== undefined && this.samples > this.firstQueuedSample) {
+        this.reportedFirstPcm = true; this.report("first_pcm_sent");
+      }
       for (const waiter of this.drainers) {
         for (const [flag, boundary, stage] of [["speechSent", waiter.speechEnd, "speech_tail_sent"], ["tailSent", waiter.tailEnd, "silence_tail_sent"]]) {
           if (waiter.onProgress && !waiter[flag] && this.samples >= boundary) {
