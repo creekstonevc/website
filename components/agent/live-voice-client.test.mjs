@@ -67,3 +67,51 @@ test("voice network failure is isolated and stale chunks cannot restart cancelle
   assert.equal(active.states.at(-1).phase, "idle");
   await active.player.dispose();
 });
+
+test("signed replay and live audio share subtitle/consumed-progress mapping and clear it on stop", async () => {
+  let stream, request;
+  const { player, nodes, states } = harness(async (_url, options) => {
+    request = JSON.parse(options.body);
+    return new Response(new ReadableStream({ start(controller) { stream = controller; } }));
+  });
+  await player.start("session", { ticket: "signed-reply", messageIndex: 3 });
+  assert.equal(request.ticket, "signed-reply"); assert.equal(request.videoId, undefined);
+  const event = (name, payload) => stream.enqueue(new TextEncoder().encode(`event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`));
+  event("subtitle", { words: [{ text: "你好", startSample: 1200, endSample: 2400 }] });
+  event("audio", { data: Buffer.alloc(100).toString("base64") });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(player.playback.getSnapshot().sample, 0);
+  assert.equal(player.playback.getSnapshot().messageIndex, 3);
+  assert.equal(player.playback.getSnapshot().words[0].startSample, 1200);
+  nodes[0].port.onmessage({ data: { type: "progress", sample: 1500 } });
+  assert.equal(player.playback.getSnapshot().sample, 1500);
+  player.pause(); assert.equal(states.at(-1).phase, 'paused');
+  assert.equal(player.playback.getSnapshot().sample, 1500);
+  await player.resume(); assert.equal(states.at(-1).phase, 'playing');
+  player.stop(); assert.equal(player.playback.getSnapshot().active, false);
+  assert.equal(player.playback.getSnapshot().words.length, 0);
+  await player.dispose();
+});
+
+test("sentence boundaries precede playback and late subtitle data cannot replace the batch timeline", async () => {
+  let stream;
+  const { player, nodes } = harness(async () => new Response(new ReadableStream({ start(controller) { stream = controller; } })));
+  await player.start('second-turn', { messageIndex: 3 });
+  const event = (name, payload) => stream.enqueue(new TextEncoder().encode(`event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`));
+  event('segment', { text: '这是正文，不包含 thinking。', startSample: 0, endSample: null });
+  event('audio', { data: Buffer.alloc(4800).toString('base64') });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(player.playback.getSnapshot().segments[0].startSample, 0);
+  assert.equal(player.playback.getSnapshot().words.length, 0);
+  nodes[0].port.onmessage({ data: { type: 'progress', sample: 1000 } });
+  event('segment', { text: '这是正文，不包含 thinking。', startSample: 0, endSample: 2400 });
+  event('segment', { text: '下一组。', startSample: 2400, endSample: null });
+  event('subtitle', { words: [{ text: 'late subtitle', startSample: 0, endSample: 2000 }] });
+  event('segment', { text: 'stale', startSample: 0, endSample: 1000 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(player.playback.getSnapshot().segments.length, 2);
+  assert.equal(player.playback.getSnapshot().segments[0].endSample, 2400);
+  assert.equal(player.playback.getSnapshot().sample, 1000);
+  player.stop(); assert.equal(player.playback.getSnapshot().segments.length, 0);
+  await player.dispose();
+});

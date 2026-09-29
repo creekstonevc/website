@@ -5,14 +5,16 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { createGateway } from "../gateway/server.mjs";
 import { attachmentConfig } from "../gateway/attachments.mjs";
+import { HighlightedLiveVoice } from "../gateway/live-voice.mjs";
 
+const port = Number(process.env.QA_PORT || 3100);
 let serial = 0;
 const conversations = new Map();
 const rejected = new Set();
 const files = new Map();
 const msg = (role, text) => ({ id: `msg_${++serial}`, type: "message", role, content: [{ type: role === "user" ? "input_text" : "output_text", text }] });
 const config = {
-  allowedOrigins: new Set(["http://localhost:3100"]), signingSecret: "qa-only-not-a-production-secret-1234567890",
+  allowedOrigins: new Set([`http://localhost:${port}`]), signingSecret: "qa-only-not-a-production-secret-1234567890",
   conversationCookieName: "creekstone_qa_conversation", conversationTtlMs: 2592000000,
   conversationHistoryLimit: 20, bootstrapPrompt: "Hi", requestMaxBytes: 65536,
   boidsBaseUrl: "https://qa.invalid/v1", boidsApiKey: "qa-only", boidsModel: "agent:qa",
@@ -68,6 +70,7 @@ const fakeFetch = async (url, options = {}) => {
     }
     let answer = input === "Hi" ? "你好，我是一豪的 AI 分身。你正在做什么？" :
       Array.from({ length: input === "long" ? 50 : 6 }, (_, i) => `\n\n**Signal ${i + 1}** — 先把问题讲清楚，再一起讨论。Build from a real founder problem and test your assumptions with the people who need it.`).join("");
+    if (input === "linebreak") answer = '**2. 主动式 AI / Intent Layer** — 产品不是等用户发命令，而是在正确时机识别意图、提出建议或发起可控行动。触发规则得可解释，权限得可撤回，错误成本得可控。\n\n**3. AI-Native 生产力和开发工具** — 能把模型能力转成可委托的完整交付，在真实生产流程里承担验证与协作。最关键的检验是：如果用户能无成本切换到平台原生功能，你的价值还在不在。';
     const annotations = [];
     if (uploaded.length || ["artifact", "incomplete file", "file only"].includes(input)) {
       const id = `file-out-qa-${++serial}`;
@@ -104,7 +107,33 @@ const fakeFetch = async (url, options = {}) => {
   }
   throw new Error(`Unexpected QA upstream ${path}`);
 };
-const gateway = createGateway({ config, fetchImpl: fakeFetch });
+// Opt-in silent PCM fixture exercises the real browser worklet + highlight clock
+// without generating speech, using credentials, or calling a provider.
+const makeLiveVoice = process.env.QA_SPEECH === "1" ? (emit) => new HighlightedLiveVoice(config, emit, {
+  makeVoice(send) {
+    let text = '', timer;
+    return {
+      push(value) { text += value; },
+      finish() {
+        let remaining = Array.from(text).length * 1440;
+        timer = setInterval(() => {
+          const samples = Math.min(remaining, 4800);
+          send('audio', { data: Buffer.alloc(samples * 2).toString('base64') });
+          remaining -= samples;
+          if (!remaining) {
+            clearInterval(timer);
+            // Reproduce the provider: subtitles only arrive after audio, with
+            // text normalization differences. Highlights must not depend on it.
+            send('subtitle', { words: [{ text: 'late unmatched subtitle', startSample: 0, endSample: 1440 }] });
+            send('done', {});
+          }
+        }, 20);
+      },
+      cancel() { clearInterval(timer); },
+    };
+  },
+}) : undefined;
+const gateway = createGateway({ config, fetchImpl: fakeFetch, makeLiveVoice });
 const root = resolve("out");
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml" };
 createServer(async (request, response) => {
@@ -120,4 +149,4 @@ createServer(async (request, response) => {
     const body = await readFile(path);
     response.writeHead(200, { "Content-Type": types[extname(path)] || "application/octet-stream" }).end(body);
   } catch { response.writeHead(404).end(); }
-}).listen(3100, "127.0.0.1", () => console.log("Local QA: http://localhost:3100/agent/ · prompts: long / retry / disconnect / seed history / artifact / incomplete file / file only · files: slow-upload / fail-upload"));
+}).listen(port, "127.0.0.1", () => console.log(`Local QA: http://localhost:${port}/agent/ · prompts: long / retry / disconnect / seed history / artifact / incomplete file / file only · files: slow-upload / fail-upload · silent speech: ${!!makeLiveVoice}`));

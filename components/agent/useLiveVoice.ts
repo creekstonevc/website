@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LiveVoicePlayer, type LiveVoiceState } from "./live-voice-client";
+import { LiveVoicePlayer, SpeechPlaybackStore, type LiveVoiceState } from "./live-voice-client";
 
 export function useLiveVoice() {
   const [enabled, setEnabled] = useState(false);
@@ -7,7 +7,8 @@ export function useLiveVoice() {
   const [state, setState] = useState<LiveVoiceState>({ phase: "idle" });
   const player = useRef<LiveVoicePlayer | null>(null);
   const toggleEpoch = useRef(0);
-  const getPlayer = useCallback(() => player.current ??= new LiveVoicePlayer(setState), []);
+  const [playback] = useState(() => new SpeechPlaybackStore());
+  const getPlayer = useCallback(() => player.current ??= new LiveVoicePlayer(setState, playback), [playback]);
   const stop = useCallback(() => player.current?.stop(), []);
   const toggle = useCallback(async () => {
     const epoch = ++toggleEpoch.current;
@@ -22,10 +23,13 @@ export function useLiveVoice() {
         setState({ phase: "error", error: "Could not enable audio · tap to retry" }); }
     }
   }, [getPlayer, stop]);
-  const start = useCallback(async (key: string) => {
+  const start = useCallback(async (key: string, messageIndex: number) => {
     if (!enabledRef.current) return;
-    return getPlayer().start(key);
+    return getPlayer().start(key, { messageIndex });
   }, [getPlayer]);
+  const replay = useCallback((key: string, ticket: string, messageIndex: number) => getPlayer().start(key, { ticket, messageIndex }), [getPlayer]);
+  const pause = useCallback(() => player.current?.pause(), []);
+  const resume = useCallback(() => player.current?.resume(), []);
   useEffect(() => () => { toggleEpoch.current++; void player.current?.dispose(); }, []);
-  return { enabled, state, toggle, start, stop };
+  return { enabled, state, toggle, start, stop, replay, pause, resume, playback };
 }

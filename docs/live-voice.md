@@ -32,7 +32,8 @@ preview, not a deployment command.
   reasoning and tool events cannot be submitted directly to the voice channel.
 - Gateway opens BytePlus V3 `/tts/bidirection` using `seed-icl-2.0` and the
   existing cloned speaker. Text is incrementally cleaned and sent through
-  TaskRequest; FinishSession is sent at LLM completion. Audio reception runs
+  TaskRequest; video sends FinishSession at LLM completion, while pure audio
+  finishes each bounded sentence group independently (see below). Audio reception runs
   independently, including after the text response stream closes.
 - PCM16 mono at 24 kHz is relayed in audio SSE events. The AudioWorklet has a
   120 ms startup buffer and resamples to the browser's actual output rate.
@@ -42,7 +43,7 @@ preview, not a deployment command.
 
 Bounds: one audio subscription per conversation, 32 global subscriptions,
 12 starts/minute/conversation, 8,000 spoken characters by default, 120 seconds
-provider timeout, 330 seconds total subscription timeout, 24 MiB generated
+per provider session, 330 seconds total subscription timeout, 24 MiB generated
 audio ceiling, 512 KiB gateway response backlog, 120 seconds browser PCM queue.
 Disconnecting the audio stream cancels provider synthesis. No automatic retries
 can accidentally replay/pay for a response twice.
@@ -50,6 +51,83 @@ can accidentally replay/pay for a response twice.
 `first audio` in the UI measures from voice-channel startup to the first sample
 scheduled by the worklet. It includes the LLM wait, not just TTS latency.
 It cannot measure physical speaker output or replace listening checks.
+
+## Pure-audio speech highlighting
+
+- Both **Play voice** (signed-ticket replay) and **Live voice** now use the PCM
+  streaming player. Replay sends the existing signed `ticket` to `/voice/stream`;
+  it still requires the signed conversation cookie and matching session selector.
+  No arbitrary browser text is accepted for synthesis. `/tts` remains available
+  for existing clients; its MP3/cache format is unchanged.
+- Pure audio synthesizes bounded sentence groups in separate TTS sessions;
+  one current group plus at most one look-ahead preserves streaming playback.
+  The gateway emits `segment: { text, startSample, endSample: null }` **before**
+  that group's first PCM, then updates `endSample` after its last PCM. Positions
+  are exact byte-count / 2 offsets in the concatenated 24 kHz mono stream.
+  Audio stays ordered even if look-ahead completes first. No subtitles or guessed
+  word durations are needed. The video TTS path/interruption protocol is unchanged.
+- Seed ICL 2.0's optional event **364 / TTSSubtitle** has session-absolute word
+  timestamps, but may arrive several seconds after audio. The low-level adapter
+  can still decode it; pure audio no longer relies on it for highlighting.
+- The AudioWorklet reports **consumed** source samples about every 80 ms.
+  Downloaded/queued audio, network arrival time, and character-rate estimates do
+  not drive highlighting. Pause and buffer underruns do not advance this clock.
+  Device/Bluetooth output latency is not measured by this browser cursor.
+- Sentence groups accumulate at least **24 letters/digits/CJK characters** before
+  a sentence-ending mark or paragraph break; punctuation/whitespace do not count.
+  A short final group is permitted. TTS batches are capped at 160 UTF-16 code
+  units (prefer natural breaks; never split surrogate pairs). A long rendered
+  group may span multiple audio batches. Matching uses the entire submitted
+  batch, not greedy individual subtitle words; it ignores punctuation/case/width,
+  preserves Markdown emphasis/lists and advances through repeated phrases in order.
+  Code and link labels are excluded, matching the live TTS filter.
+- At paragraph boundaries, literal numbered headings (for example `**3. Title**`)
+  may remain in the DOM while TTS strips the enumeration. Alignment tries both
+  the original and enumeration-free indexes, using the same original-position
+  cursor and choosing the earliest match. This preserves cross-paragraph groups
+  without skipping repeated phrases or ignoring quantities/decimals in prose.
+- Default following centers the active group smoothly. Wheel/touch/keyboard or
+  scrollbar browsing detaches it; new text/cues cannot reclaim scrolling.
+  Manually bringing the active group back into **35%–65% of list height** resumes
+  following, with re-entry hysteresis to avoid snapping back on a small gesture.
+  The **Back to speaking** icon explicitly resumes; the next playback starts
+  following. This compact control (smaller on mobile) appears only when detached
+  and more than one transcript viewport above the bottom, not on every gesture.
+  Its accessible label and tooltip retain the action name; without playback it
+  returns to the latest message instead.
+  Reduced-motion preference disables scrolling/color animations.
+- Each group is highlighted from its first consumed sample, regardless of late
+  subtitles. If adjacent Markdown groups share an audio batch, they highlight
+  together rather than inventing an internal timing. Unmatched text is not given
+  guessed timings. Thinking/reasoning stays outside the spoken text and mapping.
+  Stopping,
+  changing conversations, starting another response, or entering video clears
+  both the highlight and old playback mapping.
+
+Local deterministic browser QA (silent PCM; no upstream usage):
+
+```bash
+npm run build
+QA_PORT=3101 QA_SPEECH=1 node scripts/agent-qa-server.mjs
+```
+
+The `linebreak` prompt reproduces a short sentence followed by a numbered bold
+heading. Replay its reply to check a batch spanning both paragraphs and wrapping
+across visual lines; the fixture uses silent PCM and no upstream API calls.
+
+Live protocol checks on 2026-09-29: the original multi-sentence session returned
+its first audio at ~3.5 seconds but its first subtitle only at ~13.2 seconds.
+The bounded-batch regression probe delivered every text boundary before PCM,
+with continuous sample offsets; first audio (~5.3 seconds in that run) arrived
+before the final LLM-text submission. This is not a latency guarantee; network
+or synthesis delays can still cause normal buffering. Prefetch is limited to
+two sessions, 4 MiB buffered PCM per batch and 24 MiB total generated audio.
+The deterministic QA fixture also sends late/unmatched subtitles, not idealized
+subtitle-before-audio events.
+Browser regression checks confirmed that both the second and third assistant
+replies (with reasoning blocks) start highlighting their first body group;
+reasoning is never highlighted, pause preserves the group, and Back to speaking
+centers that group in the message list.
 
 ## Verification
 

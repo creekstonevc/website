@@ -5,9 +5,11 @@ class CreekstonePcmPlayer extends AudioWorkletProcessor {
     super();
     this.ring = new Float32Array(24000 * 120);
     this.written = 0; this.position = 0; this.started = false; this.ended = false;
-    this.finished = false; this.announced = false;
+    this.finished = false; this.announced = false; this.paused = false; this.reported = 0;
     this.port.onmessage = ({ data }) => {
       if (data.type === "stop") { this.finished = true; return; }
+      if (data.type === "pause") { this.paused = true; return; }
+      if (data.type === "resume") { this.paused = false; return; }
       if (data.type === "end") { this.ended = true; return; }
       if (data.type !== "audio" || this.finished) return;
       const samples = data.samples;
@@ -19,13 +21,17 @@ class CreekstonePcmPlayer extends AudioWorkletProcessor {
   }
   process(_inputs, outputs) {
     const channel = outputs[0][0];
+    channel.fill(0);
     if (this.finished) return false;
+    if (this.paused) return true;
     if (!this.started && (this.written - this.position >= 2880 || this.ended)) this.started = true;
     for (let i = 0; i < channel.length; i++) {
       if (!this.started || this.position >= this.written - (this.ended ? 0 : 1)) {
         channel[i] = 0;
         if (this.ended && this.position >= this.written) {
-          this.finished = true; this.port.postMessage({ type: "ended" }); break;
+          this.finished = true;
+          this.port.postMessage({ type: "progress", sample: this.written });
+          this.port.postMessage({ type: "ended" }); break;
         }
         this.started = false;
         continue;
@@ -36,6 +42,12 @@ class CreekstonePcmPlayer extends AudioWorkletProcessor {
       const right = this.ring[Math.min(index + 1, this.written - 1) % this.ring.length];
       channel[i] = left + (right - left) * fraction;
       this.position += 24000 / sampleRate;
+    }
+    // Report consumed source samples (~12 Hz), never received/queued audio.
+    // Underflow and pause therefore cannot advance the subtitle cursor.
+    if (!this.finished && this.position - this.reported >= 1920) {
+      this.reported = this.position;
+      this.port.postMessage({ type: "progress", sample: Math.min(this.written, Math.floor(this.position)) });
     }
     return !this.finished;
   }

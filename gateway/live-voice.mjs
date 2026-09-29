@@ -67,7 +67,8 @@ export class SpeechSegments {
       this.pending = this.pending.slice(1);
       this.text += char;
       const path = /(?:https?:\/\/|attachment:\/\/|sandbox:\/|\/workspace\/|file:\/\/)[^\s]*$/.test(this.text);
-      if (!path && (/[。！？!?；;\n]/.test(char) || char === "." && (!this.pending || /^\s/.test(this.pending)))) this.flush();
+      const listMarker = /^\s*\d+\.$/.test(this.text);
+      if (!path && (/[。！？!?；;\n]/.test(char) || char === "." && !listMarker && (!this.pending || /^\s/.test(this.pending)))) this.flush();
       else if (!path && this.text.length >= 80 && /[，,、\s]/.test(char)) this.flush();
       if (this.text.length > 16000) { this.text = ""; this.count = this.limit; }
     }
@@ -83,8 +84,9 @@ export class SpeechSegments {
 
 export class BytePlusLiveVoice {
   queue = []; ready = false; ending = false; closed = false; totalBytes = 0;
-  constructor(config, emit, { socketFactory = (url, options) => new WebSocket(url, options) } = {}) {
+  constructor(config, emit, { subtitles = false, socketFactory = (url, options) => new WebSocket(url, options) } = {}) {
     this.config = config; this.emit = emit; this.id = randomUUID();
+    this.subtitles = subtitles; this.subtitleWords = 0; this.subtitleEnd = 0;
     this.segments = new SpeechSegments((text) => this.enqueue(text), config.maxTtsCharacters);
     this.socketFactory = socketFactory;
   }
@@ -112,7 +114,8 @@ export class BytePlusLiveVoice {
         const frame = decodeVoiceFrame(raw);
         if ([51, 153].includes(frame.event)) return this.fail("voice_unavailable");
         if (frame.event === 50) this.send(100, { user: { uid: this.id }, namespace: "BidirectionalTTS",
-          req_params: { speaker: this.config.bytePlusSpeakerId, audio_params: { format: "pcm", sample_rate: 24000 },
+          req_params: { speaker: this.config.bytePlusSpeakerId, audio_params: { format: "pcm", sample_rate: 24000,
+            ...(this.subtitles ? { enable_subtitle: true } : {}) },
             additions: JSON.stringify({ disable_markdown_filter: true }) } }, this.id);
         if (frame.event === 150) { this.ready = true; this.drain(); }
         if (frame.audio?.length) {
@@ -123,6 +126,22 @@ export class BytePlusLiveVoice {
             this.emit("status", { phase: "streaming", firstAudioMs: this.firstAudioAt - this.startedAt });
           }
           this.emit("audio", { data: frame.audio.toString("base64") });
+        }
+        // Seed ICL 2.0 TTSSubtitle: times are absolute seconds in this TTS
+        // session, not relative to an individual TaskRequest/sentence.
+        if (this.subtitles && frame.event === 364 && Array.isArray(frame.payload.words)) {
+          const words = [];
+          for (const word of frame.payload.words) {
+            if (this.subtitleWords >= 16000) break;
+            if (typeof word.word !== "string" || !word.word.trim() || word.word.length > 512 ||
+                !Number.isFinite(word.startTime) || !Number.isFinite(word.endTime) ||
+                word.startTime < 0 || word.endTime <= word.startTime || word.endTime > 600) continue;
+            const startSample = Math.round(word.startTime * 24000), endSample = Math.round(word.endTime * 24000);
+            if (startSample < this.subtitleEnd - 24) continue; // Allow rounding; discard duplicates/reversed cues.
+            words.push({ text: word.word, startSample, endSample });
+            this.subtitleEnd = endSample; this.subtitleWords++;
+          }
+          if (words.length) this.emit("subtitle", { words });
         }
         if (frame.event === 152) { this.emit("done", {}); this.close(); }
       } catch { this.fail("voice_protocol_error"); }
@@ -154,6 +173,92 @@ export class BytePlusLiveVoice {
     if (this.socket?.readyState === WebSocket.OPEN) { this.socket.close();
       const socket = this.socket; const timer = setTimeout(() => socket.terminate(), 1000); timer.unref?.(); }
     else if (this.socket) this.socket.terminate();
+  }
+}
+
+// ICL 2.0 subtitles can arrive only after a whole (merged) utterance. Do not
+// delay live playback for them or guess a character rate. Synthesize bounded
+// sentence groups separately so their exact PCM boundaries are known before
+// playback. Only the pure-audio path uses this; video retains duplex TTS above.
+export class HighlightedLiveVoice {
+  queue = []; pending = ""; batches = []; ending = false; closed = false; totalBytes = 0; emittedBytes = 0;
+  constructor(config, emit, { makeVoice = (send) => new BytePlusLiveVoice(config, send) } = {}) {
+    this.emit = emit; this.makeVoice = makeVoice;
+    this.segments = new SpeechSegments(text => {
+      this.pending += (this.pending ? " " : "") + text;
+      // Bound a sentence with no punctuation too. Prefer a natural break; a
+      // long rendered group may span multiple audio batches without moving it.
+      while (this.pending.length > 160) {
+        const head = this.pending.slice(0, 160);
+        const boundary = Math.max(...Array.from(head.matchAll(/[，,、\s]/g), match => match.index + 1), 0);
+        let end = boundary >= 80 ? boundary : 160;
+        if (/[\uD800-\uDBFF]/.test(this.pending[end - 1])) end--;
+        this.queue.push(this.pending.slice(0, end)); this.pending = this.pending.slice(end);
+      }
+      if (this.pending.replace(/[^\p{L}\p{N}]/gu, "").length >= 24) this.flush();
+      this.drain();
+    }, config.maxTtsCharacters);
+  }
+  flush() { if (this.pending.trim()) this.queue.push(this.pending); this.pending = ""; }
+  push(text) { if (!this.closed) this.segments.push(text); }
+  finish() { if (this.closed) return; this.segments.push("", true); this.flush(); this.ending = true; this.drain(); }
+  drain() {
+    if (this.closed) return;
+    // One current utterance + one look-ahead hides most per-session latency.
+    // Never launch unbounded synthesis for a long saved answer.
+    while (!this.closed && this.batches.length < 2 && this.queue.length) this.startBatch(this.queue.shift());
+    if (!this.batches.length && this.ending) { this.closed = true; this.emit("done", {}); }
+  }
+  startBatch(text) {
+    const batch = { text, startSample: null, voice: null, audio: [], bufferedBytes: 0, done: false };
+    this.batches.push(batch);
+    try {
+      batch.voice = this.makeVoice((event, data) => {
+        if (this.closed || batch.done) return;
+        if (event === "audio") {
+          const pcm = Buffer.from(data.data, "base64");
+          this.totalBytes += pcm.length; batch.bufferedBytes += pcm.length;
+          if (pcm.length % 2 || this.totalBytes > 24 * 1024 * 1024 || batch.bufferedBytes > 4 * 1024 * 1024) return this.fail("voice_limit");
+          // Small paced writes also keep a completed look-ahead from overflowing
+          // the SSE response backlog when it becomes the head of the queue.
+          for (let offset = 0; offset < pcm.length; offset += 16384) batch.audio.push(pcm.subarray(offset, offset + 16384));
+          this.scheduleOutput();
+        } else if (event === "done") {
+          batch.done = true; this.scheduleOutput();
+        } else if (event === "error") this.fail(data.code || "voice_unavailable");
+        else if (event === "status" && this.emittedBytes === 0 && this.batches[0] === batch) this.emit(event, data);
+      });
+      batch.voice.push(text); batch.voice.finish();
+    } catch { this.fail("voice_unavailable"); }
+  }
+  scheduleOutput() {
+    if (this.closed || this.outputTimer) return;
+    this.outputTimer = setImmediate(() => {
+      this.outputTimer = null;
+      if (this.closed) return;
+      const batch = this.batches[0];
+      if (!batch) return;
+      const pcm = batch.audio.shift();
+      if (pcm) {
+        if (batch.startSample === null) {
+          batch.startSample = this.emittedBytes / 2;
+          this.emit("segment", { text: batch.text, startSample: batch.startSample, endSample: null });
+        }
+        this.emittedBytes += pcm.length; batch.bufferedBytes -= pcm.length;
+        this.emit("audio", { data: pcm.toString("base64") });
+        this.scheduleOutput();
+      } else if (batch.done) {
+        if (batch.startSample !== null) this.emit("segment", { text: batch.text, startSample: batch.startSample, endSample: this.emittedBytes / 2 });
+        this.batches.shift(); this.drain(); this.scheduleOutput();
+      }
+    });
+  }
+  fail(code) { if (!this.closed) { this.cancel(); this.emit("error", { code }); } }
+  cancel() {
+    if (this.closed) return;
+    this.closed = true; this.queue = []; this.pending = ""; clearImmediate(this.outputTimer);
+    for (const batch of this.batches) batch.voice?.cancel();
+    this.batches = [];
   }
 }
 

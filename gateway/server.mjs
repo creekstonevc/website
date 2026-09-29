@@ -6,7 +6,7 @@ import {
   messageAttachments, createFileMetadataLookup, transferAttachment,
 } from "./attachments.mjs";
 import { attachmentDisplayText } from "../lib/agent-attachments.mjs";
-import { BytePlusLiveVoice, createLiveVoiceRegistry } from "./live-voice.mjs";
+import { HighlightedLiveVoice, createLiveVoiceRegistry } from "./live-voice.mjs";
 import { createMizzenManager, mizzenConfig } from "./mizzen.mjs";
 import { createAsrBridge } from "./asr.mjs";
 import {
@@ -616,7 +616,7 @@ export function createGateway({
   const video = createMizzenManager(config, { fetchImpl });
   const liveVoices = createLiveVoiceRegistry(config, (emit, context) => context.videoId
     ? video.voice(emit, context.owner, context.videoId)
-    : makeLiveVoice ? makeLiveVoice(emit) : new BytePlusLiveVoice(config, emit));
+    : makeLiveVoice ? makeLiveVoice(emit) : new HighlightedLiveVoice(config, emit));
 
   const server = createServer(async (request, response) => {
     const requestId = randomUUID();
@@ -663,8 +663,16 @@ export function createGateway({
         if (body.sessionKey !== sessionKey(session.conversationId)) throw new GatewayError(409, "session_changed", "Conversation changed");
         if (url.pathname === "/voice/stream") {
           // Reuse an already generated, signed reply; never accept arbitrary TTS text.
-          const replay = body.ticket !== undefined ? verifyTtsTicket(body.ticket, config.signingSecret) : null;
-          if (replay && !body.videoId) throw new GatewayError(400, "video_required", "Replay requires a video connection");
+          let replay = null;
+          if (body.ticket !== undefined) {
+            try { replay = verifyTtsTicket(body.ticket, config.signingSecret); }
+            catch (error) {
+              // Match /tts's existing bounded grace period for an active,
+              // authenticated conversation. Invalid signatures never get grace.
+              if (error.code !== "expired_tts_ticket" || body.videoId) throw error;
+              replay = verifyTtsTicket(body.ticket, config.signingSecret, { now: Date.now() - 24 * 60 * 60_000 });
+            }
+          }
           liveVoices.open(body.id, session.conversationId, response, { videoId: body.videoId });
           if (replay) {
             const voice = liveVoices.claim(body.id, session.conversationId);

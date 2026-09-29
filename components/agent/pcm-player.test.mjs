@@ -54,3 +54,29 @@ test("PCM queue is bounded", () => {
   assert.equal(events[0].type, "error");
   assert.equal(instance.finished, true);
 });
+
+test("progress is consumed 24kHz samples, freezes during pause/underflow, and resumes at the same sample", () => {
+  for (const rate of [24000, 48000]) {
+    const { instance, send, events } = player(rate);
+    const block = new Float32Array(128);
+    send({ type: "audio", samples: new Float32Array(9600).fill(0.2) });
+    assert.equal(events.length, 0, 'receiving audio is not playback');
+    for (let i = 0; i < 35; i++) instance.process([], [[block]]);
+    const progress = events.filter(event => event.type === 'progress');
+    assert.ok(progress.at(-1).sample >= 1920 && progress.at(-1).sample <= 4480);
+    const position = instance.position, count = events.length;
+    send({ type: 'pause' });
+    for (let i = 0; i < 100; i++) instance.process([], [[block]]);
+    assert.equal(instance.position, position); assert.equal(events.length, count); assert.ok(block.every(value => value === 0));
+    send({ type: 'resume' }); instance.process([], [[block]]);
+    assert.ok(instance.position > position);
+    for (let i = 0; i < 200; i++) instance.process([], [[block]]);
+    const stalled = instance.position;
+    for (let i = 0; i < 100; i++) instance.process([], [[block]]);
+    assert.equal(instance.position, stalled);
+    send({ type: 'end' });
+    while (instance.process([], [[block]])) { /* drain */ }
+    assert.equal(events.filter(event => event.type === 'progress').at(-1).sample, 9600);
+    assert.equal(events.at(-1).type, 'ended');
+  }
+});

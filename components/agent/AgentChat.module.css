@@ -636,7 +636,44 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
   position: absolute;
   inset-inline-end: 16px;
   bottom: 10px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.jumpToLatest::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+.jumpToLatest svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.jumpToLatest:focus-visible {
+  outline: 2px solid var(--agent-gold);
+  outline-offset: 3px;
+}
+
+@media (max-width: 700px) {
+  .jumpToLatest {
+    width: 28px;
+    height: 28px;
+    inset-inline-end: 12px;
+  }
+
+  .jumpToLatest::before { inset: -9px; }
+  .jumpToLatest svg { width: 14px; height: 14px; }
 }
 
 .composerHint {
@@ -957,6 +994,26 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
   padding-left: 12px;
   color: rgba(243, 239, 229, 0.62);
   border-left: 1px solid var(--agent-gold);
+}
+
+.markdown :global([data-speech-markdown]) > :first-child { margin-top: 0; }
+.markdown :global([data-speech-markdown]) > :last-child { margin-bottom: 0; }
+.markdown :global([data-speech-group]) {
+  border-radius: 2px;
+  transition: color 160ms ease, background-color 160ms ease;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.markdown :global([data-speaking="true"]) {
+  color: #ffdf85;
+  background-color: rgba(229, 189, 82, 0.16);
+  text-decoration: underline;
+  text-decoration-color: rgba(229, 189, 82, 0.48);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .markdown :global([data-speech-group]) { transition: none; }
 }
 
 .thinking {

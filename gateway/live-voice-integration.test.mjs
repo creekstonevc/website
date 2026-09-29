@@ -56,14 +56,16 @@ test("video endpoints enforce conversation ownership and disabled preview does n
   assert.match(await text.text(), /response.completed/); assert.equal(voices.length, 0);
 }));
 
-test("opening replay rejects unsigned content and requires video", () => harness(async ({ post, session, voices }) => {
+test("signed replay supports pure audio without weakening conversation or ticket validation", () => harness(async ({ post, session, voices }) => {
   const user = await session();
   const invalid = await post("/voice/stream", { id: randomUUID(), sessionKey: user.sessionKey, videoId: randomUUID(), ticket: "untrusted" }, user.cookie);
   assert.notEqual(invalid.status, 200);
   const ticket = createTtsTicket("Hello founder.", "test-local-voice-secret-at-least-32-characters");
   const noVideo = await post("/voice/stream", { id: randomUUID(), sessionKey: user.sessionKey, ticket }, user.cookie);
-  assert.equal(noVideo.status, 400);
-  assert.equal(voices.length, 0);
+  assert.equal(noVideo.status, 200);
+  assert.match(await noVideo.text(), /event: audio/);
+  assert.equal(voices.length, 1);
+  assert.deepEqual(voices[0].text, ["Hello founder."]);
 }));
 
 test("live audio is opt-in, server-generated only, and independent of text completion", () => harness(async ({ post, session, voices }) => {

@@ -11,8 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { SpeechMarkdown } from "./SpeechMarkdown";
 import styles from "./AgentChat.module.css";
 import "./presence-transitions.css";
 import { useTranscriptScroll } from "./useTranscriptScroll";
@@ -134,16 +133,9 @@ export function AgentChat() {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(true);
   const [ready, setReady] = useState(false);
-  const [voice, setVoice] = useState<VoiceState>({
-    messageIndex: null,
-    phase: "idle",
-  });
   const initializationStarted = useRef(false);
-  const { transcriptRef, contentRef, detached, follow, pause } = useTranscriptScroll();
+  const { transcriptRef, contentRef, showReturnControl, follow, pause, setSpeech, setSpeechTarget } = useTranscriptScroll();
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
-  const audioGeneration = useRef(0);
   const composing = useRef(false);
   const compositionEnded = useRef(0);
   const operation = useRef(false);
@@ -163,6 +155,20 @@ export function AgentChat() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const liveVoice = useLiveVoice();
   const { start: startLiveVoice, stop: stopLiveVoice } = liveVoice;
+  const returningToSpeech = liveVoice.state.messageIndex !== undefined && !["error", "done", "idle"].includes(liveVoice.state.phase);
+  const returnLabel = returningToSpeech ? "Back to speaking" : "Back to latest";
+  const voice: VoiceState = {
+    messageIndex: liveVoice.state.messageIndex ?? null,
+    phase: ["preparing", "waiting", "connecting"].includes(liveVoice.state.phase) ? "loading" :
+      liveVoice.state.phase === "done" ? "idle" : liveVoice.state.phase as VoicePhase,
+    error: liveVoice.state.error,
+  };
+  const { playback } = liveVoice;
+  useEffect(() => {
+    const update = () => setSpeech(playback.getSnapshot().active);
+    update();
+    return playback.subscribe(update);
+  }, [playback, setSpeech]);
   const [videoMode, setVideoMode] = useState(false);
   const [speechMode, setSpeechMode] = useState(false);
   const [speechActive, setSpeechActive] = useState(false);
@@ -171,7 +177,7 @@ export function AgentChat() {
   const transitionView = usePresenceTransition(shellRef, useCallback((enabled: boolean, kind: "video" | "input") => {
     if (kind === "input") setSpeechMode(enabled);
     else setVideoMode(enabled);
-  }, []));
+  }, [setSpeechMode, setVideoMode]));
   const videoRef = useRef<HTMLVideoElement>(null);
   const avatar = useAvatarVideo(videoMode, sessionKey, videoRef);
   const greetingPlayed = useRef(new Set<string>());
@@ -229,111 +235,13 @@ export function AgentChat() {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    return () => {
-      const audio = audioRef.current;
-      audioRef.current = null;
-      audio?.pause();
-      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
-    };
-  }, []);
-
-  const disposeAudio = useCallback(() => {
-    stopLiveVoice();
-    audioGeneration.current += 1;
-    const audio = audioRef.current;
-    audioRef.current = null;
-    if (audio) {
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-    }
-    if (audioUrlRef.current) {
-      URL.revokeObjectURL(audioUrlRef.current);
-      audioUrlRef.current = null;
-    }
-  }, [stopLiveVoice]);
+  const disposeAudio = stopLiveVoice;
 
   const handleVoiceToggle = async (messageIndex: number, ticket: string) => {
     if (videoMode) { avatar.close(); setVideoMode(false); }
-    const currentAudio = audioRef.current;
-    if (voice.messageIndex === messageIndex && currentAudio) {
-      if (!currentAudio.paused) {
-        currentAudio.pause();
-        setVoice({ messageIndex, phase: "paused" });
-        return;
-      }
-      try {
-        if (currentAudio.ended) currentAudio.currentTime = 0;
-        await currentAudio.play();
-        setVoice({ messageIndex, phase: "playing" });
-      } catch {
-        setVoice({
-          messageIndex,
-          phase: "error",
-          error: "Playback was blocked · tap to retry",
-        });
-      }
-      return;
-    }
-
-    disposeAudio();
-    const generation = audioGeneration.current;
-    setVoice({ messageIndex, phase: "loading" });
-
-    try {
-      const response = await fetch("/api/agent/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticket }),
-      });
-      if (!response.ok) {
-        const message =
-          response.status === 429
-            ? "Voice channel is busy · retry shortly"
-            : response.status === 410
-              ? "Voice access expired · reload this conversation to refresh"
-              : "Voice unavailable · tap to retry";
-        throw new AgentRequestError(response.status, message);
-      }
-
-      const blob = await response.blob();
-      if (generation !== audioGeneration.current) return;
-      if (!blob.size) throw new Error("Voice response was empty");
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.preload = "auto";
-      audioRef.current = audio;
-      audioUrlRef.current = url;
-      audio.addEventListener("ended", () => {
-        if (audioRef.current === audio) {
-          setVoice({ messageIndex, phase: "idle" });
-        }
-      });
-      audio.addEventListener("error", () => {
-        if (audioRef.current === audio) {
-          setVoice({
-            messageIndex,
-            phase: "error",
-            error: "Audio could not be played · tap to retry",
-          });
-        }
-      });
-
-      await audio.play();
-      setVoice({ messageIndex, phase: "playing" });
-    } catch (error) {
-      if (generation !== audioGeneration.current) return;
-      disposeAudio();
-      setVoice({
-        messageIndex,
-        phase: "error",
-        error:
-          error instanceof AgentRequestError
-            ? error.code
-            : "Voice unavailable · tap to retry",
-      });
-    }
+    if (voice.messageIndex === messageIndex && voice.phase === "playing") { liveVoice.pause(); return; }
+    if (voice.messageIndex === messageIndex && voice.phase === "paused") { await liveVoice.resume(); return; }
+    await liveVoice.replay(sessionKeyRef.current, ticket, messageIndex);
   };
 
   const renderReply = useCallback(async (input: string, bootstrap = false, attachments: AttachmentFile[] = [], liveVoiceId?: string) => {
@@ -453,7 +361,6 @@ export function AgentChat() {
       if (operation.current) return;
       operation.current = true;
       disposeAudio();
-      setVoice({ messageIndex: null, phase: "idle" });
       setReady(false);
       setBusy(true);
       setPhase("Restoring your conversation…");
@@ -544,7 +451,6 @@ export function AgentChat() {
     const previousAnswer = retry ? recovery?.previousAnswer : messages.findLast((item) => item.role === "assistant")?.content;
 
     disposeAudio();
-    setVoice({ messageIndex: null, phase: "idle" });
     setValue("");
     if (!retry) attachmentDrafts.clear();
     setBusy(true);
@@ -569,7 +475,7 @@ export function AgentChat() {
       // trigger a second interruption when it is automatically submitted.
       const liveVoiceId = videoMode
         ? await (source === "text" ? avatar.startTextReply() : avatar.startReply())
-        : await startLiveVoice(sessionKeyRef.current);
+        : await startLiveVoice(sessionKeyRef.current, retry ? messages.length - 1 : messages.length + 1);
       await renderReply(input, false, attachments, liveVoiceId);
       saveRecovery(null);
     } catch (error) {
@@ -624,7 +530,6 @@ export function AgentChat() {
     setHistoryError("");
     pause();
     disposeAudio();
-    setVoice({ messageIndex: null, phase: "idle" });
     try {
       const session = await openConversation({ after: nextCursor, sessionKey: sessionKeyRef.current });
       const node = transcriptRef.current;
@@ -656,24 +561,25 @@ export function AgentChat() {
 
   const presenceControls = <div className={styles.presenceControls} role="group" aria-label="Avatar modes">
     <button type="button" aria-pressed={videoMode} onClick={() => {
-      if (!videoMode) { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); }
+      if (!videoMode) disposeAudio();
       transitionView(!videoMode);
     }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 5h10v10H2z M12 8l6-3v10l-6-3" /></svg>Video<span className={styles.toggleTrack} aria-hidden="true" /></button>
           <div className={styles.liveVoiceToolbar} hidden={videoMode || speechMode}>
             <button type="button" className={styles.liveVoiceToggle} aria-pressed={liveVoice.enabled} aria-label={`Live voice ${liveVoice.enabled ? "on" : "off"}`}
-              onClick={() => { disposeAudio(); setVoice({ messageIndex: null, phase: "idle" }); void liveVoice.toggle(); }}>
+              onClick={() => { disposeAudio(); void liveVoice.toggle(); }}>
               <span>Live voice</span><span className={styles.toggleTrack} aria-hidden="true" />
             </button>
             <span className={styles.liveVoiceStatus} role="status" hidden={!liveVoice.enabled && liveVoice.state.phase !== "error"}>
               {liveVoice.state.phase === "error" ? liveVoice.state.error :
-                liveVoice.state.phase === "playing" ? `Speaking as Yihao writes${liveVoice.state.firstAudioMs ? ` · first audio ${(liveVoice.state.firstAudioMs / 1000).toFixed(1)}s` : ""}` :
+                liveVoice.state.phase === "playing" ? `${busy ? "Speaking as Yihao writes" : "Playing Yihao’s reply"}${liveVoice.state.firstAudioMs ? ` · first audio ${(liveVoice.state.firstAudioMs / 1000).toFixed(1)}s` : ""}` :
+                liveVoice.state.phase === "paused" ? "Voice paused · resume from the message" :
                 liveVoice.state.phase === "connecting" ? "Connecting Yihao’s voice…" :
                 liveVoice.state.phase === "waiting" ? "Voice ready · waiting for Yihao’s words" :
                 liveVoice.state.phase === "preparing" ? "Preparing audio…" :
                 liveVoice.state.phase === "done" && liveVoice.state.firstAudioMs ? `Played · first audio ${(liveVoice.state.firstAudioMs / 1000).toFixed(1)}s · AI-generated voice` :
                 liveVoice.enabled ? "Next reply will play as it arrives · AI-generated voice" : "Listen while the next reply is being written"}
             </span>
-            {["waiting", "connecting", "playing"].includes(liveVoice.state.phase) &&
+            {["waiting", "connecting", "playing", "paused"].includes(liveVoice.state.phase) &&
               <button type="button" className={styles.liveVoiceStop} onClick={stopLiveVoice}>Stop audio</button>}
           </div>
   </div>;
@@ -872,9 +778,7 @@ export function AgentChat() {
                     ) : (
                       <>
                         <div className={styles.markdown}>
-                          <Markdown remarkPlugins={[remarkGfm]}>
-                            {displayedText}
-                          </Markdown>
+                          <SpeechMarkdown text={displayedText} messageIndex={index} playback={playback} onTarget={setSpeechTarget} />
                           {busy &&
                           index === messages.length - 1 &&
                           message.content ? (
@@ -931,8 +835,11 @@ export function AgentChat() {
           </div>}
           </div>
         </div>
-        {detached && <button type="button" className={styles.jumpToLatest} onClick={follow}>
-          Back to latest <span aria-hidden="true">↓</span>
+        {showReturnControl && <button type="button" className={styles.jumpToLatest} onClick={follow}
+          aria-label={returnLabel} title={returnLabel}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d={returningToSpeech ? "M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4" : "M12 4v12M7 11l5 5 5-5M5 20h14"} />
+          </svg>
         </button>}
         </div>
 
@@ -968,7 +875,7 @@ export function AgentChat() {
             onText={setValue} onFinal={text => { void send(text, false, "speech"); }}
             onActiveChange={active => { speechActiveRef.current = active; setSpeechActive(active); }}
             onCaptureReady={() => {
-              disposeAudio(); setVoice({ messageIndex: null, phase: 'idle' });
+              disposeAudio();
               if (videoMode) void avatar.interrupt();
             }} />}
           <PendingAttachments drafts={attachmentDrafts.drafts} onRemove={attachmentDrafts.remove} onRetry={attachmentDrafts.retry} />
