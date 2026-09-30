@@ -4,7 +4,8 @@ import { createTranscriptScroller } from './transcript-scroll.ts';
 
 function fixture({ height = 1000, top = 600, reduced = false } = {}) {
   const node = new EventTarget();
-  Object.assign(node, { scrollHeight: height, clientHeight: 400, scrollTop: top, getBoundingClientRect: () => ({ top: 0 }) });
+  const ownerDocument = new EventTarget();
+  Object.assign(node, { ownerDocument, scrollHeight: height, clientHeight: 400, scrollTop: top, getBoundingClientRect: () => ({ top: 0 }) });
   let returnVisible = false, serial = 0, time = 0;
   const frames = new Map();
   const controller = createTranscriptScroller(node, value => { returnVisible = value; }, {
@@ -12,6 +13,7 @@ function fixture({ height = 1000, top = 600, reduced = false } = {}) {
     cancelFrame: id => frames.delete(id), now: () => time, reducedMotion: () => reduced,
   });
   const event = (type, data = {}) => node.dispatchEvent(Object.assign(new Event(type), data));
+  const documentEvent = type => ownerDocument.dispatchEvent(new Event(type));
   const move = top => { node.scrollTop = top; event('scroll'); };
   const step = () => {
     time += 16; const callbacks = [...frames.values()]; frames.clear();
@@ -19,7 +21,7 @@ function fixture({ height = 1000, top = 600, reduced = false } = {}) {
     event('scroll');
   };
   const settle = () => { for (let i = 0; frames.size && i < 100; i++) step(); assert.equal(frames.size, 0); };
-  return { node, controller, event, move, step, settle, returnVisible: () => returnVisible, frames };
+  return { node, controller, event, documentEvent, move, step, settle, returnVisible: () => returnVisible, frames };
 }
 
 test('downward wheel, End, clicks and taps at bottom never expose Back to latest', () => {
@@ -153,8 +155,8 @@ test('manual speech scrolling in either direction detaches; only central re-entr
       f.move(620 + direction * 180); assert.equal(f.returnVisible(), true);
       f.node.scrollHeight += 200; f.controller.resize(); f.settle();
       assert.equal(f.node.scrollTop, 620 + direction * 180);
-      f.move(620 + direction * 30); assert.equal(f.returnVisible(), false);
-      f.settle(); assert.ok(Math.abs(f.node.scrollTop - 620) <= 1);
+      f.move(620 + direction * 30);
+      f.settle(); assert.equal(f.returnVisible(), false); assert.ok(Math.abs(f.node.scrollTop - 620) <= 1);
     } finally { f.controller.destroy(); }
   }
 });
@@ -174,4 +176,89 @@ test('new speech cues cannot reattach a detached reader; explicit return works a
     f.controller.setSpeech(true); f.controller.setSpeechTarget([speechTarget(f, 1400)]); f.settle();
     assert.ok(Math.abs(f.node.scrollTop - 1220) <= 1);
   } finally { f.controller.destroy(); }
+});
+
+test('speech resumes after returning with several wheel/momentum events inside the center band', () => {
+  const f = fixture({ height: 2400, top: 620 });
+  try {
+    f.controller.setSpeech(true); f.controller.setSpeechTarget([speechTarget(f, 800)]);
+    f.event('wheel', { deltaY: -180 }); f.move(440);
+    for (const top of [580, 600, 619.5, 620.25, 628]) {
+      f.event('wheel', { deltaY: 20 }); f.move(top); f.step();
+      assert.equal(f.node.scrollTop, top, 'no animation while the gesture is still moving');
+    }
+    f.settle();
+    f.controller.setSpeechTarget([speechTarget(f, 1200)]); f.settle();
+    assert.ok(Math.abs(f.node.scrollTop - 1020) <= 1, 'inertial tail must not detach the resumed follow');
+  } finally { f.controller.destroy(); }
+});
+
+test('touch and scrollbar re-entry wait for release, including releases outside the transcript', () => {
+  for (const kind of ['touch', 'pointer']) {
+    const f = fixture({ height: 2400, top: 620 });
+    try {
+      f.controller.setSpeech(true); f.controller.setSpeechTarget([speechTarget(f, 800)]);
+      if (kind === 'touch') f.event('touchstart', { touches: [{ clientY: 200 }] });
+      else f.event('pointerdown');
+      f.move(400); f.move(600); f.settle();
+      assert.equal(f.node.scrollTop, 600, 'holding the gesture cannot restart follow');
+      f.documentEvent(kind === 'touch' ? 'touchend' : 'pointerup'); f.settle();
+      assert.ok(Math.abs(f.node.scrollTop - 620) <= 1);
+      f.controller.setSpeechTarget([speechTarget(f, 1200)]); f.settle();
+      assert.ok(Math.abs(f.node.scrollTop - 1020) <= 1);
+    } finally { f.controller.destroy(); }
+  }
+});
+
+test('scrolling through the center and beyond it keeps following paused', () => {
+  const f = fixture({ height: 2400, top: 620 });
+  try {
+    f.controller.setSpeech(true); f.controller.setSpeechTarget([speechTarget(f, 800)]);
+    f.move(400); f.move(600); f.step(); f.move(900); f.settle();
+    assert.equal(f.node.scrollTop, 900);
+    f.controller.setSpeechTarget([speechTarget(f, 1500)]); f.settle();
+    assert.equal(f.node.scrollTop, 900);
+  } finally { f.controller.destroy(); }
+});
+
+test('pending speech re-entry is cleared when cues leave, playback stops, or the scroller is destroyed', () => {
+  for (const invalidate of ['cue', 'stop', 'destroy']) {
+    const f = fixture({ height: 2400, top: 620 });
+    try {
+      f.controller.setSpeech(true); f.controller.setSpeechTarget([speechTarget(f, 800)]);
+      f.move(400); f.move(600); assert.ok(f.frames.size > 0);
+      if (invalidate === 'cue') {
+        f.controller.setSpeechTarget([speechTarget(f, 1600)]);
+        f.controller.setSpeechTarget([speechTarget(f, 800)]);
+      } else if (invalidate === 'stop') f.controller.setSpeech(false);
+      else f.controller.destroy();
+      f.settle(); assert.equal(f.node.scrollTop, 600);
+      assert.equal(f.frames.size, 0);
+    } finally { f.controller.destroy(); }
+  }
+});
+
+test('a small scroll away and back resumes without having to leave the whole center band', () => {
+  const f = fixture({ height: 2400, top: 620 });
+  try {
+    f.controller.setSpeech(true); f.controller.setSpeechTarget([speechTarget(f, 800)]);
+    f.event('wheel', { deltaY: -20 }); f.move(600); f.settle();
+    assert.equal(f.node.scrollTop, 600, 'scrolling away must not snap back');
+    f.event('wheel', { deltaY: 20 }); f.move(620); f.settle();
+    f.controller.setSpeechTarget([speechTarget(f, 1200)]); f.settle();
+    assert.ok(Math.abs(f.node.scrollTop - 1020) <= 1);
+  } finally { f.controller.destroy(); }
+});
+
+test('returning to a speech target near either list edge resumes at its reachable position', () => {
+  for (const [offset, start, away] of [[20, 0, 180], [1980, 1600, 1420]]) {
+    const f = fixture({ height: 2000, top: start });
+    try {
+      f.controller.setSpeech(true); f.controller.setSpeechTarget([speechTarget(f, offset)]); f.settle();
+      f.event('wheel', { deltaY: away - start }); f.move(away);
+      f.event('wheel', { deltaY: start - away }); f.move(start); f.settle();
+      f.controller.setSpeechTarget([speechTarget(f, 800)]); f.settle();
+      assert.ok(Math.abs(f.node.scrollTop - 620) <= 1, 'physical edge must not make re-entry impossible');
+    } finally { f.controller.destroy(); }
+  }
 });

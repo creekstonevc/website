@@ -88,8 +88,13 @@ It cannot measure physical speaker output or replace listening checks.
   without skipping repeated phrases or ignoring quantities/decimals in prose.
 - Default following centers the active group smoothly. Wheel/touch/keyboard or
   scrollbar browsing detaches it; new text/cues cannot reclaim scrolling.
-  Manually bringing the active group back into **35%–65% of list height** resumes
-  following, with re-entry hysteresis to avoid snapping back on a small gesture.
+  Manually moving back toward the active group within **35%–65% of list height**
+  resumes following after scrolling settles for **180 ms** (and a held touch or
+  scrollbar is released). Momentum can cross the exact center within this band
+  without cancelling re-entry; scrolling through and out of the band stays
+  detached. A small scroll away alone does not resume; returning does, even
+  without first leaving the band. At the first/last sentence, the band follows
+  the nearest reachable scroll position rather than an impossible visual center.
   The **Back to speaking** icon explicitly resumes; the next playback starts
   following. This compact control (smaller on mobile) appears only when detached
   and more than one transcript viewport above the bottom, not on every gesture.
