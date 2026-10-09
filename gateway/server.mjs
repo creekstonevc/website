@@ -70,7 +70,7 @@ export function loadConfig(env = process.env) {
       "",
     ),
     boidsModel:
-      env.BOIDS_AGENT_MODEL || "agent:@qq1006775897-1-org/qq1006775897",
+      env.BOIDS_AGENT_MODEL || "agent:@shenjiayi0079-org/qq1006775897",
     bytePlusApiKey: required("BYTEPLUS_TTS_API_KEY", env),
     bytePlusUrl:
       env.BYTEPLUS_TTS_URL ||

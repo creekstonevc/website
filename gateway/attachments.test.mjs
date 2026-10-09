@@ -295,7 +295,7 @@ test("disabled Files affect attachments only, with unchanged model and endpoint 
   assert.equal((await f.post("/attachments/upload", { sessionKey: session.sessionKey }, session)).status, 503);
   assert.equal((await f.post("/responses", { input: "Hello" }, session)).status, 200);
   assert.equal(f.state.payload.input, "Hello");
-  assert.equal(config.boidsModel, "agent:@qq1006775897-1-org/qq1006775897");
+  assert.equal(config.boidsModel, "agent:@shenjiayi0079-org/qq1006775897");
 });
 
 for (const [status, expectedCode] of [[401, "files_permission_denied"], [403, "files_permission_denied"], [404, "attachment_unavailable"], [429, "attachment_rate_limited"], [500, "files_unavailable"]]) {
