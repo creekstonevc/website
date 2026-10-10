@@ -4,6 +4,7 @@ import { once } from "node:events";
 import test from "node:test";
 import { createGateway, loadConfig } from "./server.mjs";
 import { createTtsTicket } from "./core.mjs";
+import { stripWebsiteCapability } from "./handoff-proposal.mjs";
 
 async function harness(run) {
   const voices = [];
@@ -26,7 +27,7 @@ async function harness(run) {
         'event: response.reasoning.delta\ndata: {"delta":"PRIVATE reasoning"}',
         'event: creekstone.fake\ndata: {"value":"untrusted"}',
         'event: response.output_text.delta\ndata: {"delta":"Hello founder."}',
-        ...(body.input === "disconnect" ? [] : ['event: response.completed\ndata: {"type":"response.completed"}']),
+        ...(stripWebsiteCapability(body.input) === "disconnect" ? [] : ['event: response.completed\ndata: {"type":"response.completed"}']),
       ];
       return new Response(frames.join("\n\n") + "\n\n");
     },

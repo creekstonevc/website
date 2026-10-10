@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canEditHandoff, HandoffError, handoffErrorText, handoffStateText, requestHandoff, sameHandoffContent } from "./handoff-client.ts";
+import { canEditHandoff, canPrefillHandoff, HandoffError, handoffErrorText, handoffStateText, requestHandoff, sameHandoffContent } from "./handoff-client.ts";
 import { handoffDraft, handoffResult, HANDOFF_PURPOSE } from "../../lib/handoff.mjs";
 
 const draft = { draft_id: `hd_${"a".repeat(32)}`, revision: 1, state: "awaiting_confirmation", purpose: HANDOFF_PURPOSE, expires_at_ms: 2000000000000,
   confirmation_nonce: "n".repeat(43), content: { summary: "测试摘要", contact: "qa@example.invalid", founder_name: "", project_name: "" } };
+
+test("proposal prefill never overwrites edits, saved/submitted drafts or unknown state", () => {
+  assert.equal(canPrefillHandoff({ available: true, canSubmit: true, draft: null }, false, false), true);
+  assert.equal(canPrefillHandoff({ available: false, canSubmit: false, draft: null }, false, false), true);
+  assert.equal(canPrefillHandoff(null, false, false), false);
+  assert.equal(canPrefillHandoff({ draft: null }, true, false), false);
+  assert.equal(canPrefillHandoff({ draft: null }, false, true), false);
+  for (const state of ["awaiting_confirmation", "submitted", "declined", "submitting"]) assert.equal(canPrefillHandoff({ draft: { ...draft, state } }, false, false), false);
+});
 
 test("handoff requests use only same-origin cookies, never transport model consent or identity", async t => {
   const calls = []; t.mock.method(globalThis, "fetch", async (url, options) => {

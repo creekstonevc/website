@@ -10,6 +10,7 @@ import { HighlightedLiveVoice, createLiveVoiceRegistry } from "./live-voice.mjs"
 import { createMizzenManager, mizzenConfig } from "./mizzen.mjs";
 import { createAsrBridge } from "./asr.mjs";
 import { createHandoffManager, handoffConfig, readHandoffBody } from "./handoff.mjs";
+import { createHandoffTextFilter, extractHandoffProposal, PROPOSAL_PREFIX, sanitizeHandoffEvent, stripHandoffProposal, stripWebsiteCapability, withWebsiteCapability } from "./handoff-proposal.mjs";
 import {
   GatewayError,
   buildBoidsResponsePayload,
@@ -223,7 +224,7 @@ async function fetchBoidsHistory(conversationId, config, fetchImpl, limit, after
     const items = oldestFirst.filter((item) => message.itemIds?.includes(item.id));
     const complete = !items.some((item) => ["in_progress", "incomplete", "failed"].includes(item.status));
     const attachments = await messageAttachments(items, message.role, conversationId, config, config.fileMetadata, complete);
-    const content = attachmentDisplayText(message.content, message.role === "assistant");
+    const content = attachmentDisplayText(message.role === "assistant" ? stripHandoffProposal(message.content) : stripWebsiteCapability(message.content), message.role === "assistant");
     return { ...message, content, complete, ...attachments,
       ttsTicket: complete && message.role === "assistant" ? createTtsTicket(content, config.signingSecret, {
         ttlMs: config.ticketTtlMs, maxCharacters: config.maxTtsCharacters,
@@ -317,6 +318,7 @@ async function proxyResponseStream(
       "Bootstrap must be a boolean",
     );
   }
+  const proposalSupported = body.handoffProposalVersion === 1;
   const session = readConversationSession(request, config);
   if (!session) {
     throw new GatewayError(
@@ -387,7 +389,7 @@ async function proxyResponseStream(
       config.maxInputCharacters,
     );
     // Validate text separately from the server-verified native input_file parts.
-    payload.input = attachmentInput.input;
+    payload.input = body.bootstrap || !proposalSupported ? attachmentInput.input : withWebsiteCapability(attachmentInput.input);
     if (activeTurns.has(session.conversationId)) {
       throw new GatewayError(409, "conversation_busy", "This conversation already has a response in progress");
     }
@@ -430,6 +432,9 @@ async function proxyResponseStream(
     let pending = "";
     let streamedText = "";
     let ticketSent = false;
+    let completedHandled = false;
+    const outputFilter = createHandoffTextFilter();
+    const reasoningFilters = new Map();
     const outputItems = new Map();
     const fileAnnotations = new Map();
 
@@ -448,6 +453,8 @@ async function proxyResponseStream(
 
     const relayFrame = async (frame) => {
       const parsed = parseSseFrame(frame);
+      // Provider/model metadata never has the authority of a gateway event.
+      if (parsed.type.startsWith("creekstone.")) return;
       // Some providers send annotations on item/annotation events, others only
       // in response.completed. Neither grants access before terminal success.
       if (parsed.type === "response.output_item.done" && parsed.payload?.item?.type === "message" && outputItems.size < 16) {
@@ -461,16 +468,27 @@ async function proxyResponseStream(
         typeof parsed.payload?.delta === "string"
       ) {
         streamedText += parsed.payload.delta;
-        liveVoice?.push(parsed.payload.delta);
+        const delta = outputFilter.push(parsed.payload.delta);
+        if (!delta) return;
+        liveVoice?.push(delta);
+        response.write(`event: ${parsed.type}\ndata: ${JSON.stringify({ ...parsed.payload, delta })}\n\n`);
+        return;
       }
       if (parsed.type === "response.completed") {
-        const text = extractCompletedText(parsed.payload, streamedText);
+        if (completedHandled) return;
+        completedHandled = true;
+        const rawText = extractCompletedText(parsed.payload, streamedText);
+        const text = stripHandoffProposal(rawText);
         if (!streamedText) liveVoice?.push(text);
         liveVoice?.finish();
         voiceFinished = true;
         const terminal = parsed.payload?.response || parsed.payload;
         const items = Array.isArray(terminal?.output) ? terminal.output : [...outputItems.values()];
         const completedItems = items.filter((item) => !["in_progress", "incomplete", "failed"].includes(item.status));
+        const assistantText = extractCompletedText({ output: completedItems.filter(item => item.type === "message" && item.role === "assistant") });
+        const proposal = proposalSupported && !body.bootstrap && (!terminal.status || terminal.status === "completed") ? extractHandoffProposal(assistantText) : null;
+        if (proposal) response.write(`event: creekstone.handoff.proposal\ndata: ${JSON.stringify({ sessionKey: sessionKey(session.conversationId), content: proposal })}\n\n`);
+        else if (proposalSupported && !body.bootstrap && assistantText.includes(PROPOSAL_PREFIX)) response.write(`event: creekstone.handoff.unavailable\ndata: ${JSON.stringify({ sessionKey: sessionKey(session.conversationId), code: "invalid_proposal" })}\n\n`);
         if (fileAnnotations.size) completedItems.push({ type: "message", role: "assistant", content: [
           { type: "output_text", text, annotations: [...fileAnnotations.values()] },
         ] });
@@ -480,9 +498,15 @@ async function proxyResponseStream(
         );
         emitTicket(attachmentDisplayText(text, true));
       }
-      // Only this gateway may issue signed artifact / voice metadata.
-      if (parsed.type.startsWith("creekstone.")) return;
-      response.write(`${frame}\n\n`);
+      if ((parsed.type.includes("reasoning") || parsed.type.includes("thinking")) && parsed.type.endsWith(".delta") && typeof parsed.payload?.delta === "string") {
+        const key = parsed.payload.item_id ?? parsed.payload.output_index ?? "reasoning";
+        if (!reasoningFilters.has(key) && reasoningFilters.size < 32) reasoningFilters.set(key, createHandoffTextFilter());
+        const delta = reasoningFilters.get(key)?.push(parsed.payload.delta) || "";
+        if (delta) response.write(`event: ${parsed.type}\ndata: ${JSON.stringify({ ...parsed.payload, delta })}\n\n`);
+        return;
+      }
+      if (parsed.payload) response.write(`event: ${parsed.type}\ndata: ${JSON.stringify(sanitizeHandoffEvent(parsed.payload))}\n\n`);
+      else response.write(`${frame}\n\n`);
     };
 
     try {

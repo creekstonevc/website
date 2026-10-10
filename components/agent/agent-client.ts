@@ -1,4 +1,5 @@
 import { DEFAULT_FILE_BYTES, MAX_ATTACHMENT_FILES, MAX_TURN_BYTES, isSafeFileName, isFileId, type AttachmentFile, type AttachmentCapabilities } from "../../lib/agent-attachments.mjs";
+import { handoffContent, type HandoffContent } from "../../lib/handoff.mjs";
 export type { AttachmentFile, AttachmentCapabilities } from "../../lib/agent-attachments.mjs";
 
 export type Message = {
@@ -22,6 +23,8 @@ export type StreamResult = {
   ttsTicket: string | null;
   attachments?: AttachmentFile[];
   attachmentWarning?: string;
+  handoffProposal?: { sessionKey: string; content: HandoffContent };
+  handoffWarning?: string;
 };
 
 export type ConversationSession = {
@@ -234,6 +237,7 @@ export async function streamReply(
     credentials: "same-origin",
     body: JSON.stringify({
       ...(bootstrap ? { bootstrap: true } : { input }),
+      ...(!bootstrap ? { handoffProposalVersion: 1 } : {}),
       ...(sessionKey ? { sessionKey } : {}),
       ...(!bootstrap && liveVoiceId ? { liveVoiceId } : {}),
       ...(!bootstrap && attachments?.length ? { attachments: attachments.map((file) => file.ticket) } : {}),
@@ -263,6 +267,9 @@ export async function streamReply(
   let completedOutput = "";
   let ttsTicket: string | null = null;
   let finished = false;
+  let handoffProposal: StreamResult["handoffProposal"];
+  let handoffWarning: string | undefined;
+  let proposalEvents = 0;
   let attachmentMetadata: { attachments?: AttachmentFile[]; attachmentWarning?: string } = {};
 
   const handleFrame = (frame: string): boolean => {
@@ -295,6 +302,19 @@ export async function streamReply(
       isRecord(payload) && typeof payload.type === "string" ? payload.type : "";
     const type = eventName || payloadType;
     const delta = isRecord(payload) ? readString(payload.delta) : "";
+
+    if (type === "creekstone.handoff.unavailable" && !bootstrap && sessionKey && isRecord(payload) && payload.sessionKey === sessionKey && payload.code === "invalid_proposal") {
+      handoffWarning = "没能完整读取 Agent 的提案。可以在确认卡中手动填写；没有保存或转交任何提案内容。";
+      return false;
+    }
+
+    if (type === "creekstone.handoff.proposal") {
+      proposalEvents++;
+      const content = isRecord(payload) ? handoffContent(payload.content) : null;
+      handoffProposal = proposalEvents === 1 && !bootstrap && !!sessionKey && isRecord(payload) && payload.sessionKey === sessionKey && content
+        ? { sessionKey, content } : undefined;
+      return false;
+    }
 
     if (type === "creekstone.attachments.ready" && isRecord(payload)) {
       attachmentMetadata = { attachments: readAttachmentFiles(payload.attachments),
@@ -360,9 +380,10 @@ export async function streamReply(
   }
 
   if (!finished) throw new AgentRequestError(502, "stream_interrupted");
-  if (!(completedOutput || streamedOutput).trim() && !attachmentMetadata.attachments?.length && !attachmentMetadata.attachmentWarning) throw new AgentRequestError(502, "empty_response");
+  if (!(completedOutput || streamedOutput).trim() && !attachmentMetadata.attachments?.length && !attachmentMetadata.attachmentWarning && !handoffProposal && !handoffWarning) throw new AgentRequestError(502, "empty_response");
 
-  return { text: completedOutput || streamedOutput, ttsTicket, ...attachmentMetadata };
+  return { text: completedOutput || streamedOutput || (handoffProposal ? "请核对下方确认卡中的内容，再决定是否转交。" : handoffWarning || ""), ttsTicket, ...attachmentMetadata,
+    ...(handoffProposal ? { handoffProposal } : {}), ...(handoffWarning ? { handoffWarning } : {}) };
   } finally {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();

@@ -1,18 +1,27 @@
 // Local-only, deterministic UI fixture. No credentials and no upstream traffic.
 // npm run build && node scripts/agent-qa-server.mjs
 import { createServer } from "node:http";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { createGateway } from "../gateway/server.mjs";
 import { attachmentConfig } from "../gateway/attachments.mjs";
 import { HighlightedLiveVoice } from "../gateway/live-voice.mjs";
 import { createFakeHandoffHost } from "./handoff-fixture.mjs";
+import { createRealQaHandoffHost } from "./handoff-real-fixture.mjs";
+import { PROPOSAL_OPEN, PROPOSAL_CLOSE, stripWebsiteCapability } from "../gateway/handoff-proposal.mjs";
 
 const port = Number(process.env.QA_PORT || 3100);
 let serial = 0;
 const conversations = new Map();
 const rejected = new Set();
 const files = new Map();
+const proposalContent = { summary: "本地测试：为创业团队开发协作工具，希望交流产品验证方向。", contact: "founder@example.invalid", founder_name: "测试创始人", project_name: "本地 QA 项目" };
+const proposalProcess = process.env.QA_HANDOFF_PROPOSE_COMMAND ? spawnSync(process.env.QA_HANDOFF_PROPOSE_COMMAND, ["propose"], {
+  input: JSON.stringify(proposalContent), encoding: "utf8", timeout: 10000, env: { PATH: "/usr/bin:/bin", PYTHONIOENCODING: "utf-8" },
+}) : null;
+if (proposalProcess && proposalProcess.status !== 0) throw new Error("Local propose fixture failed");
+const proposalBlock = proposalProcess ? JSON.parse(proposalProcess.stdout).card_block : `${PROPOSAL_OPEN}\n${JSON.stringify(proposalContent)}\n${PROPOSAL_CLOSE}`;
 const msg = (role, text) => ({ id: `msg_${++serial}`, type: "message", role, content: [{ type: role === "user" ? "input_text" : "output_text", text }] });
 const config = {
   allowedOrigins: new Set([`http://localhost:${port}`]), signingSecret: "qa-only-not-a-production-secret-1234567890",
@@ -59,7 +68,7 @@ const fakeFetch = async (url, options = {}) => {
   if (path === "/v1/responses") {
     const { input: rawInput, conversation } = JSON.parse(options.body);
     const content = Array.isArray(rawInput) ? rawInput[0].content : [{ type: "input_text", text: rawInput }];
-    const input = content.find((part) => part.type === "input_text")?.text || "";
+    const input = stripWebsiteCapability(content.find((part) => part.type === "input_text")?.text || "");
     const uploaded = content.filter((part) => part.type === "input_file");
     const items = conversations.get(conversation);
     if (input === "retry" && !rejected.has(conversation)) {
@@ -73,6 +82,8 @@ const fakeFetch = async (url, options = {}) => {
       Array.from({ length: input === "long" ? 50 : 6 }, (_, i) => `\n\n**Signal ${i + 1}** — 先把问题讲清楚，再一起讨论。Build from a real founder problem and test your assumptions with the people who need it.`).join("");
     if (input === "linebreak") answer = '**2. 主动式 AI / Intent Layer** — 产品不是等用户发命令，而是在正确时机识别意图、提出建议或发起可控行动。触发规则得可解释，权限得可撤回，错误成本得可控。\n\n**3. AI-Native 生产力和开发工具** — 能把模型能力转成可委托的完整交付，在真实生产流程里承担验证与协作。最关键的检验是：如果用户能无成本切换到平台原生功能，你的价值还在不在。';
     const annotations = [];
+    if (input === "handoff proposal") answer = `我整理了一份摘要，请你核对确认卡，再决定是否转交。\n${proposalBlock}`;
+    if (input === "invalid handoff") answer = `请你核对确认卡。\n${proposalBlock}\n${proposalBlock}`;
     if (uploaded.length || ["artifact", "incomplete file", "file only"].includes(input)) {
       const id = `file-out-qa-${++serial}`;
       const filename = "Founder memo 创业分析.md";
@@ -134,12 +145,16 @@ const makeLiveVoice = process.env.QA_SPEECH === "1" ? (emit) => new HighlightedL
     };
   },
 }) : undefined;
-const handoffFixture = process.env.QA_HANDOFF === "1" ? createFakeHandoffHost() : null;
+const handoffFixture = process.env.QA_HANDOFF_HOST_COMMAND ? await createRealQaHandoffHost(process.env.QA_HANDOFF_HOST_COMMAND)
+  : process.env.QA_HANDOFF === "1" ? createFakeHandoffHost() : null;
 if (handoffFixture) config.handoff = { enabled: true, submitEnabled: true };
 const gateway = createGateway({ config, fetchImpl: fakeFetch, makeLiveVoice, invokeHandoffHost: handoffFixture?.invoke });
 const root = resolve("out");
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml" };
 createServer(async (request, response) => {
+  if (request.url === "/qa/handoff" && handoffFixture?.snapshot) {
+    response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(handoffFixture.snapshot())); return;
+  }
   if (request.url.startsWith("/api/agent/")) {
     request.url = request.url.replace("/api/agent", "");
     gateway.emit("request", request, response);

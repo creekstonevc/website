@@ -21,11 +21,58 @@ HANDOFF_HOST_COMMAND=/opt/creekstone-handoff/bin/creekstone-handoff-host
 HANDOFF_HOST_ENV_FILE=/etc/creekstone-handoff.env
 ```
 
-The Agent tool route remains unconditionally unavailable (503), including when
-the three browser-service flags are enabled. Boids must first supply a trusted,
-short-lived conversation-bound capability. A global bearer token plus a
-model-provided conversation ID is not an acceptable replacement. No proactive
-invitations or automatic extraction of a card from assistant prose are included.
+The optional Agent tool route remains unconditionally unavailable (503), even
+when the three browser-service flags are enabled. It would require a trusted,
+short-lived conversation-bound capability; a global bearer token plus a
+model-provided conversation ID is not an acceptable replacement. **This is not
+a prerequisite for the first-release proposal flow below.** No proactive
+invitations or interpretation of ordinary assistant prose as consent is included.
+
+## Unprivileged Agent proposal
+
+After a founder asks to talk to the team, Agent runtime **0.3.1** can use the
+local `submit-founder-handoff propose` command to validate four content fields
+without network, credentials or file writes. The Agent appends its exact
+`card_block` to the end of its final assistant reply:
+
+```text
+<creekstone-handoff-proposal-v1>
+{"summary":"...","contact":"...","founder_name":"...","project_name":"..."}
+</creekstone-handoff-proposal-v1>
+```
+
+Only `summary` is required; other fields may be omitted or empty. Limits are
+1200/240/120/160 Unicode code points respectively. Values must be strings;
+unknown/duplicate keys and multiple blocks are rejected. JSON encodes `<`, `>`
+and `&` as Unicode escapes. Identity, target, draft ID, nonce, state, consent
+and submission keys have no place in this protocol.
+
+The new browser sends `handoffProposalVersion:1` with each normal chat request.
+Only for that version does the gateway add a fixed non-secret display-capability
+prefix to upstream input (not bootstrap Hi). Older tabs do not advertise UI
+capabilities they lack. Its exact text is `WEBSITE_CAPABILITY` in
+`gateway/handoff-proposal.mjs`, bounded by
+`[[creekstone-website-capabilities:v1]]` and its matching closing sentinel.
+It is ordinary input text, **not a system instruction, identity or authority**.
+String input and native file parts are preserved; history removes exactly one
+copy of the fixed prefix. Outside a host declaring this capability, the Agent
+must not emit the block. No unsupported `instructions`, `tools` or environment
+injection feature is assumed of the Responses API.
+
+The gateway buffers partial markers so neither raw JSON nor capability text
+is displayed/spoken, including repeated item/done/completed events. Only a
+successful completed assistant message can produce the gateway's own
+`creekstone.handoff.proposal` event, bound to the already authenticated
+conversation. Provider-supplied `creekstone.*` events are discarded. A malformed
+proposal shows a manual-entry notice, not an invisible promise of a card.
+
+The browser only prefills an empty, known, unsaved card. It never automatically
+calls prepare/decision and never replaces an existing draft, request or local
+edit. The founder explicitly saves, checks and confirms. Failed/interrupted
+responses and history restoration cannot replay proposals. An unsaved proposal
+does not survive reload; saved drafts/results restore from the host ledger.
+Manual entry remains available. None of these steps grants the Agent write
+access or proves that its summary/contact is accurate: the card requires review.
 
 ## Consent and recovery
 
@@ -115,8 +162,9 @@ Before enabling any real submission:
 - Provision the private host credential/ledger and establish retention/backups.
 - Pass negative consent, foreign-session, stale-revision, concurrency and
   interrupted-result tests. Check disabled behavior independently.
-- A browser-only manual flow can be enabled independently of Agent tools after
-  those requirements. Keep `/tool` disabled until trusted session injection is
+- Both the browser manual entry and Agent proposal → browser review flow can
+  be enabled independently of the optional Agent tool broker after those
+  requirements. Keep `/tool` disabled until trusted session injection is
   implemented and tested. Never use real founder leads as production smoke tests.
 
 ## Local checks
@@ -137,6 +185,24 @@ For the real Python subprocess/SQLite path with a loopback fake Workspace:
 ```bash
 node scripts/handoff-host-smoke.mjs /absolute/qa-venv/bin/creekstone-handoff-host
 ```
+
+For browser-to-real-host integration with a synthetic loopback Workspace:
+
+```bash
+QA_PORT=3101 \
+QA_HANDOFF_PROPOSE_COMMAND=/absolute/qa-venv/bin/submit-founder-handoff \
+QA_HANDOFF_HOST_COMMAND=/absolute/qa-venv/bin/creekstone-handoff-host \
+node scripts/agent-qa-server.mjs
+```
+
+Send `handoff proposal` (or `invalid handoff`) in that local page. The first
+command uses the actual installed CLI output in a simulated completed LLM
+response. Review/edit/save/confirm in the browser. `/qa/handoff` on this
+loopback-only fixture exposes synthetic Workspace call/write counters and
+records: zero calls before confirmation; exactly one write with the user's
+confirmed content afterward. It never loads production envfiles or a real key.
+This validates the local integration, not a deployed LLM/Prompt or production
+Workspace permissions.
 
 The smoke script supplies a synthetic key, does not load project credentials,
 and verifies zero unconfirmed Workspace access, stale/foreign rejection,

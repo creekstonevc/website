@@ -42,7 +42,7 @@ test("Responses only submits signed receipts, never client paths or filenames as
     return new Response(event("response.output_text.delta", { delta: "Ready" }) + event("response.completed", {}));
   });
   await streamReply("read", handlers, { sessionKey: "s", attachments: [file] });
-  assert.deepEqual(body, { input: "read", sessionKey: "s", attachments: [file.ticket] });
+  assert.deepEqual(body, { input: "read", handoffProposalVersion: 1, sessionKey: "s", attachments: [file.ticket] });
 });
 
 test("output attachments appear only on terminal success, never from partial SSE", async (t) => {

@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 import { createGateway, loadConfig } from "./server.mjs";
+import { WEBSITE_CAPABILITY } from "./handoff-proposal.mjs";
 import { createConversationCredential, normalizeConversationHistory, verifyTtsTicket } from "./core.mjs";
 import { attachmentConfig, buildAttachmentInput, createAttachmentBudget, createFileMetadataLookup,
   nativeAttachmentReferences, messageAttachments, verifyAttachmentTicket } from "./attachments.mjs";
@@ -100,11 +101,11 @@ test("native round-trip: multipart upload → input_file → annotation → forc
   const file = await f.upload(session, "创业 计划.pdf", bytes);
   assert.deepEqual(f.storage.get(file.fileId).bytes, bytes);
   assert.equal(file.path, undefined);
-  const input = { input: "请帮我分析", sessionKey: session.sessionKey, attachments: [file.ticket] };
+  const input = { input: "请帮我分析", sessionKey: session.sessionKey, attachments: [file.ticket], handoffProposalVersion: 1 };
   const response = await f.post("/responses", input, session);
   const wire = await response.text();
   assert.deepEqual(f.state.payload, { model: f.config.boidsModel, conversation: "conv_1", stream: true,
-    input: [{ role: "user", content: [{ type: "input_text", text: input.input }, { type: "input_file", file_id: file.fileId }] }] });
+    input: [{ role: "user", content: [{ type: "input_text", text: WEBSITE_CAPABILITY + input.input }, { type: "input_file", file_id: file.fileId }] }] });
   const output = ready(wire).attachments[0];
   assert.equal(output.fileId, outputId); assert.equal(output.name, outputName);
   const tts = JSON.parse(/event: creekstone.tts.ready\ndata: ([^\n]+)/.exec(wire)[1]);

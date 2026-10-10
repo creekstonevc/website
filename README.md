@@ -50,9 +50,12 @@ session-bound receipts protect downloads; provider credentials never reach the
 browser. No Agent.md or Skill edits are required. The contract, security boundary
 and limits are in [docs/agent-attachments.md](docs/agent-attachments.md).
 
-The manual founder handoff entry now opens an explicit review/confirmation card.
-Its private host adapter and browser routes ship **disabled by default**; Agent
-tools remain unavailable until trusted per-conversation identity is provisioned.
+The manual founder handoff entry opens an explicit review/confirmation card.
+Completed Agent replies can also supply a strictly validated, unprivileged
+proposal that opens an unsaved prefilled card in the same conversation. The
+gateway suppresses its internal block from streamed text, history and TTS.
+Its private host adapter and browser routes ship **disabled by default**; a
+trusted Agent tool broker is optional and is not required for the proposal flow.
 No production handoff is enabled by installing this website release. Consent,
 recovery, private-host setup and activation prerequisites are described in
 [docs/founder-handoff.md](docs/founder-handoff.md).

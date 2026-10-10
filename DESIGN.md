@@ -389,6 +389,12 @@ Observed in `components/agent/HandoffCard.tsx` and its CSS module.
 
 **The Handoff State Truth Rule.** In the founder handoff card, describe only the known state: an uncertain response requires synchronization, and a submitted receipt does not imply human acceptance, a scheduled meeting, or a sent notification.
 
+**The Proposal Review Rule.** An Agent proposal opens the same inline card in
+an explicitly unsaved review state. It cannot overwrite the founder's local
+edits or an existing application. Internal protocol blocks never appear in the
+transcript or speech; malformed proposals offer manual entry without implying
+that a draft was saved or a handoff occurred.
+
 ### Chips
 
 - **Hero skills:** Transparent pill with a thin 20%-black border and 4px × 12px padding.

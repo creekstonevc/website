@@ -118,7 +118,7 @@ npm ci --prefix "$GATEWAY_ROOT" --omit=dev --ignore-scripts --no-audit --no-fund
 chown -R root:"$GATEWAY_USER" "$GATEWAY_ROOT/node_modules"
 chmod -R g+rX,o-rwx "$GATEWAY_ROOT/node_modules"
 
-for module in core server attachments live-voice mizzen mizzen-audio asr handoff handoff-host; do
+for module in core server attachments live-voice mizzen mizzen-audio asr handoff-proposal handoff handoff-host; do
   install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/gateway/$module.mjs" "$GATEWAY_ROOT/gateway/$module.mjs"
 done
 install -m 644 -o root -g "$GATEWAY_USER" "$PROJECT_DIR/lib/agent-attachments.mjs" "$GATEWAY_ROOT/lib/agent-attachments.mjs"

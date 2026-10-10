@@ -1,4 +1,9 @@
-import { handoffDraft, handoffResult, isRecord, type HandoffDraft, type HandoffResult } from "../../lib/handoff.mjs";
+import { handoffDraft, handoffResult, isRecord, type HandoffContent, type HandoffDraft, type HandoffResult } from "../../lib/handoff.mjs";
+
+export type HandoffOpenRequest = { sessionKey: string; sequence: number; proposal?: HandoffContent; notice?: string };
+export function canPrefillHandoff(snapshot: HandoffSnapshot | null, dirty: boolean, uncertain: boolean) {
+  return !!snapshot && !snapshot.draft && !dirty && !uncertain;
+}
 
 export type HandoffSnapshot = { available: boolean; canSubmit: boolean; draft: HandoffDraft | null; result?: HandoffResult };
 export class HandoffError extends Error {

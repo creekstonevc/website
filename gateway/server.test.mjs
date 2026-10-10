@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
 import { createGateway } from "./server.mjs";
+import { WEBSITE_CAPABILITY } from "./handoff-proposal.mjs";
 
 const origin = "https://creekstonevc.com";
 
@@ -113,6 +114,7 @@ test("gateway binds responses to its signed conversation cookie and renders tick
       },
       body: JSON.stringify({
         input: "Hello",
+        handoffProposalVersion: 1,
         model: "attacker-model",
         conversation: "conv_attacker_supplied",
       }),
@@ -122,7 +124,7 @@ test("gateway binds responses to its signed conversation cookie and renders tick
     assert.match(stream, /event: creekstone\.tts\.ready/);
     assert.deepEqual(boidsPayload, {
       model: "agent:creekstone",
-      input: "Hello",
+      input: WEBSITE_CAPABILITY + "Hello",
       conversation: "conv_server_bound",
       stream: true,
     });

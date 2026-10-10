@@ -36,6 +36,23 @@ for (const suffix of ["", "data: [DONE]\n\n", event("response.incomplete"), even
   });
 }
 
+test("proposal is returned only for the requested session after terminal success; no prepare/decision is requested", async t => {
+  const content = { summary: "测试摘要", contact: "qa@example.invalid", founder_name: "", project_name: "" };
+  const proposal = event("creekstone.handoff.proposal", { sessionKey: "owned", content });
+  const mock = t.mock.method(globalThis, "fetch", async () => new Response(proposal + event("response.completed")));
+  const result = await streamReply("申请交流", handlers, { sessionKey: "owned" });
+  assert.deepEqual(result.handoffProposal, { sessionKey: "owned", content });
+  assert.match(result.text, /确认卡/);
+  assert.equal(mock.mock.callCount(), 1);
+  for (const wire of [proposal + event("response.failed"), proposal, proposal + proposal + event("response.completed")]) {
+    mock.mock.mockImplementation(async () => new Response(wire));
+    await assert.rejects(streamReply("申请交流", handlers, { sessionKey: "owned" }));
+  }
+  mock.mock.mockImplementation(async () => new Response(event("response.output_text.delta", { delta: "普通回复" }) + proposal + event("response.completed")));
+  assert.equal((await streamReply("test", handlers, { sessionKey: "other" })).handoffProposal, undefined);
+  assert.equal((await streamReply("test", handlers, { sessionKey: "owned", bootstrap: true })).handoffProposal, undefined);
+});
+
 test("HTTP rejection is surfaced without automatically resending", async (t) => {
   const mock = t.mock.method(globalThis, "fetch", async () => Response.json({ error: { code: "rate_limited" } }, { status: 429 }));
   await assert.rejects(streamReply("hello", handlers), (error) => error.status === 429);

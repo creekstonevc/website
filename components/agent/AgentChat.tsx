@@ -13,6 +13,7 @@ import {
 } from "react";
 import { SpeechMarkdown } from "./SpeechMarkdown";
 import { HandoffCard } from "./HandoffCard";
+import type { HandoffOpenRequest } from "./handoff-client";
 import styles from "./AgentChat.module.css";
 import "./presence-transitions.css";
 import { useTranscriptScroll } from "./useTranscriptScroll";
@@ -141,7 +142,7 @@ export function AgentChat() {
   const compositionEnded = useRef(0);
   const operation = useRef(false);
   const [sessionKey, setSessionKey] = useState("");
-  const [handoffOpen, setHandoffOpen] = useState<{ sessionKey: string; sequence: number } | null>(null);
+  const [handoffOpen, setHandoffOpen] = useState<HandoffOpenRequest | null>(null);
   const sessionKeyRef = useRef("");
   const [sessions, setSessions] = useState<ConversationSession["sessions"]>([]);
   const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
@@ -247,6 +248,7 @@ export function AgentChat() {
   };
 
   const renderReply = useCallback(async (input: string, bootstrap = false, attachments: AttachmentFile[] = [], liveVoiceId?: string) => {
+    const replySessionKey = sessionKeyRef.current;
     let pendingOutput = "";
     let pendingThinking = "";
     let animationFrame: number | null = null;
@@ -295,8 +297,13 @@ export function AgentChat() {
             queueFlush();
           },
         },
-        { bootstrap, sessionKey: sessionKeyRef.current, attachments, liveVoiceId },
+        { bootstrap, sessionKey: replySessionKey, attachments, liveVoiceId },
       );
+
+      if ((result.handoffProposal || result.handoffWarning) && replySessionKey === sessionKeyRef.current) {
+        const proposal = result.handoffProposal?.content;
+        setHandoffOpen(current => ({ sessionKey: replySessionKey, sequence: (current?.sequence || 0) + 1, proposal, notice: result.handoffWarning }));
+      }
 
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
