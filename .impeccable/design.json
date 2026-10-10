@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-07-30T10:27:30Z",
+  "generatedAt": "2026-10-10T08:34:43Z",
   "title": "Design System: Creekstone Ventures Founder Signal Field",
   "extensions": {
     "colorMeta": {
@@ -218,6 +218,13 @@
     ],
     "components": [
       {
+        "name": "Founder Handoff Confirmation Card",
+        "kind": "card",
+        "description": "Scoped /agent/ review sheet after a draft has been saved: content and disclosure precede confirmation or deferral. Saving is a separate preceding step, and any edit requires another save and review. Local colors illustrate this component, not new global tokens; the static preview does not submit data.",
+        "html": "<section class=\"ds-handoff\" aria-labelledby=\"ds-handoff-title\"><header class=\"ds-handoff-header\"><h2 id=\"ds-handoff-title\">转交确认卡</h2><button class=\"ds-handoff-close\" type=\"button\" aria-label=\"收起确认卡\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m6 6 12 12M18 6 6 18\"/></svg></button></header><p class=\"ds-handoff-status\" role=\"status\">草稿已保存，尚未转交<span>第 1 版</span></p><p class=\"ds-handoff-purpose\">请检查你愿意转交给团队的内容，再决定是否确认。</p><div class=\"ds-handoff-fields\"><label class=\"ds-handoff-full\"><span>项目与诉求摘要</span><textarea rows=\"4\" placeholder=\"用几句话说明你正在做什么，以及希望交流的问题。\">正在构建早期产品，希望交流产品方向。</textarea></label><label class=\"ds-handoff-full\"><span>联系方式</span><input placeholder=\"你愿意提供的微信、邮箱或电话\"/></label><label><span>你的称呼（选填）</span><input placeholder=\"可留空\"/></label><label><span>项目名称（选填）</span><input placeholder=\"可留空\"/></label></div><p class=\"ds-handoff-disclosure\">仅转交卡中内容，并记录当前会话编号、提交编号、来源与提交时间；不附带完整聊天或附件。联系方式由你提供，不会自动猜测。</p><div class=\"ds-handoff-actions\"><button class=\"ds-handoff-primary\" type=\"button\" disabled>确认转交</button><button type=\"button\">暂不转交</button></div><button class=\"ds-handoff-sync\" type=\"button\">同步转交状态</button></section>",
+        "css": ".ds-handoff { min-width: 0; padding: 22px; border: 1px solid #8a7543; border-radius: 0; color: #f3efe5; background: #100f0b; font: 400 14px/1.65 'Space Grotesk', sans-serif; overflow-wrap: anywhere; animation: ds-handoff-reveal 220ms cubic-bezier(.22,1,.36,1); } .ds-handoff-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; } .ds-handoff-header h2 { margin: 0; font-size: 21px; font-weight: 500; letter-spacing: -.02em; } .ds-handoff button { cursor: pointer; font: inherit; border-radius: 0; } .ds-handoff-close { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; border: 0; background: transparent; color: #c9c1b0; } .ds-handoff-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; } .ds-handoff-status { display: flex; flex-wrap: wrap; gap: 4px 14px; color: #f4d87d; margin: 0 0 14px; font-size: 12px; } .ds-handoff-status span { color: #c9c1b0; } .ds-handoff-purpose { margin: 0 0 22px; max-width: 65ch; color: #e3dcca; } .ds-handoff-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; } .ds-handoff-fields label { display: grid; min-width: 0; gap: 7px; font-size: 12px; color: #dcd2bc; } .ds-handoff-full { grid-column: 1 / -1; } .ds-handoff-fields input, .ds-handoff-fields textarea { min-width: 0; padding: 10px 12px; border: 1px solid #827249; border-radius: 0; background: #080806; color: #f3efe5; font: 400 15px/1.6 'Space Grotesk', sans-serif; } .ds-handoff-fields textarea { min-height: 112px; resize: vertical; } .ds-handoff-fields :is(input,textarea)::placeholder { color: #a9a292; } .ds-handoff-fields :is(input,textarea):disabled { color: #c9c1b0; opacity: .8; } .ds-handoff :is(button,input,textarea):focus-visible { outline: 2px solid #f4d87d; outline-offset: 3px; } .ds-handoff-disclosure { margin: 18px 0; font-size: 12px; color: #b8b2a4; } .ds-handoff-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; } .ds-handoff-actions button { min-height: 44px; padding: 10px 16px; border: 1px solid #827249; color: #e4d4ac; background: transparent; } .ds-handoff-actions .ds-handoff-primary { background: #e5bd52; border-color: #e5bd52; color: #151208; font-weight: 500; } .ds-handoff-actions button:hover:not(:disabled), .ds-handoff-close:hover { color: #fff0b9; background: #302916; } .ds-handoff-actions .ds-handoff-primary:hover:not(:disabled) { background: #f4d87d; color: #151208; } .ds-handoff button:disabled { opacity: .45; cursor: not-allowed; } .ds-handoff-sync { min-height: 44px; margin-top: 8px; padding: 8px 0; border: 0; background: transparent; color: #e5bd52; text-decoration: underline; text-underline-offset: 4px; font-size: 12px !important; } @keyframes ds-handoff-reveal { from { opacity: .5; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } } @media (max-width: 700px) { .ds-handoff { padding: 16px 12px; font-size: 13px; } .ds-handoff-header h2 { font-size: 19px; } .ds-handoff-fields { grid-template-columns: minmax(0,1fr); gap: 12px; } .ds-handoff-fields input, .ds-handoff-fields textarea { font-size: 16px; } .ds-handoff-actions { gap: 8px; } .ds-handoff-actions button { flex: 1 1 auto; padding: 10px 12px; } } @media (prefers-reduced-motion: reduce) { .ds-handoff { animation: none; } }"
+      },
+      {
         "name": "Command Button",
         "kind": "button",
         "refersTo": "button-command",
@@ -294,6 +301,16 @@
         "Eleven real perspectives expressed as a pointer-reactive square source field beside functional Contact and an integrated footer"
       ],
       "rules": [
+        {
+          "name": "The Reviewed Handoff Rule",
+          "body": "In the founder handoff card, show the exact content and sharing disclosure before decisions; saving is not consent, and changed content must be saved and reviewed again before confirmation.",
+          "section": "components"
+        },
+        {
+          "name": "The Handoff State Truth Rule",
+          "body": "In the founder handoff card, describe only the known state: an uncertain response requires synchronization, and a submitted receipt does not imply human acceptance, a scheduled meeting, or a sent notification.",
+          "section": "components"
+        },
         {
           "name": "The Binary Field Rule",
           "body": "Major chapters resolve to white-on-black or black-on-white; gray supports hierarchy but never becomes a competing theme.",

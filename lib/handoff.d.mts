@@ -1,0 +1,14 @@
+export type HandoffContent = { summary: string; contact: string; founder_name: string; project_name: string };
+export type HandoffResult = { status: "submitted" | "rejected" | "failed"; notified: false; reference_id?: string; error?: string };
+export type HandoffState = "awaiting_confirmation" | "confirmed" | "declined" | "expired" | "submitting" | "submitted" | "failed" | "reconcile_required";
+export type HandoffDraft = { draft_id: string; revision: number; state: HandoffState; content: HandoffContent; purpose: string; expires_at_ms: number; confirmation_nonce?: string; result?: HandoffResult };
+export const HANDOFF_PURPOSE: string;
+export const HANDOFF_LIMITS: Readonly<Record<keyof HandoffContent, number>>;
+export const HANDOFF_STATES: HandoffState[];
+export const EMPTY_HANDOFF: Readonly<HandoffContent>;
+export function isRecord(value: unknown): value is Record<string, unknown>;
+export function isDraftId(value: unknown): value is string;
+export function isRevision(value: unknown): value is number;
+export function handoffContent(value: unknown): HandoffContent | null;
+export function handoffResult(value: unknown): HandoffResult | null;
+export function handoffDraft(value: unknown): HandoffDraft | null;

@@ -9,6 +9,7 @@ import { attachmentDisplayText } from "../lib/agent-attachments.mjs";
 import { HighlightedLiveVoice, createLiveVoiceRegistry } from "./live-voice.mjs";
 import { createMizzenManager, mizzenConfig } from "./mizzen.mjs";
 import { createAsrBridge } from "./asr.mjs";
+import { createHandoffManager, handoffConfig, readHandoffBody } from "./handoff.mjs";
 import {
   GatewayError,
   buildBoidsResponsePayload,
@@ -54,6 +55,7 @@ export function loadConfig(env = process.env) {
     maxInputCharacters: Number(env.GATEWAY_MAX_INPUT_CHARACTERS || 4_000),
     maxTtsCharacters: Number(env.GATEWAY_MAX_TTS_CHARACTERS || 8_000),
     attachments: attachmentConfig(env),
+    handoff: handoffConfig(env),
     mizzen: mizzenConfig(env),
     conversationCookieName:
       env.GATEWAY_CONVERSATION_COOKIE_NAME?.trim() || "creekstone_conversation",
@@ -605,6 +607,7 @@ export function createGateway({
   config = loadConfig(),
   fetchImpl = fetch,
   makeLiveVoice,
+  invokeHandoffHost,
 } = {}) {
   config = { ...config, attachments: config.attachments || attachmentConfig() };
   config.fileMetadata = createFileMetadataLookup(config, fetchImpl);
@@ -613,6 +616,7 @@ export function createGateway({
   const bootstrapLocks = new Map();
   const activeTurns = new Set();
   const attachmentBudget = createAttachmentBudget();
+  const handoff = createHandoffManager(config, { invokeHost: invokeHandoffHost });
   const video = createMizzenManager(config, { fetchImpl });
   const liveVoices = createLiveVoiceRegistry(config, (emit, context) => context.videoId
     ? video.voice(emit, context.owner, context.videoId)
@@ -642,7 +646,18 @@ export function createGateway({
           "Method is not allowed",
         );
       }
+      // Reserved but fail-closed: a model bearer/cid is not a user cookie.
+      if (url.pathname === "/handoff/tool") throw new GatewayError(503, "handoff_tool_unavailable", "Trusted session-bound tools are not enabled");
       assertOrigin(request, config);
+
+      if (/^\/handoff\/(prepare|decision|status)$/.test(url.pathname)) {
+        const session = readConversationSession(request, config);
+        if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation first");
+        const body = await readHandoffBody(request);
+        if (body.sessionKey !== sessionKey(session.conversationId)) throw new GatewayError(409, "session_changed", "Conversation changed");
+        sendJson(response, 200, await handoff.handle(url.pathname.split("/").at(-1), session.conversationId, body));
+        return;
+      }
 
       if (/^\/video\/(capabilities|open|offer|ready|heartbeat|close|stats|diagnostics)$/.test(url.pathname)) {
         const session = readConversationSession(request, config);

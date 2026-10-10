@@ -35,7 +35,7 @@ and exposes the two authenticated live-voice routes with streaming enabled.
 ## Production deployment
 
 Production uses a static Next.js export served by Nginx, matching the original
-Creekstone deployment model. Seven exact same-origin API routes terminate at a
+Creekstone deployment model. Explicit same-origin API routes terminate at a
 private Node gateway bound to `127.0.0.1:8790`. The gateway validates request
 bodies, binds each browser to a Boids conversation with a signed, HttpOnly
 cookie, restores recent history, forces the published Yihao Agent model,
@@ -49,6 +49,13 @@ content in Responses, and `file_path` annotations for generated files. Signed,
 session-bound receipts protect downloads; provider credentials never reach the
 browser. No Agent.md or Skill edits are required. The contract, security boundary
 and limits are in [docs/agent-attachments.md](docs/agent-attachments.md).
+
+The manual founder handoff entry now opens an explicit review/confirmation card.
+Its private host adapter and browser routes ship **disabled by default**; Agent
+tools remain unavailable until trusted per-conversation identity is provisioned.
+No production handoff is enabled by installing this website release. Consent,
+recovery, private-host setup and activation prerequisites are described in
+[docs/founder-handoff.md](docs/founder-handoff.md).
 
 On the configured server, the project lives at `/root/creekstone-website`.
 Create `/root/creekstone-website/.env.local` from `.env.example` and provide
@@ -72,7 +79,7 @@ systemctl status creekstone-agent-gateway
 curl http://127.0.0.1:8790/health
 ```
 
-Public routes are intentionally limited to:
+Core conversation, voice and file routes include:
 
 ```text
 POST /api/agent/conversations

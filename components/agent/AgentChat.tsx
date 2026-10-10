@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { SpeechMarkdown } from "./SpeechMarkdown";
+import { HandoffCard } from "./HandoffCard";
 import styles from "./AgentChat.module.css";
 import "./presence-transitions.css";
 import { useTranscriptScroll } from "./useTranscriptScroll";
@@ -140,6 +141,7 @@ export function AgentChat() {
   const compositionEnded = useRef(0);
   const operation = useRef(false);
   const [sessionKey, setSessionKey] = useState("");
+  const [handoffOpen, setHandoffOpen] = useState<{ sessionKey: string; sequence: number } | null>(null);
   const sessionKeyRef = useRef("");
   const [sessions, setSessions] = useState<ConversationSession["sessions"]>([]);
   const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
@@ -807,6 +809,7 @@ export function AgentChat() {
               </div>
             </article>
           ); })}
+          {sessionKey && <HandoffCard key={sessionKey} sessionKey={sessionKey} openRequest={handoffOpen} chatBusy={busy} onOpen={pause} />}
           {recovery && !busy && <div className={styles.recovery} role="status">
             <p>{recovery.note}</p>
             <button type="button" onClick={() => {
@@ -844,12 +847,12 @@ export function AgentChat() {
         </div>
 
         <div className={styles.suggestions} aria-label="Suggested prompts">
-          {!messages.some((message) => message.role === "user") && suggestions.map((suggestion) => (
+          {suggestions.filter((suggestion, index) => index === 2 || !messages.some((message) => message.role === "user")).map((suggestion) => (
             <button
               type="button"
               key={suggestion}
-              disabled={busy || !ready || loadingHistory || !!recovery || attachmentDrafts.blocked}
-              onClick={() => void send(suggestion)}
+              disabled={suggestion === suggestions[2] ? !sessionKey : busy || !ready || loadingHistory || !!recovery || attachmentDrafts.blocked}
+              onClick={() => suggestion === suggestions[2] ? setHandoffOpen(current => ({ sessionKey, sequence: (current?.sequence || 0) + 1 })) : void send(suggestion)}
             >
               {suggestion}
             </button>

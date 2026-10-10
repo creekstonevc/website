@@ -6,6 +6,7 @@ import { extname, resolve } from "node:path";
 import { createGateway } from "../gateway/server.mjs";
 import { attachmentConfig } from "../gateway/attachments.mjs";
 import { HighlightedLiveVoice } from "../gateway/live-voice.mjs";
+import { createFakeHandoffHost } from "./handoff-fixture.mjs";
 
 const port = Number(process.env.QA_PORT || 3100);
 let serial = 0;
@@ -133,7 +134,9 @@ const makeLiveVoice = process.env.QA_SPEECH === "1" ? (emit) => new HighlightedL
     };
   },
 }) : undefined;
-const gateway = createGateway({ config, fetchImpl: fakeFetch, makeLiveVoice });
+const handoffFixture = process.env.QA_HANDOFF === "1" ? createFakeHandoffHost() : null;
+if (handoffFixture) config.handoff = { enabled: true, submitEnabled: true };
+const gateway = createGateway({ config, fetchImpl: fakeFetch, makeLiveVoice, invokeHandoffHost: handoffFixture?.invoke });
 const root = resolve("out");
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml" };
 createServer(async (request, response) => {

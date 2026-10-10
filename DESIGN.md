@@ -153,8 +153,9 @@ each turn receives a terse origin label and functional sequence number.
 The silent first-turn bootstrap never exposes its internal reasoning trace;
 reasoning remains available only for replies to visible founder messages.
 Founder messages are offset but never converted into generic chat bubbles.
-Suggested prompts remain secondary pills; the square gold transmit control is
-the only primary action. Error states resolve inside the transcript and point
+Suggested prompts remain secondary pills; the square gold transmit control
+owns ordinary chat submission. The inline handoff review has its own gold
+save-or-confirm action, scoped to the visible review card. Error states resolve inside the transcript and point
 to the verified Creekstone email rather than opening a detached alert.
 
 On mobile, the identity dossier compresses into a horizontal color portrait
@@ -370,6 +371,23 @@ Borders are structural and visible: 1–4px strokes, dashed rails and slots, thi
 - **Primary:** Black field, white tracked uppercase label, 10px × 14px or 12px × 24px internal padding.
 - **Hover / Focus:** Invert to white field and black label, with a compact white glow; keep the state change at 0.25–0.3s.
 - **Disabled:** The CHECK control drops to 35% opacity and becomes non-interactive.
+
+### Founder Handoff Confirmation Card
+
+A local review sheet inside the existing Operate chat, not a new page or modal.
+Observed in `components/agent/HandoffCard.tsx` and its CSS module.
+
+- **Surface:** Square, flat, warm-black field with a thin gold-toned boundary and warm-paper text. No added shadow or decorative imagery. The component-local field and secondary-action stroke (`#827249`) is a contrast-bearing example, not a new global palette token.
+- **Hierarchy:** A plain title and live status introduce the purpose, explicit field labels, editable content, and sharing disclosure; decisions follow the content. Optional fields are marked as such, and the summary shows its character count.
+- **Type:** Inherited Space Grotesk uses a medium-weight title (21px desktop / 19px mobile), body copy (14px / 13px), and compact field labels (12px), without the homepage's display sizing or tracked telemetry treatment. Editable text is 15px on desktop and 16px at widths up to 700px.
+- **Layout:** Summary and contact span the two-column field grid; at 700px and below it becomes one column. Card padding contracts from 22px to 16px vertically / 12px horizontally, and actions wrap without losing their minimum height.
+- **Actions:** Saving a draft and confirming transfer are separate steps. Editing requires a fresh save and review before confirmation. A gold primary action represents the current step; the outlined “暂不转交” remains a distinct choice, and status synchronization is a separate underlined action.
+- **Status:** Unavailable service, pending operation, uncertain result, saved draft, and submitted receipt are described explicitly. A submitted record becomes read-only and says that review is pending, no human acceptance or meeting is implied, and no notification has been sent.
+- **Access:** Close is a 44px square; decision and synchronization controls are at least 44px high. Buttons and fields receive a visible two-pixel pale-gold focus outline with three-pixel offset. A short 220ms entrance is removed for reduced motion, which also changes requested card scrolling to instant.
+
+**The Reviewed Handoff Rule.** In the founder handoff card, show the exact content and sharing disclosure before decisions; saving is not consent, and changed content must be saved and reviewed again before confirmation.
+
+**The Handoff State Truth Rule.** In the founder handoff card, describe only the known state: an uncertain response requires synchronization, and a submitted receipt does not imply human acceptance, a scheduled meeting, or a sent notification.
 
 ### Chips
 
