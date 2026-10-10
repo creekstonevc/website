@@ -11,19 +11,61 @@ import { createConversationCredential } from "./core.mjs";
 import { handoffContent } from "../lib/handoff.mjs";
 
 const secret = "handoff-tests-only-signing-secret-at-least-32";
-const config = { signingSecret: secret, handoff: { enabled: true, submitEnabled: true } };
+// Run all consent, ownership, idempotency and recovery regressions in the new
+// risk-accepted mode WITHOUT claiming that old writer isolation was verified.
+const config = { signingSecret: secret, handoff: handoffConfig({ HANDOFF_ENABLED: "true",
+  HANDOFF_SUBMIT_ENABLED: "true", HANDOFF_WRITE_ISOLATION_VERIFIED: "false", HANDOFF_LEGACY_WRITER_RISK_ACCEPTED: "true" }) };
 const content = { summary: "[本地仿真] 创业项目交流，非真实线索。", contact: "qa@example.invalid", founder_name: "", project_name: "" };
 const setup = (overrides = {}, invoke) => { const fake = createFakeHandoffHost(); return { fake, manager: createHandoffManager({ ...config, ...overrides }, { invokeHost: invoke || fake.invoke }) }; };
 const card = async manager => (await manager.handle("prepare", "conv_one", { sessionKey: "s", content })).draft;
 const confirm = draft => ({ sessionKey: "s", draft_id: draft.draft_id, revision: draft.revision, confirmation_nonce: draft.confirmation_nonce, action: "confirm" });
 
-test("handoff is fail-closed by default and isolation is required to enable submission", async () => {
+test("handoff is fail-closed by default and requires an explicit operator writer policy", async () => {
   assert.equal(handoffConfig().enabled, false);
   assert.equal(handoffConfig({ HANDOFF_SUBMIT_ENABLED: "true" }).submitEnabled, false);
   const { fake, manager } = setup({ handoff: handoffConfig() });
   assert.deepEqual(await manager.handle("status", "conv_one", { sessionKey: "s" }), { available: false, canSubmit: false, toolAvailable: false, draft: null });
   await assert.rejects(manager.handle("prepare", "conv_one", { content }), { code: "handoff_unavailable" });
   assert.equal(fake.calls.length, 0);
+});
+
+test("operator risk acceptance is an alternative to isolation, never a replacement for either enable switch", async () => {
+  for (const enabled of [false, true]) for (const submit of [false, true]) {
+    for (const isolated of [false, true]) for (const accepted of [false, true]) {
+      const options = handoffConfig({ HANDOFF_ENABLED: String(enabled), HANDOFF_SUBMIT_ENABLED: String(submit),
+        HANDOFF_WRITE_ISOLATION_VERIFIED: String(isolated), HANDOFF_LEGACY_WRITER_RISK_ACCEPTED: String(accepted) });
+      const { fake, manager } = setup({ handoff: options });
+      assert.equal((await manager.handle("status", "conv_one", {})).canSubmit, enabled && submit && (isolated || accepted));
+      if (!enabled) {
+        await assert.rejects(card(manager), { code: "handoff_unavailable" });
+        assert.equal(fake.calls.length, 0);
+      } else {
+        const draft = await card(manager);
+        if (submit && (isolated || accepted)) {
+          assert.equal((await manager.handle("decision", "conv_one", confirm(draft))).draft.state, "submitted");
+          assert.equal(fake.writes, 1);
+        } else {
+          await assert.rejects(manager.handle("decision", "conv_one", confirm(draft)), { code: "handoff_submission_disabled" });
+          assert.equal(fake.calls.some(call => call.operation === "decision"), false);
+          assert.equal(fake.writes, 0);
+        }
+      }
+    }
+  }
+  for (const value of [undefined, "", "false", "TRUE", "1", " true ", true]) {
+    assert.equal(handoffConfig({ HANDOFF_SUBMIT_ENABLED: "true", HANDOFF_LEGACY_WRITER_RISK_ACCEPTED: value }).submitEnabled, false);
+  }
+});
+
+test("browser/model fields cannot accept legacy writer risk when the operator has not", async () => {
+  const { fake, manager } = setup({ handoff: handoffConfig({ HANDOFF_ENABLED: "true", HANDOFF_SUBMIT_ENABLED: "true" }) });
+  const draft = await card(manager);
+  for (const field of ["HANDOFF_LEGACY_WRITER_RISK_ACCEPTED", "legacyWriterRiskAccepted", "HANDOFF_WRITE_ISOLATION_VERIFIED", "writeIsolationVerified"]) {
+    await assert.rejects(manager.handle("decision", "conv_one", { ...confirm(draft), [field]: true }), { code: "handoff_invalid" });
+    await assert.rejects(manager.handle("prepare", "conv_one", { content, [field]: true }), { code: "handoff_invalid" });
+  }
+  await assert.rejects(manager.handle("decision", "conv_one", confirm(draft)), { code: "handoff_submission_disabled" });
+  assert.equal(fake.writes, 0);
 });
 
 test("prepare/update/defer/status never submit; only cookie-authorized decision then same revision submits", async () => {
@@ -60,7 +102,7 @@ test("editing rotates revision and nonce; stale cards and altered nonce cannot c
 
 test("unknown fields, model-supplied identity/consent, direct submit, blank contact and foreign drafts fail closed", async () => {
   const { fake, manager } = setup(); const draft = await card(manager);
-  for (const field of ["identity", "conversation_id", "confirmed", "idempotency_key", "purpose", "content"]) {
+  for (const field of ["identity", "conversation_id", "confirmed", "idempotency_key", "purpose", "content", "HANDOFF_LEGACY_WRITER_RISK_ACCEPTED", "legacyWriterRiskAccepted"]) {
     await assert.rejects(manager.handle("decision", "conv_one", { ...confirm(draft), [field]: true }));
   }
   await assert.rejects(manager.handle("submit", "conv_one", confirm(draft)));

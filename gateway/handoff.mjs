@@ -4,9 +4,14 @@ import { createHandoffHost } from "./handoff-host.mjs";
 import { handoffContent, handoffDraft, handoffResult, isDraftId, isRecord, isRevision } from "../lib/handoff.mjs";
 
 export function handoffConfig(env = {}) {
+  // Operator-only rollout policy, not user consent or proof of isolation.
+  // Risk acceptance permits this website's guarded path while legacy writers
+  // may still bypass it. Neither value can come from a request or model output.
+  const writerPolicyApproved = env.HANDOFF_WRITE_ISOLATION_VERIFIED === "true" ||
+    env.HANDOFF_LEGACY_WRITER_RISK_ACCEPTED === "true";
   return {
     enabled: env.HANDOFF_ENABLED === "true",
-    submitEnabled: env.HANDOFF_SUBMIT_ENABLED === "true" && env.HANDOFF_WRITE_ISOLATION_VERIFIED === "true",
+    submitEnabled: env.HANDOFF_SUBMIT_ENABLED === "true" && writerPolicyApproved,
     command: env.HANDOFF_HOST_COMMAND || "/opt/creekstone-handoff/bin/creekstone-handoff-host",
     envFile: env.HANDOFF_HOST_ENV_FILE || "/etc/creekstone-handoff.env",
   };

@@ -7,22 +7,24 @@ revision; it does not book a meeting or mean a human has accepted the request.
 
 ## Release boundary
 
-This website release ships with all three flags below false. It does not
+This website release ships with all four flags below false. It does not
 deploy an Agent prompt, Skill or sandbox image. A disabled card explains that
 the service is not open, and neither saves nor sends its contents. Chat remains
-available. Do not enable production writes until the prerequisites below are
-verified; a successful local fixture test is not proof of production isolation.
+available. Verify the private host prerequisites below before enabling writes,
+then choose an explicit operator rollout policy. A successful fixture or host
+test is not proof of old Agent writer isolation or browser end-to-end success.
 
 ```dotenv
 HANDOFF_ENABLED=false
 HANDOFF_SUBMIT_ENABLED=false
 HANDOFF_WRITE_ISOLATION_VERIFIED=false
+HANDOFF_LEGACY_WRITER_RISK_ACCEPTED=false
 HANDOFF_HOST_COMMAND=/opt/creekstone-handoff/bin/creekstone-handoff-host
 HANDOFF_HOST_ENV_FILE=/etc/creekstone-handoff.env
 ```
 
 The optional Agent tool route remains unconditionally unavailable (503), even
-when the three browser-service flags are enabled. It would require a trusted,
+when browser-service submission is enabled. It would require a trusted,
 short-lived conversation-bound capability; a global bearer token plus a
 model-provided conversation ID is not an acceptable replacement. **This is not
 a prerequisite for the first-release proposal flow below.** No proactive
@@ -154,8 +156,10 @@ NFS or multiple independent host replicas. Symlinked ledger parents are rejected
 
 Before enabling any real submission:
 
-- Revoke/rotate the old Agent sandbox Writer keys, and remove all alternative
-  external-Agent Intake writes and direct CLI fallbacks; obtain evidence.
+- For the default policy, revoke/rotate the old Agent sandbox Writer keys and
+  remove alternative external-Agent Intake writes/direct CLI fallbacks; obtain
+  evidence. Otherwise obtain explicit administrator approval for the legacy
+  writer risk mode below; record unresolved paths without claiming isolation.
 - Coordinate deployment of the matching runtime, Prompt and Skill; handle old
   in-flight submissions separately, without automatically migrating/replaying
   them into new cards.
@@ -166,6 +170,57 @@ Before enabling any real submission:
   be enabled independently of the optional Agent tool broker after those
   requirements. Keep `/tool` disabled until trusted session injection is
   implemented and tested. Never use real founder leads as production smoke tests.
+
+### Operator-approved legacy-writer risk
+
+The default/recommended policy verifies old writer isolation before enabling
+submission. An administrator may instead explicitly accept the known risk that
+legacy Agent credentials remain effective or unverified. This alternative does
+**not** claim isolation and must never set `HANDOFF_WRITE_ISOLATION_VERIFIED=true`
+merely to pass a gate. Its condition is:
+
+```text
+HANDOFF_ENABLED && HANDOFF_SUBMIT_ENABLED &&
+  (HANDOFF_WRITE_ISOLATION_VERIFIED || HANDOFF_LEGACY_WRITER_RISK_ACCEPTED)
+```
+
+Only the literal env value `true` enables a flag. Defaults remain false; setting
+risk acceptance alone does not turn on the feature or submission. The new
+configuration is read only from the trusted Gateway environment. Request JSON,
+headers, cookies, chat, ASR and Agent proposals cannot set or override it.
+
+Before accepting this mode, verify the new **host-only** dedicated credential's
+identity, exact Workspace scope and revocation state, read the fixed target's
+import index, and check the executable/private envfile/ledger from the actual
+service user. Pass confirmation/version/nonce/ownership/idempotency/recovery
+tests. Do not reuse a sandbox writer or inject the new credential into an Agent.
+Keep backups/retention under operator control; no rollout flag deletes records.
+
+After explicit administrator approval and those checks, the alternative is:
+
+```dotenv
+HANDOFF_ENABLED=true
+HANDOFF_SUBMIT_ENABLED=true
+HANDOFF_WRITE_ISOLATION_VERIFIED=false
+HANDOFF_LEGACY_WRITER_RISK_ACCEPTED=true
+```
+
+This preserves the website's authenticated cookie ownership, explicit user
+confirmation of a stored revision, nonce validation and durable idempotency.
+It cannot prevent an old Agent or another holder of a legacy credential from
+writing directly outside the website flow. Therefore it is **not** an assurance
+that every Intake record has website consent. Audit/revoke those old write paths
+separately; do not revoke shared or unowned credentials based on this flag.
+The optional `/tool` route remains unavailable in either policy.
+
+Deployment preserves the flag in the server-side Gateway envfile, with a false
+fallback for fresh installs. Change only the private operator configuration and
+restart the service after verification. To stop new confirmations, set
+`HANDOFF_SUBMIT_ENABLED=false`; to stop all card mutations also set
+`HANDOFF_ENABLED=false`. Clear risk acceptance when returning to the verified
+isolation policy. A rollback must retain the private key/ledger and existing
+receipts, not replay or erase them. Rollback to an older Gateway that lacks this
+flag fails closed while isolation remains false.
 
 ## Local checks
 
@@ -210,5 +265,6 @@ concurrent idempotency, committed writes with `view_error`, and recovery after
 losing the submit reply. Its private temporary ledger contains synthetic data
 only; canonical paths avoid macOS `/var` and `/tmp` symlinks.
 
-Production verification for this disabled release is health/config/static
-asset inspection only. No conversation or lead is created to test it.
+Default-disabled production verification is health/config/static asset
+inspection only. Any real synthetic submission needs separate explicit
+authorization and must not be presented as a real founder lead.

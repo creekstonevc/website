@@ -42,10 +42,13 @@ test("handoff deploy installs private adapter and defaults to closed writes/tool
   assert.match(deploy, /for module in .* handoff handoff-host;/);
   assert.match(deploy, /lib\/handoff\.mjs/);
   assert.match(deploy, /HANDOFF_WRITE_ISOLATION_VERIFIED/);
+  assert.match(deploy, /HANDOFF_LEGACY_WRITER_RISK_ACCEPTED="\$\{HANDOFF_LEGACY_WRITER_RISK_ACCEPTED:-false\}"/);
+  const handoffEnvLoops = deploy.match(/for name in [^\n]*HANDOFF_LEGACY_WRITER_RISK_ACCEPTED[^\n]*; do/g);
+  assert.equal(handoffEnvLoops?.length, 2, "Risk acceptance must survive the read and write deployment steps");
   assert.match(deploy, /StateDirectory=creekstone-handoff/);
   const tool = deploy.match(/location = \/api\/agent\/handoff\/tool \{([\s\S]*?)\n\}/)?.[1];
   assert.match(tool, /return 503/); assert.doesNotMatch(tool, /proxy_pass/);
   const env = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
-  for (const key of ["HANDOFF_ENABLED", "HANDOFF_SUBMIT_ENABLED", "HANDOFF_WRITE_ISOLATION_VERIFIED"]) assert.match(env, new RegExp(`${key}=false`));
+  for (const key of ["HANDOFF_ENABLED", "HANDOFF_SUBMIT_ENABLED", "HANDOFF_WRITE_ISOLATION_VERIFIED", "HANDOFF_LEGACY_WRITER_RISK_ACCEPTED"]) assert.match(env, new RegExp(`${key}=false`));
   assert.doesNotMatch(deploy, /CREEKSTONE_HANDOFF_WORKSPACE_API_KEY/);
 });
