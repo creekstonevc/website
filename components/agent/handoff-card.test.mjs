@@ -48,7 +48,9 @@ function render(options = {}) {
   walk(tree);
   return { html: renderToStaticMarkup(tree), elements, effects, changes, requests };
 }
-const byText = (view, text) => view.elements.find(element => element.type === "button" && element.props.children === text);
+const visibleText = node => Array.isArray(node) ? node.map(visibleText).join("") : React.isValidElement(node)
+  ? node.props["aria-hidden"] ? "" : visibleText(node.props.children) : typeof node === "string" ? node : "";
+const byText = (view, text) => view.elements.find(element => element.type === "button" && visibleText(element.props.children) === text);
 
 test("unsaved and saved cards preserve the separate save and explicit confirm actions", () => {
   const unsaved = render({ state: { 2: { ...snapshot, draft: null } } });
@@ -60,7 +62,7 @@ test("unsaved and saved cards preserve the separate save and explicit confirm ac
   assert.equal(byText(saved, "确认转交").props.disabled, false);
   assert.equal(byText(saved, "重新查询"), undefined);
   assert.match(saved.html, /确认后，将以上内容交给 Creekstone 团队审阅/);
-  assert.match(saved.html, /<summary>数据使用说明<\/summary>/);
+  assert.match(saved.html, /<summary><span>数据使用说明<\/span>/);
   assert.doesNotMatch(saved.html, /第 2 版|ext_|尚未发送通知|已同步服务端/);
 });
 
@@ -78,11 +80,21 @@ test("dirty edits require another save; pending confirmation cannot be repeated"
 test("success appears once with optional content review, no receipt or permanent query", () => {
   const success = render({ state: { 2: submitted } });
   assert.equal(success.html.split("申请已提交，等待团队审阅。").length - 1, 1);
-  assert.match(success.html, /<details[^>]*><summary>查看已提交内容<\/summary>/);
+  assert.match(success.html, /<details[^>]*><summary><span>查看已提交内容<\/span>/);
   assert.match(success.html, /founder@example.invalid/);
   assert.match(success.html, /aria-label="收起确认卡"/);
   assert.doesNotMatch(success.html, /ext_|第 2 版|尚未发送通知|提交标识|会话编号|同步|重新查询|数据使用说明/);
   assert.equal(byText(success, "确认转交"), undefined);
+});
+
+test("decorative marks preserve control labels and only verified submission gets completion styling", () => {
+  for (const view of [render(), render({ state: { 2: submitted } })]) {
+    assert.ok(view.elements.filter(element => element.type === "svg").every(element => element.props["aria-hidden"] === "true"));
+    assert.equal(view.elements.filter(element => element.props.role === "status").length, 1);
+  }
+  assert.doesNotMatch(render().html, /data-complete/);
+  assert.match(render({ state: { 2: submitted } }).html, /data-complete="true"/);
+  assert.doesNotMatch(render({ state: { 2: submitted, 7: true } }).html, /data-complete/);
 });
 
 test("unknown result keeps actionable error; re-query calls only status, never decision", async () => {

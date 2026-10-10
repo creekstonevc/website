@@ -142,18 +142,27 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
   const labels: Record<keyof HandoffContent, string> = { summary: "项目与诉求摘要", contact: "联系方式", founder_name: "你的称呼（选填）", project_name: "项目名称（选填）" };
   const presentation = handoffPresentation(snapshot, dirty, uncertain, pending, locallyDeferred);
 
-  return <section ref={root} className={styles.card} tabIndex={-1} aria-labelledby="handoff-title" aria-busy={!!pending}>
+  return <section ref={root} className={styles.card} data-complete={submitted && !uncertain || undefined} tabIndex={-1} aria-labelledby="handoff-title" aria-busy={!!pending}>
     <header className={styles.header}>
-      <h2 id="handoff-title">转交确认卡</h2>
+      <div className={styles.heading}>
+        <svg className={styles.mark} viewBox="0 0 24 24" aria-hidden="true">
+          {submitted && !uncertain
+            ? <><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></>
+            : <path d="M14 3H5v18h14V8l-5-5Z M14 3v5h5 M8 12h8 M8 16h5" />}
+        </svg>
+        <div>
+          <h2 id="handoff-title">转交确认卡</h2>
+          <p className={styles.status} role="status">{presentation.status}</p>
+        </div>
+      </div>
       <button type="button" className={styles.close} aria-label="收起确认卡" onClick={() => { setOpen(false); setDismissedSequence(openRequest?.sequence || 0); }}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
       </button>
     </header>
-    <p className={styles.status} role="status">{presentation.status}</p>
     {!submitted && snapshot && !snapshot.available && <p className={styles.notice}>转交服务暂未开通，内容无法保存或提交。你可以继续聊天。</p>}
     {!submitted && snapshot?.available && !snapshot.canSubmit && <p className={styles.notice}>暂不能提交新的申请，已有记录仍会保留。</p>}
     {submitted ? <details className={styles.details}>
-      <summary>查看已提交内容</summary>
+      <summary><span>查看已提交内容</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg></summary>
       <dl className={styles.readback}>
         {fields.map(key => content[key] && <div key={key}><dt>{labels[key]}</dt><dd>{content[key]}</dd></div>)}
       </dl>
@@ -171,7 +180,7 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
     {!submitted && <>
       <p className={styles.purpose}>确认后，将以上内容交给 Creekstone 团队审阅。</p>
       <details className={styles.details}>
-        <summary>数据使用说明</summary>
+        <summary><span>数据使用说明</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg></summary>
         <p>提交卡片中的摘要、联系方式及你填写的称呼和项目名称，同时记录会话与提交标识、来源和时间以追踪申请。不附带完整聊天或附件。</p>
       </details>
     </>}
@@ -179,9 +188,11 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
     {proposalNotice && <p className={styles.notice} role="status">{proposalNotice}</p>}
     {!submitted && <div className={styles.actions}>
       {needsSave ? <button type="button" className={styles.primary} disabled={!snapshot?.available || !!pending || uncertain || !handoffContent(content)} onClick={() => void act("save")}>
-        {pending === "save" ? "保存中…" : "保存草稿，继续确认"}
+        <span>{pending === "save" ? "保存中…" : "保存草稿，继续确认"}</span>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5" /></svg>
       </button> : <button type="button" className={styles.primary} disabled={!canConfirm} onClick={() => void act("confirm")}>
-        {pending === "confirm" ? "正在转交…" : "确认转交"}
+        <span>{pending === "confirm" ? "正在转交…" : "确认转交"}</span>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5" /></svg>
       </button>}
       <button type="button" disabled={!!pending || !!draft && !canEditHandoff(draft)} onClick={() => void act("defer")}>暂不转交</button>
     </div>}
