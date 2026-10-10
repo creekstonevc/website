@@ -89,17 +89,34 @@ access or proves that its summary/contact is accurate: the card requires review.
 4. **暂不转交** records a deferral, never a submission. In-flight and uncertain
    submissions cannot be edited or described as cancelled.
 5. A lost response shows an uncertain state, not a fabricated success or
-   failure. **同步转交状态**, reload and focus restoration query the durable
+   failure. **重新查询**, reload and focus restoration query the durable
    host ledger. No automatic submit retry or new submission key is created.
-6. A successful card displays only a validated `ext_<64 lowercase hex>` or
-   legacy `rec...` receipt, plus the honest `notified:false` state. Submitted
-   means queued for review, not an accepted invitation or arranged meeting.
+6. Success is shown once: **申请已提交，等待团队审阅。** Submitted content can
+   be expanded for review, and the card can be collapsed. The validated
+   `ext_<64 lowercase hex>` or legacy `rec...` receipt and `notified:false`
+   remain in the protocol and audit records, not in the public card. This does
+   not claim notification, an accepted invitation or an arranged meeting.
 
 Each conversation has one handoff. The disclosed payload is the card's summary,
 contact and optional names, plus system conversation/submission identifiers,
 source and submission time. Full chat and attachments are not copied. Contact
 details are never guessed. The fixed purpose must match the reviewed host v1
-contract; the card renders the validated host purpose.
+contract. The card summarizes that purpose in plain language, with accurate
+data-use details under **数据使用说明** before confirmation.
+
+### Presentation and recovery
+
+The black/gold review card keeps the four labelled fields and the separate
+save → review → explicit-confirm steps. Backend revisions, receipt IDs,
+internal state names, duplicate sync confirmations and notification-state
+diagnostics are not founder tasks and are not displayed. Unsaved/changed drafts
+still clearly require a save; saving never submits them.
+
+Normal saved/success states have no permanent query action. Automatic read-only
+restoration remains unchanged. Only a network/unknown outcome or interrupted
+processing state exposes **重新查询**; it calls status, never decision/submit.
+Real errors remain visible, even if a previous successful snapshot exists.
+No host, ledger, nonce, idempotency, deployment flag or Agent behavior changes.
 
 ## Browser/gateway contract
 
@@ -235,6 +252,12 @@ QA_PORT=3101 QA_HANDOFF=1 node scripts/agent-qa-server.mjs
 
 This QA flag uses only in-memory synthetic drafts and a fake host, never a real
 Workspace or provider. Omitting it tests the production-default disabled card.
+Add `QA_HANDOFF_DROP_REPLY=1` to simulate a lost response after one synthetic
+submission; re-query and reload must restore the same result without another
+write. `/qa/handoff` exposes synthetic operation names and the write count.
+`components/agent/handoff-card.test.mjs` covers the actual rendered component at
+unsaved, saved, dirty, submitting, successful, unknown and reload states, plus
+the query callback and read-only restoration.
 For the real Python subprocess/SQLite path with a loopback fake Workspace:
 
 ```bash

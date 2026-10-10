@@ -146,7 +146,7 @@ const makeLiveVoice = process.env.QA_SPEECH === "1" ? (emit) => new HighlightedL
   },
 }) : undefined;
 const handoffFixture = process.env.QA_HANDOFF_HOST_COMMAND ? await createRealQaHandoffHost(process.env.QA_HANDOFF_HOST_COMMAND)
-  : process.env.QA_HANDOFF === "1" ? createFakeHandoffHost() : null;
+  : process.env.QA_HANDOFF === "1" ? createFakeHandoffHost({ dropSubmitReply: process.env.QA_HANDOFF_DROP_REPLY === "1" }) : null;
 if (handoffFixture) config.handoff = { enabled: true, submitEnabled: true };
 const gateway = createGateway({ config, fetchImpl: fakeFetch, makeLiveVoice, invokeHandoffHost: handoffFixture?.invoke });
 const root = resolve("out");

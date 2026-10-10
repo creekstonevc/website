@@ -5,9 +5,8 @@
 .card button { cursor: pointer; font: inherit; }
 .close { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; border: 0; background: transparent; color: #c9c1b0; }
 .close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; }
-.status { display: flex; flex-wrap: wrap; gap: 4px 14px; color: #f4d87d; margin: 0 0 14px; font-size: 12px; }
-.status span { color: #c9c1b0; }
-.purpose { margin: 0 0 22px; max-width: 65ch; color: #e3dcca; }
+.status { color: #f4d87d; margin: 0 0 18px; }
+.purpose { margin: 20px 0 0; max-width: 65ch; color: #e3dcca; font-size: 13px; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .fields label { display: grid; min-width: 0; gap: 7px; font-size: 12px; color: #dcd2bc; }
 .fields .full { grid-column: 1 / -1; }
@@ -17,23 +16,22 @@
 .fields textarea { min-height: 112px; resize: vertical; }
 .fields :is(input, textarea)::placeholder { color: #a9a292; }
 .fields :is(input, textarea):disabled { color: #c9c1b0; opacity: .8; }
-.card :is(button, input, textarea):focus-visible { outline: 2px solid #f4d87d; outline-offset: 3px; }
-.disclosure { margin: 18px 0; font-size: 12px; color: #b8b2a4; }
+.card :is(button, input, textarea, summary):focus-visible { outline: 2px solid #f4d87d; outline-offset: 3px; }
+.details { font-size: 12px; color: #c9c1b0; }
+.details summary { width: fit-content; max-width: 100%; min-height: 44px; padding-block: 12px; cursor: pointer; }
+.details summary:hover { color: #fff0b9; }
+.details p { margin: 0 0 12px; max-width: 65ch; }
 .notice { margin: 14px 0; padding: 12px 0; border-block: 1px solid #574b32; color: #efca8c; font-size: 13px; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .actions button { min-height: 44px; padding: 10px 16px; border: 1px solid #827249; color: #e4d4ac; background: transparent; }
 .actions .primary { background: #e5bd52; border-color: #e5bd52; color: #151208; font-weight: 500; }
 .actions button:hover:not(:disabled), .close:hover { color: #fff0b9; background: #302916; }
 .actions .primary:hover:not(:disabled) { background: #f4d87d; color: #151208; }
 .card button:disabled { opacity: .45; cursor: not-allowed; }
 .sync { min-height: 44px; margin-top: 8px; padding: 8px 0; border: 0; background: transparent; color: #e5bd52; text-decoration: underline; text-underline-offset: 4px; font-size: 12px !important; }
-.readback { display: grid; gap: 14px; margin: 0; }
+.readback { display: grid; gap: 14px; margin: 4px 0 0; font-size: 14px; color: #f3efe5; }
 .readback dt { color: #b8b2a4; font-size: 12px; }
 .readback dd { margin: 4px 0 0; white-space: pre-wrap; }
-.receipt { padding-top: 16px; border-top: 1px solid #574b32; }
-.receipt p { margin: 0 0 8px; }
-.receipt span { display: block; margin-top: 12px; color: #b8b2a4; font-size: 12px; }
-.receipt code { font-size: 11px; color: #e3dcca; word-break: break-all; }
 @keyframes reveal { from { opacity: .5; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 700px) {
   .card { margin-top: 20px; padding: 16px 12px; font-size: 13px; }

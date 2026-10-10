@@ -40,7 +40,7 @@ test("malformed completion/receipt and changed purpose are never shown as succes
 });
 test("disabling submission never asserts that a historical request was not sent", () => {
   const message = handoffErrorText(new HandoffError("handoff_submission_disabled"));
-  assert.match(message, /同步原申请状态/);
+  assert.match(message, /重新查询原申请状态/);
   assert.doesNotMatch(message, /没有发送|未发送|未转交/);
 });
 test("receipt in a successful envelope must agree with its submitted snapshot", async t => {
@@ -59,5 +59,5 @@ test("editing differs from confirmed version; in-flight/uncertain/submitted cont
   assert.equal(sameHandoffContent(draft.content, { ...draft.content, summary: "修改后" }), false);
   for (const state of ["confirmed", "submitting", "submitted", "failed", "reconcile_required"]) assert.equal(canEditHandoff({ ...draft, state }), false);
   for (const state of ["awaiting_confirmation", "declined", "expired"]) assert.equal(canEditHandoff({ ...draft, state }), true);
-  assert.match(handoffStateText({ ...draft, state: "submitted" }), /待团队审阅/);
+  assert.equal(handoffStateText({ ...draft, state: "submitted" }), "申请已提交，等待团队审阅。");
 });

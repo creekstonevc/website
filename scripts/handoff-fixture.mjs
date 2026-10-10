@@ -2,7 +2,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { HANDOFF_PURPOSE } from "../lib/handoff.mjs";
 
-export function createFakeHandoffHost() {
+export function createFakeHandoffHost({ dropSubmitReply = false } = {}) {
   const drafts = new Map();
   const calls = [];
   let writes = 0;
@@ -50,9 +50,10 @@ export function createFakeHandoffHost() {
       writes++;
       draft.state = "submitted";
       draft.result = { status: "submitted", reference_id: `ext_${createHash("sha256").update(`local-fixture-${writes}`).digest("hex")}`, notified: false };
+      if (dropSubmitReply) throw new Error("Synthetic lost submit reply");
       return ok();
     }
     return error(request, "invalid_input");
   };
-  return { invoke, calls, drafts, get writes() { return writes; } };
+  return { invoke, calls, drafts, get writes() { return writes; }, snapshot: () => ({ writes, operations: calls.map(call => call.operation) }) };
 }

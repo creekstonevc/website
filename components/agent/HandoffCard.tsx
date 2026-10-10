@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { EMPTY_HANDOFF, HANDOFF_LIMITS, HANDOFF_PURPOSE, handoffContent, type HandoffContent } from "../../lib/handoff.mjs";
-import { canEditHandoff, canPrefillHandoff, handoffErrorText, handoffStateText, HandoffError, requestHandoff, sameHandoffContent, type HandoffOpenRequest, type HandoffSnapshot } from "./handoff-client";
+import { EMPTY_HANDOFF, HANDOFF_LIMITS, handoffContent, type HandoffContent } from "../../lib/handoff.mjs";
+import { canEditHandoff, canPrefillHandoff, handoffErrorText, handoffPresentation, HandoffError, requestHandoff, sameHandoffContent, type HandoffOpenRequest, type HandoffSnapshot } from "./handoff-client";
 import styles from "./HandoffCard.module.css";
 
 // THESIS: explicit user review is the only bridge from chat to a founder handoff.
@@ -50,9 +50,9 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
         dirtyRef.current = true;
         setContent({ ...request.proposal });
         setLocallyDeferred(false);
-        setProposalNotice("Agent 整理的内容已填入，尚未保存或转交。请核对摘要及你提供的联系方式。");
+        setProposalNotice("请核对 Agent 整理的摘要及你提供的联系方式。");
       } else {
-        setProposalNotice("保留了你已有的草稿或申请；Agent 的新提案没有覆盖它，也没有触发转交。");
+        setProposalNotice("已保留你原有的内容，未采用 Agent 的新提案。");
       }
     });
   }, [openRequest, sessionKey, snapshot, pending, uncertain]);
@@ -72,7 +72,6 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
       if (result.draft) {
         if (beforeEdit === editVersion.current && (!dirtyRef.current || explicit)) {
           setContent(result.draft.content);
-          setNote(explicit ? "已同步服务端记录，请检查当前版本。" : "");
         }
         const reference = `${result.draft.draft_id}:${result.draft.revision}`;
         if (seenDraft.current !== reference) setOpen(true);
@@ -104,7 +103,7 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
     if (operation.current) return;
     setProposalNotice("");
     if (kind === "defer" && (!draft || !snapshot?.available)) {
-      setLocallyDeferred(true); setNote("暂不转交。没有向团队发送任何内容。"); return;
+      setLocallyDeferred(true); setNote(""); return;
     }
     if (kind === "confirm" && (dirty || uncertain || !draft || !snapshot?.canSubmit || !content.contact.trim())) return;
     operation.current = true; setPending(kind); setNote("");
@@ -124,8 +123,6 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
       if (!mounted.current) return;
       setSnapshot(result); setUncertain(false); setLocallyDeferred(false);
       if (result.draft) setContent(result.draft.content);
-      if (kind === "save") setNote("草稿已保存，但未转交。请检查这一版内容，再确认。");
-      if (kind === "defer") setNote("暂不转交。这份草稿没有发送给团队。");
     } catch (error) {
       if (!mounted.current) return;
       setNote(handoffErrorText(error));
@@ -143,6 +140,7 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
     ["awaiting_confirmation", "confirmed", "failed"].includes(draft.state);
   const fields = (Object.keys(HANDOFF_LIMITS) as (keyof HandoffContent)[]);
   const labels: Record<keyof HandoffContent, string> = { summary: "项目与诉求摘要", contact: "联系方式", founder_name: "你的称呼（选填）", project_name: "项目名称（选填）" };
+  const presentation = handoffPresentation(snapshot, dirty, uncertain, pending, locallyDeferred);
 
   return <section ref={root} className={styles.card} tabIndex={-1} aria-labelledby="handoff-title" aria-busy={!!pending}>
     <header className={styles.header}>
@@ -151,14 +149,15 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
       </button>
     </header>
-    <p className={styles.status} role="status">{pending === "confirm" ? "正在确认并转交，请稍候…" : uncertain ? "结果待核实" : locallyDeferred ? "暂不转交" : !draft && dirty ? "待你核对 · 尚未保存" : handoffStateText(draft)}{draft && <span>第 {draft.revision} 版</span>}</p>
-    <p className={styles.purpose}>{draft?.purpose || HANDOFF_PURPOSE}</p>
-    {!snapshot && !uncertain && <p className={styles.notice}>正在核实转交服务状态。核实前不会保存或发送任何内容。</p>}
-    {snapshot && !snapshot.available && <p className={styles.notice}>转交服务尚未开通。你可以先整理内容，但本页不会保存或向团队发送；聊天不受影响。</p>}
-    {snapshot?.available && !snapshot.canSubmit && <p className={styles.notice}>确认转交入口暂未开通，本页不会发起新的提交。已有申请请以同步结果为准。</p>}
-    {submitted ? <dl className={styles.readback}>
-      {fields.map(key => content[key] && <div key={key}><dt>{labels[key]}</dt><dd>{content[key]}</dd></div>)}
-    </dl> : <div className={styles.fields}>
+    <p className={styles.status} role="status">{presentation.status}</p>
+    {!submitted && snapshot && !snapshot.available && <p className={styles.notice}>转交服务暂未开通，内容无法保存或提交。你可以继续聊天。</p>}
+    {!submitted && snapshot?.available && !snapshot.canSubmit && <p className={styles.notice}>暂不能提交新的申请，已有记录仍会保留。</p>}
+    {submitted ? <details className={styles.details}>
+      <summary>查看已提交内容</summary>
+      <dl className={styles.readback}>
+        {fields.map(key => content[key] && <div key={key}><dt>{labels[key]}</dt><dd>{content[key]}</dd></div>)}
+      </dl>
+    </details> : <div className={styles.fields}>
       {fields.map(key => <label key={key} className={key === "summary" || key === "contact" ? styles.full : ""}>
         <span>{labels[key]}{key === "summary" && <small>{[...content.summary].length} / 1,200</small>}</span>
         {key === "summary" ? <textarea rows={4} value={content[key]} maxLength={HANDOFF_LIMITS[key]} disabled={!editable}
@@ -169,15 +168,16 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
             onChange={event => { editVersion.current++; setLocallyDeferred(false); setContent(current => ({ ...current, [key]: event.target.value })); }} />}
       </label>)}
     </div>}
-    <p className={styles.disclosure}>仅转交卡中内容，并记录当前会话编号、提交编号、来源与提交时间；不附带完整聊天或附件。联系方式由你提供，不会自动猜测。</p>
-    {dirty && draft && <p className={styles.notice}>内容有修改。保存后需重新确认，旧版本不能用于转交。</p>}
+    {!submitted && <>
+      <p className={styles.purpose}>确认后，将以上内容交给 Creekstone 团队审阅。</p>
+      <details className={styles.details}>
+        <summary>数据使用说明</summary>
+        <p>提交卡片中的摘要、联系方式及你填写的称呼和项目名称，同时记录会话与提交标识、来源和时间以追踪申请。不附带完整聊天或附件。</p>
+      </details>
+    </>}
     {note && <p className={styles.notice} role="status">{note}</p>}
     {proposalNotice && <p className={styles.notice} role="status">{proposalNotice}</p>}
-    {submitted ? <div className={styles.receipt}>
-      <p>已进入待审阅记录，不代表真人已接受或会议已安排。</p>
-      <p>尚未发送通知。</p>
-      <span>转交回执</span><code>{draft.result?.reference_id}</code>
-    </div> : <div className={styles.actions}>
+    {!submitted && <div className={styles.actions}>
       {needsSave ? <button type="button" className={styles.primary} disabled={!snapshot?.available || !!pending || uncertain || !handoffContent(content)} onClick={() => void act("save")}>
         {pending === "save" ? "保存中…" : "保存草稿，继续确认"}
       </button> : <button type="button" className={styles.primary} disabled={!canConfirm} onClick={() => void act("confirm")}>
@@ -185,9 +185,9 @@ export function HandoffCard({ sessionKey, openRequest, chatBusy, onOpen }: {
       </button>}
       <button type="button" disabled={!!pending || !!draft && !canEditHandoff(draft)} onClick={() => void act("defer")}>暂不转交</button>
     </div>}
-    {(draft || uncertain) && <button type="button" className={styles.sync} disabled={!!pending}
-      onClick={() => { if (!dirty || window.confirm("同步最新版本会替换卡中尚未保存的编辑，继续吗？")) void sync(true); }}>
-      {pending === "status" ? "同步中…" : "同步转交状态"}
+    {presentation.showQuery && <button type="button" className={styles.sync} disabled={!!pending}
+      onClick={() => { if (!dirty || window.confirm("重新查询会替换尚未保存的编辑，继续吗？")) void sync(true); }}>
+      {pending === "status" ? "查询中…" : "重新查询"}
     </button>}
   </section>;
 }

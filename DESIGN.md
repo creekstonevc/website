@@ -168,6 +168,16 @@ The route is statically exported at `/agent/`. All live requests remain
 same-origin under `/api/agent/*`, with conversation creation and streamed
 responses handled by Nginx so the API key never enters the browser bundle.
 
+The founder handoff card is a quiet inline review sheet, not a diagnostic
+panel. Four labelled fields, a brief purpose statement and one gold
+save-or-confirm action keep the separate save → review → explicit-confirm
+steps clear. Data-use details are progressively disclosed. After submission,
+one sentence confirms that the request awaits team review; submitted content
+can be expanded and the card can be collapsed. Receipt IDs and revisions stay
+in the backend, and a query action appears only when recovery is needed.
+The existing sharp black/gold treatment is preserved, with single-column
+mobile fields, 16px mobile inputs, visible focus and 44px minimum controls.
+
 ## Overview
 
 **Creative North Star: "The Computational Dossier"**
