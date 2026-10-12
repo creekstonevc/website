@@ -69,6 +69,10 @@ Local HTTP fixtures now cover internal files in completed/item/annotation SSE,
 history restoration, private-source hints, mixed legitimate business outputs,
 user-uploaded `SKILL.md`, old named/generic output tickets, unknown metadata,
 and generated-file Content-Disposition with immediate body cancellation.
+The five actual Context basenames (`SYSTEM.md`, `BOUNDARIES.md`,
+`CALIBRATION.md`, `EXPRESSION.md`, `THINKING.md`) are each tested with metadata
+alone for output signing, old named/generic ticket downloads, and genuine user
+upload/input/history/download preservation.
 They exercise the actual gateway and native Files/Responses contract, with
 synthetic IDs/content and no provider credentials. They prove the website guard,
 not a forensic reconstruction of sample A or a guarantee against renamed/

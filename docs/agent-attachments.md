@@ -101,8 +101,10 @@ output attachment but does not fail the text answer; history can retry later.
 ### Internal-output screening
 
 Assistant outputs named like reserved instruction/runtime documents (including
-`SKILL.md`, `AGENT.md`, `AGENTS.md`, `SOUL.md`, `CONTEXT.md`, system/developer
-prompt files and `.env` files) are not chat deliverables. Known private paths,
+`SKILL.md`, `AGENT.md`, `AGENTS.md`, `SOUL.md`, `CONTEXT.md`, and the Agent's
+actual `SYSTEM.md`, `BOUNDARIES.md`, `CALIBRATION.md`, `EXPRESSION.md`,
+`THINKING.md`, system/developer prompt files and `.env` files) are not chat
+deliverables. Known private paths,
 including `/workspace/agent/`, `/workspace/runtime/`, Skill directories and the
 private handoff runtime directory, are also excluded when present on the
 reference. A single-file text part can supply a conservative private-source

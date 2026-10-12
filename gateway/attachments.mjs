@@ -21,6 +21,7 @@ export function isInternalOutputFile(value) {
   path = posix.normalize(path.replace(/^sandbox:/i, "").replace(/\\/g, "/")).toLowerCase();
   const name = path.split("/").at(-1);
   return /^(?:agent|agents|skill|soul|identity|tools|heartbeat|bootstrap|memory|user|context|system[-_]prompt|developer[-_]prompt)\.(?:md|txt|json|ya?ml)$/.test(name) ||
+    /^(?:system|boundaries|calibration|expression|thinking)\.md$/.test(name) ||
     /^\.env(?:\.|$)/.test(name) ||
     /(?:^|\/)(?:\.?skills|\.?boidsai|\.agentos|\.codex|\.claude|\.agents)(?:\/|$)/.test(path) ||
     /^\/(?:workspace\/(?:agent|runtime)|opt\/creekstone-handoff)(?:\/|$)/.test(path);

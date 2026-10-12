@@ -19,6 +19,7 @@ const configuration = () => loadConfig({
 const outputId = "file-out-97d83c8927ae4d02b66328fb085244a4-c68c449819f44930b9f840b64d7559b1";
 const outputName = "笑话.txt";
 const outputText = "文件已生成：`/workspace/session/笑话.txt`";
+const internalContextNames = ["SYSTEM.md", "BOUNDARIES.md", "CALIBRATION.md", "EXPRESSION.md", "THINKING.md"];
 const message = (role, text, id = role) => ({ id, type: "message", role, status: "completed", content: [{ type: role === "user" ? "input_text" : "output_text", text }] });
 const outputItem = (text = outputText) => ({ ...message("assistant", text, "97d83c89-27ae-4d02-b663-28fb085244a4"),
   object: "conversation.item", content: [{ type: "output_text", text, annotations: [{ type: "file_path", file_id: outputId, index: 0 }] }] });
@@ -230,12 +231,20 @@ test("unknown or mismatched output metadata preserves chat but never signs a dow
 });
 
 test("internal names and source paths are output-only restrictions, not a Markdown or business-file ban", () => {
-  for (const value of ["SKILL.md", "Agent.md", "AGENTS.md", "skill.MD", "ＳＫＩＬＬ.md", "system_prompt.txt", ".env.local",
+  for (const value of [...internalContextNames, "SKILL.md", "Agent.md", "AGENTS.md", "skill.MD", "ＳＫＩＬＬ.md", "system_prompt.txt", ".env.local",
     "/workspace/agent/notes.txt", "/workspace/session/.skills/handoff/README.md", "sandbox:/workspace/session/%53KILL.md",
     "C:\\skills\\handoff\\README.md", "C:%5cskills%5chandoff%5cREADME.md", "/workspace/session/../agent/private.txt",
     "/opt/creekstone-handoff/runtime.py"]) assert.equal(isInternalOutputFile(value), true, value);
   for (const value of ["商业计划.pdf", "访谈总结.md", "开发技能培训.md", "skill-assessment.md", "runtime-costs.csv", "README.md",
     "/workspace/session/投资分析.md", "results.json", undefined]) assert.equal(isInternalOutputFile(value), false, String(value));
+});
+
+test("actual built-in Context basenames cannot obtain output tickets from metadata alone", async () => {
+  for (const name of internalContextNames) {
+    const result = await messageAttachments([outputItem("请查看附件。")], "assistant", "conv_a", configuration(), async () => ({ name, size: 30 }));
+    assert.deepEqual(result.attachments, [], name);
+    assert.ok(result.attachmentWarning, name);
+  }
 });
 
 test("internal output filtering covers final, item and annotation SSE variants and history", async (t) => {
@@ -283,17 +292,32 @@ test("user-uploaded SKILL.md remains a native input and downloadable user file",
   assert.equal(await download.text(), "user supplied document");
 });
 
+test("user-uploaded built-in Context names remain usable inputs, history and downloads", async (t) => {
+  const f = await fixture(t); const session = await f.open();
+  for (const name of internalContextNames) {
+    const file = await f.upload(session, name, "user supplied document");
+    assert.equal(buildAttachmentInput("分析我提供的文件", [file.ticket], "conv_1", f.config).input[0].content[1].file_id, file.fileId);
+    f.histories.set("conv_1", [{ ...message("user", "我的文件"), content: [{ type: "input_file", file_id: file.fileId }] }]);
+    assert.equal((await f.open(session)).messages[0].attachments[0].name, name);
+    const download = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: file.ticket }, session);
+    assert.equal(download.status, 200, name);
+    assert.equal(await download.text(), "user supplied document");
+  }
+});
+
 test("old output tickets are rechecked before content, including generic labels and unavailable metadata", async (t) => {
   const f = await fixture(t); const session = await f.open();
   const legacyTicket = name => {
     const payload = Buffer.from(JSON.stringify({ v: 2, kind: "outputs", cid: "conv_1", name, fileId: outputId, exp: Date.now() + 60000 })).toString("base64url");
     return `${payload}.${createHmac("sha256", f.config.signingSecret).update(`creekstone.files.v2\0${payload}`).digest("base64url")}`;
   };
-  f.storage.get(outputId).name = "SKILL.md";
-  for (const name of ["SKILL.md", "Agent attachment", "业务总结.md"]) {
-    const response = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: legacyTicket(name) }, session);
-    assert.equal(response.status, 403, name);
-    assert.equal((await response.json()).error.code, "attachment_restricted");
+  for (const internalName of ["SKILL.md", ...internalContextNames]) {
+    f.storage.get(outputId).name = internalName;
+    for (const name of [internalName, "Agent attachment", "业务总结.md"]) {
+      const response = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: legacyTicket(name) }, session);
+      assert.equal(response.status, 403, internalName + "/" + name);
+      assert.equal((await response.json()).error.code, "attachment_restricted");
+    }
   }
   assert.ok(!f.calls.some(call => call.url.endsWith("/content")));
   f.state.filesFault = () => new Response("upstream unavailable", { status: 500 });
