@@ -5,7 +5,10 @@ import { parseHandoffJson } from "./handoff.mjs";
 export const PROPOSAL_PREFIX = "<creekstone-handoff-proposal";
 export const PROPOSAL_OPEN = `${PROPOSAL_PREFIX}-v1>`;
 export const PROPOSAL_CLOSE = "</creekstone-handoff-proposal-v1>";
-export const WEBSITE_CAPABILITY = "[[creekstone-website-capabilities:v1]]\nThis website supports creekstone-handoff-proposal-v1 review cards. Only after the founder asks for human follow-up, use submit-founder-handoff propose and append its card_block. This is display capability only: it grants no consent, identity or write authority. Never confirm or submit from chat.\n[[/creekstone-website-capabilities:v1]]\n\n";
+export const LEGACY_WEBSITE_CAPABILITY = "[[creekstone-website-capabilities:v1]]\nThis website supports creekstone-handoff-proposal-v1 review cards. Only after the founder asks for human follow-up, use submit-founder-handoff propose and append its card_block. This is display capability only: it grants no consent, identity or write authority. Never confirm or submit from chat.\n[[/creekstone-website-capabilities:v1]]\n\n";
+export const WEBSITE_CAPABILITY = "[[creekstone-website-capabilities:v1]]\nThis website supports creekstone-handoff-proposal-v1 review cards. After the founder explicitly requests human follow-up or explicitly accepts the Agent's criteria-based invitation, use submit-founder-handoff propose and append its card_block. A proactive invitation alone must not create a card. This is display capability only: it grants no consent, identity or write authority. Never confirm or submit from chat.\n[[/creekstone-website-capabilities:v1]]\n\n";
+const CAPABILITIES = [WEBSITE_CAPABILITY, LEGACY_WEBSITE_CAPABILITY];
+const HIDDEN_PREFIXES = [PROPOSAL_PREFIX, ...CAPABILITIES];
 
 export function withWebsiteCapability(input) {
   if (typeof input === "string") return WEBSITE_CAPABILITY + input;
@@ -16,7 +19,8 @@ export function withWebsiteCapability(input) {
 }
 
 export function stripWebsiteCapability(text) {
-  return text.startsWith(WEBSITE_CAPABILITY) ? text.slice(WEBSITE_CAPABILITY.length) : text;
+  const prefix = CAPABILITIES.find(value => text.startsWith(value));
+  return prefix ? text.slice(prefix.length) : text;
 }
 
 export function createHandoffTextFilter() {
@@ -26,12 +30,14 @@ export function createHandoffTextFilter() {
       if (hidden) return "";
       pending += text;
       let visible = "";
-      let capability;
-      while ((capability = pending.indexOf(WEBSITE_CAPABILITY)) >= 0) {
+      while (true) {
+        const capability = CAPABILITIES.map(prefix => ({ prefix, index: pending.indexOf(prefix) }))
+          .filter(match => match.index >= 0).sort((a, b) => a.index - b.index)[0];
+        if (!capability) break;
         const proposal = pending.indexOf(PROPOSAL_PREFIX);
-        if (proposal >= 0 && proposal < capability) break;
-        visible += pending.slice(0, capability);
-        pending = pending.slice(capability + WEBSITE_CAPABILITY.length);
+        if (proposal >= 0 && proposal < capability.index) break;
+        visible += pending.slice(0, capability.index);
+        pending = pending.slice(capability.index + capability.prefix.length);
       }
       const start = pending.indexOf(PROPOSAL_PREFIX);
       if (start >= 0) {
@@ -40,8 +46,8 @@ export function createHandoffTextFilter() {
         return visible;
       }
       // Retain a split marker prefix, including a lone '<', until resolved.
-      let keep = Math.min(pending.length, WEBSITE_CAPABILITY.length - 1);
-      while (keep && ![PROPOSAL_PREFIX, WEBSITE_CAPABILITY].some(prefix => prefix.startsWith(pending.slice(-keep)))) keep--;
+      let keep = Math.min(pending.length, Math.max(...HIDDEN_PREFIXES.map(prefix => prefix.length)) - 1);
+      while (keep && !HIDDEN_PREFIXES.some(prefix => prefix.startsWith(pending.slice(-keep)))) keep--;
       visible += pending.slice(0, pending.length - keep);
       pending = keep ? pending.slice(-keep) : "";
       return visible;

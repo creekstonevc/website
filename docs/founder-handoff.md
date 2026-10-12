@@ -27,12 +27,14 @@ The optional Agent tool route remains unconditionally unavailable (503), even
 when browser-service submission is enabled. It would require a trusted,
 short-lived conversation-bound capability; a global bearer token plus a
 model-provided conversation ID is not an acceptable replacement. **This is not
-a prerequisite for the first-release proposal flow below.** No proactive
-invitations or interpretation of ordinary assistant prose as consent is included.
+a prerequisite for the proposal flow below.** Invitations are ordinary chat,
+never write authority. The website does not evaluate investment criteria or
+interpret ordinary assistant prose as consent.
 
 ## Unprivileged Agent proposal
 
-After a founder asks to talk to the team, Agent runtime **0.3.1** can use the
+After a founder explicitly asks to talk to the team, or explicitly accepts
+the Agent's invitation under its approved criteria, Agent runtime **0.3.1** can use the
 local `submit-founder-handoff propose` command to validate four content fields
 without network, credentials or file writes. The Agent appends its exact
 `card_block` to the end of its final assistant reply:
@@ -57,7 +59,16 @@ capabilities they lack. Its exact text is `WEBSITE_CAPABILITY` in
 `[[creekstone-website-capabilities:v1]]` and its matching closing sentinel.
 It is ordinary input text, **not a system instruction, identity or authority**.
 String input and native file parts are preserved; history removes exactly one
-copy of the fixed prefix. Outside a host declaring this capability, the Agent
+copy of either the current prefix or the earlier manual-request-only prefix.
+Both exact versions are suppressed if echoed in streamed output or speech;
+the marker and proposal schema remain v1. A proactive invitation alone must
+not produce a proposal/card. Criteria and the choice to invite belong to the
+coordinated Agent/Skill release, not a new website scoring heuristic.
+The coordinated policy uses concrete evidence of a real problem, action or
+learning, distinctive judgment, and value from further conversation. It is not
+a revenue/school/sector score. The Agent may ask once per conversation; decline
+or ambiguity is not acceptance. Manual founder requests remain unscreened.
+Outside a host declaring this capability, the Agent
 must not emit the block. No unsupported `instructions`, `tools` or environment
 injection feature is assumed of the Responses API.
 

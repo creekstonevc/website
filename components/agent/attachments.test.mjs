@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { streamReply, uploadAttachment, downloadAttachment, readAttachmentFiles, openConversation, attachmentError } from "./agent-client.ts";
+import { AgentRequestError, streamReply, uploadAttachment, downloadAttachment, readAttachmentFiles, openConversation, attachmentError } from "./agent-client.ts";
 import { attachmentDisplayText, formatFileSize } from "../../lib/agent-attachments.mjs";
 
 const file = { name: "计划 书.pdf", fileId: "file-upload-123", size: 6, ticket: "signed-upload-receipt" };
@@ -107,6 +107,8 @@ test("permission failures have actionable UI copy and malformed metadata is igno
   assert.deepEqual(readAttachmentFiles([{ name: "old.pdf", path: "old/inputs/old.pdf", ticket: "retired" }]), []);
   assert.deepEqual(readAttachmentFiles([{ ...file, ticket: undefined }]), []);
   assert.equal(formatFileSize(1024), "1.0 KB"); assert.equal(formatFileSize(5 * 1024 * 1024), "5.0 MB");
+  assert.match(attachmentError(new AgentRequestError(403, "attachment_restricted")), /无法作为聊天附件/);
+  assert.match(attachmentError(new AgentRequestError(503, "attachment_metadata_unavailable")), /无法核实文件信息/);
 });
 
 test("file-only Responses and file-only history remain visible without text", async (t) => {

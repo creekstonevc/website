@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
-import { createHandoffTextFilter, extractHandoffProposal, PROPOSAL_OPEN as OPEN, PROPOSAL_CLOSE as CLOSE, sanitizeHandoffEvent, stripHandoffProposal, WEBSITE_CAPABILITY, withWebsiteCapability, stripWebsiteCapability } from "./handoff-proposal.mjs";
+import { createHandoffTextFilter, extractHandoffProposal, PROPOSAL_OPEN as OPEN, PROPOSAL_CLOSE as CLOSE, sanitizeHandoffEvent, stripHandoffProposal, WEBSITE_CAPABILITY, LEGACY_WEBSITE_CAPABILITY, withWebsiteCapability, stripWebsiteCapability } from "./handoff-proposal.mjs";
 import { createGateway } from "./server.mjs";
 import { createConversationCredential, verifyTtsTicket } from "./core.mjs";
 import { createHash, randomUUID } from "node:crypto";
@@ -47,11 +47,22 @@ test("non-secret website capability wraps only user text, preserves native files
   const input = [{ role: "user", content: [{ type: "input_text", text: "原文" }, { type: "input_file", file_id: "file-owned" }] }];
   assert.deepEqual(withWebsiteCapability(input)[0].content, [{ type: "input_text", text: WEBSITE_CAPABILITY + "原文" }, input[0].content[1]]);
   assert.equal(input[0].content[0].text, "原文");
-  const text = WEBSITE_CAPABILITY + answer;
-  for (let split = 0; split <= text.length; split++) {
+  for (const prefix of [WEBSITE_CAPABILITY, LEGACY_WEBSITE_CAPABILITY]) {
+    assert.equal(stripWebsiteCapability(prefix + "原文"), "原文");
+    assert.equal(stripWebsiteCapability(prefix + prefix + "原文"), prefix + "原文");
+    assert.equal(stripWebsiteCapability("原文 " + prefix), "原文 " + prefix);
+    const text = prefix + answer;
+    for (let split = 0; split <= text.length; split++) {
+      const filter = createHandoffTextFilter();
+      assert.equal(filter.push(text.slice(0, split)) + filter.push(text.slice(split)) + filter.finish(), "请检查确认卡。\n");
+    }
     const filter = createHandoffTextFilter();
-    assert.equal(filter.push(text.slice(0, split)) + filter.push(text.slice(split)) + filter.finish(), "请检查确认卡。\n");
+    assert.equal([...text].map(char => filter.push(char)).join("") + filter.finish(), "请检查确认卡。\n");
   }
+  assert.equal(stripHandoffProposal(LEGACY_WEBSITE_CAPABILITY + WEBSITE_CAPABILITY + answer), "请检查确认卡。\n");
+  assert.match(WEBSITE_CAPABILITY, /explicitly accepts the Agent's criteria-based invitation/);
+  assert.match(WEBSITE_CAPABILITY, /proactive invitation alone must not create a card/);
+  assert.match(WEBSITE_CAPABILITY, /Never confirm or submit from chat/);
 });
 
 const config = {
@@ -91,6 +102,18 @@ test("authenticated response yields an own-session proposal only after completed
     assert.deepEqual(JSON.parse(proposals[0][1]), { sessionKey: key, content });
     const ticket = JSON.parse(result.match(/event: creekstone.tts.ready\ndata: (.*)/)[1]).ticket;
     assert.doesNotMatch(verifyTtsTicket(ticket, config.signingSecret).text, /proposal|summary|qa@example/);
+  });
+});
+
+test("a spoken invitation is ordinary chat, without a proposal event or host write", async () => {
+  const invitation = "你提到的真实使用反馈很具体。如果你愿意，我们可以把项目转给 Creekstone 团队进一步交流。要我帮你整理吗？";
+  await runGateway(event("response.output_text.delta", { delta: invitation }) +
+    event("response.completed", { response: { output: [item(invitation)] } }), async base => {
+    const response = await fetch(`${base}/responses`, { method: "POST", headers,
+      body: JSON.stringify({ input: "我们已经在用户真实工作中验证了需求", sessionKey: key, handoffProposalVersion: 1 }) });
+    const wire = await response.text();
+    assert.match(wire, /进一步交流/);
+    assert.doesNotMatch(wire, /event: creekstone.handoff/);
   });
 });
 
@@ -138,4 +161,14 @@ test("history removes assistant blocks without creating proposals or mutating dr
     assert.equal(result.messages.find(message => message.role === "user").content, answer);
     assert.ok(result.messages.every(message => !message.handoffProposal));
   }, [item(), { ...item(answer, "user"), id: "msg_user", content: [{ type: "input_text", text: answer }] }]);
+});
+
+test("existing and new capability prefixes disappear from real history normalization without replaying a card", async () => {
+  for (const prefix of [LEGACY_WEBSITE_CAPABILITY, WEBSITE_CAPABILITY]) {
+    await runGateway("", async base => {
+      const result = await (await fetch(`${base}/conversations`, { method: "POST", headers, body: "{}" })).json();
+      assert.equal(result.messages.find(message => message.role === "user").content, "好的，我愿意进一步交流");
+      assert.ok(result.messages.every(message => !message.handoffProposal));
+    }, [item(), { ...item("", "user"), id: "msg_capability_user", content: [{ type: "input_text", text: prefix + "好的，我愿意进一步交流" }] }]);
+  }
 });

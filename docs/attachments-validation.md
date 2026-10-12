@@ -44,11 +44,35 @@ path cleanup. It also covers:
 - Wrong-session, expired, forged, retired and wrong-direction receipts.
 - User-controlled file IDs, paths, provider URLs and purpose overrides.
 - Duplicate attachments, per-file/aggregate caps, unsafe names, invalid Base64.
-- Metadata failure/wrong-ID fallback, lookup deduplication and cache reuse.
+- Unknown/wrong-ID output metadata withholding, lookup deduplication and cache reuse.
 - Provider authentication/rate-limit/server errors and safe error messages.
 - Bounded binary reads, content-length mismatch, Origin and signed-cookie checks.
 - Transfer concurrency/rate limits and files-disabled text chat.
 - Retired references displayed without any transport fallback.
+
+## Internal-output regression (2026-10-12, local only)
+
+The reported real sample `确认卡验收-20261010-A` showed `SKILL.md` as an
+attachment. Its original conversation/response ID and raw provider events have
+not been recovered from the available task evidence. No real conversations were
+searched and no new production leads were created for this investigation. We
+therefore cannot assert which Agent command, copy or provider export produced
+that particular file.
+
+The independently proven website defect is narrower: before this patch,
+`messageAttachments` issued a valid output download ticket for a synthetic
+assistant `file_path` annotation whose provider filename was `SKILL.md`.
+Website code does not itself upload Agent source: its only upload path is the
+explicit browser upload endpoint. Outputs arrive as upstream file annotations.
+
+Local HTTP fixtures now cover internal files in completed/item/annotation SSE,
+history restoration, private-source hints, mixed legitimate business outputs,
+user-uploaded `SKILL.md`, old named/generic output tickets, unknown metadata,
+and generated-file Content-Disposition with immediate body cancellation.
+They exercise the actual gateway and native Files/Responses contract, with
+synthetic IDs/content and no provider credentials. They prove the website guard,
+not a forensic reconstruction of sample A or a guarantee against renamed/
+archived internal source. Release remains coordinated with the Agent policy.
 
 Client tests cover draft receipt validation, upload cancellation, authenticated
 downloads, failure copy, completion gating, sandbox-path display and file-only

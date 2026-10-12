@@ -14,7 +14,8 @@ deployment configuration. Agent.md and the Agent's Skills are unchanged.
 4. When the founder sends their message, the browser submits receipt(s), not raw
    file IDs. The Gateway verifies ownership and constructs native Responses input.
 5. On successful response completion, the Gateway reads assistant `file_path`
-   annotations and issues signed download receipts. File cards retain the
+   annotations, screens output metadata for internal runtime files, and issues
+   signed download receipts only for eligible files. File cards retain the
    Creekstone black/gold appearance and do not expose sandbox paths as URLs.
 6. A download validates the HttpOnly conversation cookie, active-session selector
    and signed receipt before fetching `GET /v1/files/{file_id}/content`.
@@ -84,16 +85,50 @@ The confirmed Boids contract is:
 }
 ```
 
-Only typed annotations from the authenticated upstream grant access. Paths,
+Only typed annotations from the authenticated upstream establish ownership;
+assistant outputs must also pass the export checks below. Paths,
 bare IDs, Markdown links and text that resembles JSON cannot create a download.
 `index` is not assumed to be a character offset. Filename/size come from
 `GET /v1/files/{file_id}`. Generated `file-out-*` IDs currently return 404 from
 that endpoint, so the Gateway obtains their UTF-8 filename from the content
 download's `Content-Disposition` header and immediately cancels the body (HEAD
-is not supported upstream). If both lookups fail, a safe basename from the
-same message or a generic label is display-only fallback. The signed `file_id`
-still determines the content fetch. Metadata lookup is time/concurrency bounded,
-deduplicated and cached, so a metadata outage does not fail the text answer.
+is not supported upstream). If both lookups fail or metadata has a wrong ID,
+the output is withheld instead of signing a generic `Agent attachment` receipt.
+User input history may retain its safe display fallback. Metadata lookup is
+time/concurrency bounded, deduplicated and cached, so an outage withholds the
+output attachment but does not fail the text answer; history can retry later.
+
+### Internal-output screening
+
+Assistant outputs named like reserved instruction/runtime documents (including
+`SKILL.md`, `AGENT.md`, `AGENTS.md`, `SOUL.md`, `CONTEXT.md`, system/developer
+prompt files and `.env` files) are not chat deliverables. Known private paths,
+including `/workspace/agent/`, `/workspace/runtime/`, Skill directories and the
+private handoff runtime directory, are also excluded when present on the
+reference. A single-file text part can supply a conservative private-source
+hint; the annotation's `index` is never treated as a text offset or used to
+misassociate files in mixed outputs. A known restriction cannot be cleared by
+a later friendly filename. The same policy applies to live output and restored
+history before signing receipts.
+
+Downloads check reserved names on existing output receipts and freshly resolve
+provider metadata again (not the label cache). Thus old generic-name receipts
+cannot bypass a known `SKILL.md` filename. Unknown metadata fails closed with a
+retryable error, and restricted files fail before bytes are buffered/forwarded
+to the browser. For generated files whose metadata endpoint returns 404, the
+header-only content fallback immediately cancels the response body.
+
+This is output-only: genuine user `input_file` attachments, even a deliberately
+uploaded `SKILL.md`, retain upload/history/download support. Ordinary business
+`.md`, PDF, text, JSON and other supported files are not banned by extension.
+
+**Boundary:** the Files contract exposes IDs and filenames, not trustworthy
+original-file provenance or a signed public-deliverable classification. A
+renamed copy, archive or copied internal text cannot be reliably distinguished
+from a business document by this website. Agent/Skill instructions must prevent
+copying internal source into public output files; stronger enforcement requires
+upstream export isolation/provenance. This filter is not a claim of complete
+prompt confidentiality or provider-side storage isolation.
 
 The stream supports annotations in `response.completed.response.output`,
 `response.output_item.done`, and `response.output_text.annotation.added`.

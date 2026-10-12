@@ -106,6 +106,8 @@ export function attachmentError(error: unknown): string {
     attachment_busy: "另一个文件正在传输，请稍后重试。",
     attachment_rate_limited: "文件传输次数已达限制，请稍后重试。",
     attachment_unavailable: "文件已过期、被删除或暂时不可用，请重新上传，或让 Agent 重新生成。",
+    attachment_restricted: "该文件无法作为聊天附件提供，请让 Agent 生成需要的业务文件。",
+    attachment_metadata_unavailable: "暂时无法核实文件信息，请稍后重试或刷新历史。",
     attachment_timeout: "文件传输超时，结果尚未确认。可以重试；未发送的文件不会自动交给 Agent。",
     files_unavailable: "附件服务暂时不可用，请稍后重试。",
     files_invalid_response: "附件服务未确认文件，请稍后重试。",

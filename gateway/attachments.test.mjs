@@ -7,6 +7,7 @@ import { WEBSITE_CAPABILITY } from "./handoff-proposal.mjs";
 import { createConversationCredential, normalizeConversationHistory, verifyTtsTicket } from "./core.mjs";
 import { attachmentConfig, buildAttachmentInput, createAttachmentBudget, createFileMetadataLookup,
   nativeAttachmentReferences, messageAttachments, verifyAttachmentTicket } from "./attachments.mjs";
+import { isInternalOutputFile } from "./attachments.mjs";
 import { attachmentDisplayText, isFileId, hasRetiredAttachment } from "../lib/agent-attachments.mjs";
 
 const origin = "https://creekstonevc.com";
@@ -169,7 +170,7 @@ test("browser cannot select an arbitrary file ID, upstream URL, purpose or conve
 });
 
 test("only native assistant file_path annotations authorize outputs; prose and citations do not", async () => {
-  const config = configuration(); const lookup = async () => null;
+  const config = configuration(); const lookup = async () => ({ name: outputName, size: 10 });
   const invalid = [message("assistant", outputId), message("assistant", "{{attachment://outputs/secret.pdf}}"),
     { ...outputItem(), role: "user" }, { ...outputItem(), content: [{ type: "output_text", text: "x", annotations: [{ type: "url_citation", file_id: outputId }] }] }];
   for (const item of invalid) assert.equal((await messageAttachments([item], "assistant", "conv_a", config, lookup)).attachments, undefined);
@@ -218,13 +219,124 @@ test("native file-only history is retained and Hi with a file is not mistaken fo
   assert.equal(history.needsBootstrap, false);
 });
 
-test("metadata failure or mismatched ID does not break chat or authorize a different file", async (t) => {
+test("unknown or mismatched output metadata preserves chat but never signs a download", async (t) => {
   const f = await fixture(t); const session = await f.open();
   f.state.filesFault = (url) => !url.pathname.endsWith("/content") ? Response.json({ id: "file-other", object: "file", filename: "secret.txt", bytes: 1 }) : null;
   const wire = await (await f.post("/responses", { input: "make file" }, session)).text();
-  const output = ready(wire).attachments[0];
-  assert.equal(output.name, outputName); assert.equal(output.fileId, outputId);
-  assert.equal((await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: output.ticket }, session)).status, 200);
+  assert.deepEqual(ready(wire).attachments, []);
+  assert.ok(ready(wire).attachmentWarning);
+  assert.match(wire, /response.completed/);
+  assert.ok(!f.calls.some(call => call.url.endsWith("/content")));
+});
+
+test("internal names and source paths are output-only restrictions, not a Markdown or business-file ban", () => {
+  for (const value of ["SKILL.md", "Agent.md", "AGENTS.md", "skill.MD", "ＳＫＩＬＬ.md", "system_prompt.txt", ".env.local",
+    "/workspace/agent/notes.txt", "/workspace/session/.skills/handoff/README.md", "sandbox:/workspace/session/%53KILL.md",
+    "C:\\skills\\handoff\\README.md", "C:%5cskills%5chandoff%5cREADME.md", "/workspace/session/../agent/private.txt",
+    "/opt/creekstone-handoff/runtime.py"]) assert.equal(isInternalOutputFile(value), true, value);
+  for (const value of ["商业计划.pdf", "访谈总结.md", "开发技能培训.md", "skill-assessment.md", "runtime-costs.csv", "README.md",
+    "/workspace/session/投资分析.md", "results.json", undefined]) assert.equal(isInternalOutputFile(value), false, String(value));
+});
+
+test("internal output filtering covers final, item and annotation SSE variants and history", async (t) => {
+  const f = await fixture(t); const session = await f.open();
+  f.storage.get(outputId).name = "SKILL.md";
+  for (const mode of ["final", "item", "annotation"]) {
+    f.state.responseFault = () => new Response(
+      (mode === "item" ? sse("response.output_item.done", { item: outputItem() }) :
+        mode === "annotation" ? sse("response.output_text.annotation.added", { annotation: { type: "file_path", file_id: outputId, index: 0 } }) : "") +
+      sse("response.completed", { response: { output: mode === "final" ? [outputItem()] : undefined } }));
+    const wire = await (await f.post("/responses", { input: "fixture" }, session)).text();
+    assert.deepEqual(ready(wire).attachments, [], mode);
+    assert.ok(ready(wire).attachmentWarning, mode);
+  }
+  f.histories.set("conv_1", [outputItem()]);
+  const restored = await f.open(session);
+  assert.deepEqual(restored.messages[0].attachments, []);
+  assert.ok(restored.messages[0].attachmentWarning);
+});
+
+test("known internal references cannot be laundered by a business-looking metadata name; mixed outputs preserve the business file", async () => {
+  const config = configuration();
+  const internal = { ...outputItem("文件说明"), content: [{ type: "output_text", text: "文件说明", annotations: [
+    { type: "file_path", file_id: "file-out-internal", filename: "SKILL.md" },
+    { type: "file_path", file_id: outputId },
+  ] }] };
+  const result = await messageAttachments([internal], "assistant", "conv_a", config, async () => ({ name: "业务总结.md", size: 10 }));
+  assert.deepEqual(result.attachments.map(file => file.fileId), [outputId]);
+  assert.ok(result.attachmentWarning);
+  const path = await messageAttachments([outputItem("源文件：`/workspace/agent/notes.txt`")], "assistant", "conv_a", config,
+    () => assert.fail("known private source must not be looked up"));
+  assert.deepEqual(path.attachments, []);
+  const duplicate = await messageAttachments([outputItem("业务文件"), outputItem("`/workspace/agent/private.txt`")], "assistant", "conv_a", config,
+    () => assert.fail("a duplicate reference cannot clear a known restriction"));
+  assert.deepEqual(duplicate.attachments, []);
+});
+
+test("user-uploaded SKILL.md remains a native input and downloadable user file", async (t) => {
+  const f = await fixture(t); const session = await f.open(); const file = await f.upload(session, "SKILL.md", "user supplied document");
+  assert.equal(buildAttachmentInput("分析我提供的文件", [file.ticket], "conv_1", f.config).input[0].content[1].file_id, file.fileId);
+  f.histories.set("conv_1", [{ ...message("user", "我的文件"), content: [{ type: "input_file", file_id: file.fileId }] }]);
+  assert.equal((await f.open(session)).messages[0].attachments[0].name, "SKILL.md");
+  const download = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: file.ticket }, session);
+  assert.equal(download.status, 200);
+  assert.equal(await download.text(), "user supplied document");
+});
+
+test("old output tickets are rechecked before content, including generic labels and unavailable metadata", async (t) => {
+  const f = await fixture(t); const session = await f.open();
+  const legacyTicket = name => {
+    const payload = Buffer.from(JSON.stringify({ v: 2, kind: "outputs", cid: "conv_1", name, fileId: outputId, exp: Date.now() + 60000 })).toString("base64url");
+    return `${payload}.${createHmac("sha256", f.config.signingSecret).update(`creekstone.files.v2\0${payload}`).digest("base64url")}`;
+  };
+  f.storage.get(outputId).name = "SKILL.md";
+  for (const name of ["SKILL.md", "Agent attachment", "业务总结.md"]) {
+    const response = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: legacyTicket(name) }, session);
+    assert.equal(response.status, 403, name);
+    assert.equal((await response.json()).error.code, "attachment_restricted");
+  }
+  assert.ok(!f.calls.some(call => call.url.endsWith("/content")));
+  f.state.filesFault = () => new Response("upstream unavailable", { status: 500 });
+  const unknown = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: legacyTicket("Agent attachment") }, session);
+  assert.equal(unknown.status, 503);
+  assert.equal((await unknown.json()).error.code, "attachment_metadata_unavailable");
+  assert.ok(!f.calls.some(call => call.url.endsWith("/content")));
+});
+
+test("generated-file Content-Disposition is checked without consuming restricted bytes", async (t) => {
+  const f = await fixture(t); const session = await f.open(); let cancelled = 0;
+  f.state.filesFault = url => url.pathname.endsWith("/content") ? new Response(new ReadableStream({ cancel() { cancelled++; } }), {
+    headers: { "Content-Disposition": "attachment; filename*=UTF-8''SKILL.md" },
+  }) : new Response(null, { status: 404 });
+  const wire = await (await f.post("/responses", { input: "fixture" }, session)).text();
+  assert.deepEqual(ready(wire).attachments, []);
+  assert.equal(cancelled, 1);
+});
+
+test("business Markdown output still streams, restores and downloads through the generated-file header fallback", async (t) => {
+  const f = await fixture(t); const session = await f.open(); const name = "业务交流总结.md"; const bytes = Buffer.from("# 业务总结\n合法业务交付内容");
+  f.state.filesFault = url => url.pathname.endsWith("/content") ? new Response(bytes, { headers: {
+    "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(name)}`, "Content-Length": String(bytes.length),
+  } }) : new Response(null, { status: 404 });
+  const wire = await (await f.post("/responses", { input: "整理业务总结" }, session)).text();
+  const file = ready(wire).attachments[0];
+  assert.equal(file.name, name); assert.equal(ready(wire).attachmentWarning, undefined);
+  const restored = await f.open(session);
+  assert.equal(restored.messages[1].attachments[0].name, name);
+  const download = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: file.ticket }, session);
+  assert.equal(download.status, 200); assert.deepEqual(Buffer.from(await download.arrayBuffer()), bytes);
+});
+
+test("download screening does not trust previously cached business metadata", async (t) => {
+  const f = await fixture(t); const session = await f.open();
+  const wire = await (await f.post("/responses", { input: "业务文件" }, session)).text();
+  const file = ready(wire).attachments[0];
+  assert.equal(file.name, outputName);
+  f.storage.get(outputId).name = "SKILL.md";
+  const download = await f.post("/attachments/download", { sessionKey: session.sessionKey, ticket: file.ticket }, session);
+  assert.equal(download.status, 403);
+  assert.equal((await download.json()).error.code, "attachment_restricted");
+  assert.ok(!f.calls.some(call => call.url.endsWith("/content")));
 });
 
 test("native metadata lookup deduplicates concurrent work and uses a bounded cache", async () => {

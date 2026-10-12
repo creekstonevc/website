@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { posix } from "node:path";
 import { GatewayError, readJsonBody } from "./core.mjs";
 import {
   ATTACHMENT_ONLY_INPUT, DEFAULT_FILE_BYTES, MAX_ATTACHMENT_FILES,
@@ -8,6 +9,22 @@ import {
 const HOUR = 60 * 60_000;
 const fail = (status, code, message) => { throw new GatewayError(status, code, message); };
 const mac = (value, secret) => createHmac("sha256", secret).update(`creekstone.files.v2\0${value}`).digest("base64url");
+
+// Defense in depth for assistant outputs, not an upload extension ban. These
+// names/locations identify runtime material, not proof that other files are
+// safe deliverables. Upstream must still keep private source files out of its
+// exports; a renamed copy cannot be reliably identified by the Files contract.
+export function isInternalOutputFile(value) {
+  if (typeof value !== "string") return false;
+  let path = value.normalize("NFKC").trim().replace(/\\/g, "/");
+  try { path = decodeURIComponent(path); } catch { /* Keep the literal path. */ }
+  path = posix.normalize(path.replace(/^sandbox:/i, "").replace(/\\/g, "/")).toLowerCase();
+  const name = path.split("/").at(-1);
+  return /^(?:agent|agents|skill|soul|identity|tools|heartbeat|bootstrap|memory|user|context|system[-_]prompt|developer[-_]prompt)\.(?:md|txt|json|ya?ml)$/.test(name) ||
+    /^\.env(?:\.|$)/.test(name) ||
+    /(?:^|\/)(?:\.?skills|\.?boidsai|\.agentos|\.codex|\.claude|\.agents)(?:\/|$)/.test(path) ||
+    /^\/(?:workspace\/(?:agent|runtime)|opt\/creekstone-handoff)(?:\/|$)/.test(path);
+}
 
 export function attachmentConfig(env = {}) {
   return {
@@ -42,6 +59,7 @@ export function verifyAttachmentTicket(ticket, conversationId, config, requiredK
     fail(403, "invalid_attachment", "Attachment does not belong to this conversation");
   }
   if (!Number.isFinite(file.exp) || file.exp <= Date.now()) fail(410, "attachment_expired", "Attachment access expired; reload history or attach the file again");
+  if (file.kind === "outputs" && isInternalOutputFile(file.name)) fail(403, "attachment_restricted", "This file is not available as a chat attachment");
   if (requiredKind === "inputs" && (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > config.attachments.maxFileBytes)) {
     fail(403, "invalid_attachment", "Attachment size is invalid; attach the file again");
   }
@@ -76,14 +94,22 @@ export function nativeAttachmentReferences(items, role) {
       const candidates = role === "user" && part?.type === "input_file" ? [part] :
         role === "assistant" && part?.type === "output_text" && Array.isArray(part.annotations)
           ? part.annotations.filter((entry) => entry?.type === "file_path") : [];
+      // `index` is NOT a documented text offset. Only attribute a prose path
+      // when there is one file; otherwise screen each file's own metadata.
+      const privateSource = role === "assistant" && candidates.length === 1 && typeof part.text === "string" &&
+        [...part.text.matchAll(/(?:sandbox:)?\/(?:workspace|opt)\/[^`\n<>)]*/g)]
+          .some(match => isInternalOutputFile(match[0].trim()));
       for (const reference of candidates) {
-        if (!isFileId(reference.file_id) || files.has(reference.file_id)) continue;
-        // Metadata is preferred, but Boids can still serve content when metadata
-        // is temporarily unavailable. A sandbox basename is display-only.
+        if (!isFileId(reference.file_id)) continue;
+        const restricted = role === "assistant" && (privateSource || isInternalOutputFile(reference.filename) || isInternalOutputFile(reference.path));
+        const previous = files.get(reference.file_id);
+        if (previous) { if (restricted) previous.restricted = true; continue; }
+        // A sandbox basename is display-only fallback for inputs, never an
+        // alternative to metadata screening for assistant exports.
         const pathName = typeof part.text === "string" ? /`\/workspace\/session\/([^`/\n]+)`/.exec(part.text)?.[1] : undefined;
         const name = isSafeFileName(reference.filename) ? reference.filename :
           candidates.length === 1 && isSafeFileName(pathName) ? pathName : "Agent attachment";
-        files.set(reference.file_id, { fileId: reference.file_id, name });
+        files.set(reference.file_id, { fileId: reference.file_id, name, ...(restricted ? { restricted: true } : {}) });
         if (files.size > MAX_ATTACHMENT_FILES) return [...files.values()];
       }
     }
@@ -165,8 +191,22 @@ function validMetadata(data, fileId) {
     isSafeFileName(data.filename) && Number.isSafeInteger(data.bytes) && data.bytes >= 0;
 }
 
-// Bounded cache/concurrency. Metadata improves labels; it never establishes
-// ownership, and failures must not block otherwise successful text responses.
+async function lookupFileMetadata(fileId, config, fetchImpl, signal) {
+  try {
+    const data = await fileRequest(`/${encodeURIComponent(fileId)}`, {}, config, fetchImpl, signal);
+    if (validMetadata(data, fileId)) return { name: data.filename, size: data.bytes };
+  } catch (error) {
+    if (error.code === "attachment_unavailable" && fileId.startsWith("file-out-")) {
+      try {
+        return await fileRequest(`/${encodeURIComponent(fileId)}/content`, {}, config, fetchImpl, signal, "headers");
+      } catch { /* Unknown output metadata cannot authorize a download. */ }
+    }
+  }
+  return null;
+}
+
+// Bounded cache/concurrency. Metadata never establishes ownership. Assistant
+// outputs need it for export screening; a failure still leaves chat available.
 export function createFileMetadataLookup(config, fetchImpl) {
   const cache = new Map();
   const pending = new Map();
@@ -199,18 +239,7 @@ export function createFileMetadataLookup(config, fetchImpl) {
         resolve(value);
       };
       const job = async () => {
-        let value = null;
-        try {
-          const data = await fileRequest(`/${encodeURIComponent(fileId)}`, {}, config, fetchImpl, signal);
-          if (validMetadata(data, fileId)) value = { name: data.filename, size: data.bytes };
-        } catch (error) {
-          if (error.code === "attachment_unavailable" && fileId.startsWith("file-out-")) {
-            try {
-              value = await fileRequest(`/${encodeURIComponent(fileId)}/content`, {}, config, fetchImpl, signal, "headers");
-            } catch { /* Downloads can still be retried with the signed ID. */ }
-          }
-        }
-        finish(value);
+        finish(await lookupFileMetadata(fileId, config, fetchImpl, signal));
       };
       const abort = () => {
         const index = queue.indexOf(job);
@@ -234,11 +263,17 @@ export async function messageAttachments(items, role, conversationId, config, lo
   }
   if (!complete) return { attachmentWarning: "附件尚未生成完成，请稍后同步历史。" };
   if (!config.attachments.enabled) return { attachmentWarning: "附件服务已停用，暂时无法下载。" };
-  const attachments = await Promise.all(references.slice(0, MAX_ATTACHMENT_FILES).map(async (reference) => {
+  let withheld = false;
+  const resolved = await Promise.all(references.map(async (reference) => {
+    if (role === "assistant" && (reference.restricted || isInternalOutputFile(reference.name))) { withheld = true; return null; }
     const metadata = await lookup(reference.fileId);
+    if (role === "assistant" && (!metadata || !isSafeFileName(metadata.name) || isInternalOutputFile(metadata.name))) { withheld = true; return null; }
     return signFile({ ...reference, ...metadata }, role === "user" ? "inputs" : "outputs", conversationId, config);
   }));
-  return { attachments, ...(references.length > MAX_ATTACHMENT_FILES ? { attachmentWarning: "每条消息最多展示 3 个附件，请让 Agent 分次提供其余文件。" } : {}) };
+  const attachments = resolved.filter(Boolean);
+  return { attachments: attachments.slice(0, MAX_ATTACHMENT_FILES), ...(withheld
+    ? { attachmentWarning: "部分文件无法作为附件提供；如需业务文件，请让 Agent 重新生成。" }
+    : attachments.length > MAX_ATTACHMENT_FILES ? { attachmentWarning: "每条消息最多展示 3 个附件，请让 Agent 分次提供其余文件。" } : {}) };
 }
 
 // Admission happens BEFORE buffering file bodies. Limits are process-local;
@@ -299,6 +334,14 @@ export async function transferAttachment({ request, response, config, conversati
     }
     if (Object.keys(body).some((key) => !["sessionKey", "ticket"].includes(key))) fail(400, "invalid_attachment", "Unexpected download fields");
     const file = verifyAttachmentTicket(body.ticket, conversationId, config);
+    if (file.kind === "outputs") {
+      // Recheck even old/generic-name receipts against fresh provider metadata.
+      // Do not use the display cache or buffer/forward a body before this check.
+      const metadata = await lookupFileMetadata(file.fileId, config, fetchImpl,
+        AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]));
+      if (!metadata) fail(503, "attachment_metadata_unavailable", "File details are unavailable; retry later");
+      if (isInternalOutputFile(metadata.name)) fail(403, "attachment_restricted", "This file is not available as a chat attachment");
+    }
     if (file.size > config.attachments.maxFileBytes) fail(413, "attachment_too_large", "Files must be at most 5 MB");
     const bytes = await fileRequest(`/${encodeURIComponent(file.fileId)}/content`, {}, config, fetchImpl, controller.signal, "content");
     if (file.size !== undefined && file.size !== bytes.length) fail(502, "files_invalid_response", "The file size has changed or is invalid");
