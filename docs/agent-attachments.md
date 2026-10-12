@@ -113,6 +113,15 @@ misassociate files in mixed outputs. A known restriction cannot be cleared by
 a later friendly filename. The same policy applies to live output and restored
 history before signing receipts.
 
+Known internal exports are silently omitted, including their warnings; the
+founder is not asked to regenerate an internal document. Unknown/missing
+business-file metadata still gives a retryable history-sync notice. Streamed
+and restored assistant prose passes through `gateway/public-output.mjs` before
+display or speech: reserved `<attachments>…</attachments>` / `<file …/>`
+protocols (including split/escaped tags) and known private paths are removed.
+Native business-file annotations still generate the existing download cards;
+an XML path never grants download authority. Genuine user text is not rewritten.
+
 Downloads check reserved names on existing output receipts and freshly resolve
 provider metadata again (not the label cache). Thus old generic-name receipts
 cannot bypass a known `SKILL.md` filename. Unknown metadata fails closed with a
@@ -131,6 +140,11 @@ from a business document by this website. Agent/Skill instructions must prevent
 copying internal source into public output files; stronger enforcement requires
 upstream export isolation/provenance. This filter is not a claim of complete
 prompt confidentiality or provider-side storage isolation.
+
+The Boids runtime can itself process a model's `<attachments>` block through
+`prepare_attachments`/`copy_to_store`. Hiding the protocol and denying website
+downloads does not undo that upstream export, and an Agent prompt alone is not
+a storage isolation boundary.
 
 The stream supports annotations in `response.completed.response.output`,
 `response.output_item.done`, and `response.output_text.annotation.added`.

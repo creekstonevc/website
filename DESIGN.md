@@ -147,11 +147,12 @@ single-family Space Grotesk hierarchy. The page does not repeat the homepage
 loader or chapter controls: identity stays fixed at left while the live
 conversation owns the larger right-hand console.
 
-Assistant output is treated as an evolving signal record. Streaming reasoning
-appears in a collapsible trace, final output supports Markdown and GFM, and
+Assistant output is treated as an evolving signal record. Public streamed
+answers support Markdown and GFM, and
 each turn receives a terse origin label and functional sequence number.
-The silent first-turn bootstrap never exposes its internal reasoning trace;
-reasoning remains available only for replies to visible founder messages.
+Internal reasoning is not a founder-facing feature: the gateway excludes it
+from live events, history and voice, and the UI has no trace component. While
+waiting, only a generic progress indication appears.
 Founder messages are offset but never converted into generic chat bubbles.
 Suggested prompts remain secondary pills; the square gold transmit control
 owns ordinary chat submission. The inline handoff review has its own gold

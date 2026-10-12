@@ -82,6 +82,34 @@ Client tests cover draft receipt validation, upload cancellation, authenticated
 downloads, failure copy, completion gating, sandbox-path display and file-only
 history. Existing IME, stream recovery, pagination, bootstrap and TTS tests remain.
 
+## Public output regression (2026-10-12)
+
+The separate Oct 12 evidence (`LIVE-REPORT.md` and `raw/live-20261012.md` in the
+Yihao Agent eval directory) confirms a visible reasoning panel in sample A and
+an internal SKILL XML attachment marker/warning in B. Unlike the older Oct 10
+sample above, these have recorded conversation/response identifiers. This
+website change does not modify those read-only Agent/eval files.
+
+`gateway/public-output.test.mjs` checks all possible split positions and
+character-by-character delivery of reserved XML/thinking protocols, nested and
+truncated blocks, safe English/ordinary prose, actual HTTP SSE public projection,
+history, mixed business/internal file annotations, review-card preservation,
+old signed MP3/live-voice replay, and actionable errors. Tests use mocked Boids,
+voice and host APIs; no Founder submission or production conversation is made.
+All reasoning/tool payload fields and repeated item/part events are omitted
+rather than blindly forwarded. The browser no longer consumes trace deltas.
+
+**Known boundary:** a read-only inspection of the current Boids public emitter
+(`interfaces/http/api/public/v1/router.py`) and response/history schemas shows
+text/reasoning types but no `phase`, `channel` or `is_final` marker separating
+ordinary intermediate assistant prose from the final answer. Conversation
+conversion also emits sibling text before tool calls as an ordinary message.
+We support explicit private phase/channel markers if supplied, but do not
+guess based on language, delete all English, or delay all speech until a tool
+event arrives. Completely excluding unmarked preparation prose requires an
+upstream classification before its text delta. This is not proof that Boids
+has stopped exporting internal files or that a renamed copy can be detected.
+
 ## Local interaction fixture
 
 ```bash

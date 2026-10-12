@@ -243,7 +243,7 @@ test("actual built-in Context basenames cannot obtain output tickets from metada
   for (const name of internalContextNames) {
     const result = await messageAttachments([outputItem("请查看附件。")], "assistant", "conv_a", configuration(), async () => ({ name, size: 30 }));
     assert.deepEqual(result.attachments, [], name);
-    assert.ok(result.attachmentWarning, name);
+    assert.equal(result.attachmentWarning, undefined, name);
   }
 });
 
@@ -257,12 +257,12 @@ test("internal output filtering covers final, item and annotation SSE variants a
       sse("response.completed", { response: { output: mode === "final" ? [outputItem()] : undefined } }));
     const wire = await (await f.post("/responses", { input: "fixture" }, session)).text();
     assert.deepEqual(ready(wire).attachments, [], mode);
-    assert.ok(ready(wire).attachmentWarning, mode);
+    assert.equal(ready(wire).attachmentWarning, undefined, mode);
   }
   f.histories.set("conv_1", [outputItem()]);
   const restored = await f.open(session);
   assert.deepEqual(restored.messages[0].attachments, []);
-  assert.ok(restored.messages[0].attachmentWarning);
+  assert.equal(restored.messages[0].attachmentWarning, undefined);
 });
 
 test("known internal references cannot be laundered by a business-looking metadata name; mixed outputs preserve the business file", async () => {
@@ -273,7 +273,7 @@ test("known internal references cannot be laundered by a business-looking metada
   ] }] };
   const result = await messageAttachments([internal], "assistant", "conv_a", config, async () => ({ name: "业务总结.md", size: 10 }));
   assert.deepEqual(result.attachments.map(file => file.fileId), [outputId]);
-  assert.ok(result.attachmentWarning);
+  assert.equal(result.attachmentWarning, undefined);
   const path = await messageAttachments([outputItem("源文件：`/workspace/agent/notes.txt`")], "assistant", "conv_a", config,
     () => assert.fail("known private source must not be looked up"));
   assert.deepEqual(path.attachments, []);

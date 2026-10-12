@@ -98,38 +98,6 @@ function VoiceControl({
   );
 }
 
-function ThinkingBlock({ text, live }: { text: string; live: boolean }) {
-  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const open = openOverride ?? live;
-
-  useEffect(() => {
-    if (live && bodyRef.current) {
-      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-    }
-  }, [live, text]);
-
-  return (
-    <div className={styles.thinking}>
-      <button
-        type="button"
-        className={styles.thinkingHeader}
-        onClick={() => setOpenOverride(!open)}
-        aria-expanded={open}
-      >
-        <span className={live ? styles.thinkingLive : styles.thinkingIdle} />
-        <span>Reasoning trace</span>
-        <span aria-hidden="true">{open ? "−" : "+"}</span>
-      </button>
-      {open ? (
-        <div className={styles.thinkingBody} ref={bodyRef}>
-          {text}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function AgentChat() {
   const [messages, setMessages] = useState<Message[]>([waitingMessage]);
   const [value, setValue] = useState("");
@@ -250,16 +218,13 @@ export function AgentChat() {
   const renderReply = useCallback(async (input: string, bootstrap = false, attachments: AttachmentFile[] = [], liveVoiceId?: string) => {
     const replySessionKey = sessionKeyRef.current;
     let pendingOutput = "";
-    let pendingThinking = "";
     let animationFrame: number | null = null;
 
     const flush = () => {
       animationFrame = null;
-      if (!pendingOutput && !pendingThinking) return;
+      if (!pendingOutput) return;
       const outputDelta = pendingOutput;
-      const thinkingDelta = pendingThinking;
       pendingOutput = "";
-      pendingThinking = "";
 
       setMessages((current) => {
         const next = current.slice();
@@ -269,9 +234,6 @@ export function AgentChat() {
           content: last.content
             ? last.content + outputDelta
             : outputDelta.replace(/^\s+/, ""),
-          thinking: thinkingDelta
-            ? (last.thinking ?? "") + thinkingDelta
-            : last.thinking,
         };
         return next;
       });
@@ -289,11 +251,6 @@ export function AgentChat() {
         {
           onOutputDelta: (delta) => {
             pendingOutput += delta;
-            queueFlush();
-          },
-          onThinkingDelta: (delta) => {
-            if (bootstrap) return;
-            pendingThinking += delta;
             queueFlush();
           },
         },
@@ -770,16 +727,9 @@ export function AgentChat() {
               <div className={styles.messageBody}>
                 {message.role === "assistant" ? (
                   <>
-                    {message.thinking && !speechMode ? (
-                      <ThinkingBlock
-                        text={message.thinking}
-                        live={busy && index === messages.length - 1}
-                      />
-                    ) : null}
                     {busy &&
                     index === messages.length - 1 &&
-                    !message.content &&
-                    !message.thinking ? (
+                    !message.content ? (
                       <span className={styles.waiting}>
                         <span />
                         {phase}

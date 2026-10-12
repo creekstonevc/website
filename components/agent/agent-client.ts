@@ -6,7 +6,6 @@ export type Message = {
   id?: string;
   role: "user" | "assistant";
   content: string;
-  thinking?: string;
   ttsTicket?: string;
   attachments?: AttachmentFile[];
   attachmentWarning?: string;
@@ -14,7 +13,8 @@ export type Message = {
 };
 
 export type StreamHandlers = {
-  onThinkingDelta: (delta: string) => void;
+  /** Legacy callers may pass this; private traces are never delivered. */
+  onThinkingDelta?: (delta: string) => void;
   onOutputDelta: (delta: string) => void;
 };
 
@@ -106,7 +106,7 @@ export function attachmentError(error: unknown): string {
     attachment_busy: "另一个文件正在传输，请稍后重试。",
     attachment_rate_limited: "文件传输次数已达限制，请稍后重试。",
     attachment_unavailable: "文件已过期、被删除或暂时不可用，请重新上传，或让 Agent 重新生成。",
-    attachment_restricted: "该文件无法作为聊天附件提供，请让 Agent 生成需要的业务文件。",
+    attachment_restricted: "该文件无法作为聊天附件提供。",
     attachment_metadata_unavailable: "暂时无法核实文件信息，请稍后重试或刷新历史。",
     attachment_timeout: "文件传输超时，结果尚未确认。可以重试；未发送的文件不会自动交给 Agent。",
     files_unavailable: "附件服务暂时不可用，请稍后重试。",
@@ -158,6 +158,8 @@ function extractFinalText(payload: unknown): string {
   for (const item of response.output) {
     if (!isRecord(item)) continue;
     if (item.type && item.type !== "message") continue;
+    if (item.role && item.role !== "assistant") continue;
+    if ([item.phase, item.channel].some(value => typeof value === "string" && /^(analysis|reasoning|thinking|commentary)$/.test(value))) continue;
     if (!Array.isArray(item.content)) continue;
     for (const content of item.content) {
       if (
@@ -336,15 +338,6 @@ export async function streamReply(
     if (type === "response.output_text.delta" && delta) {
       streamedOutput += delta;
       handlers.onOutputDelta(delta);
-      return false;
-    }
-
-    if (
-      (type.includes("reasoning") || type.includes("thinking")) &&
-      type.endsWith(".delta") &&
-      delta
-    ) {
-      handlers.onThinkingDelta(delta);
       return false;
     }
 

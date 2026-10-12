@@ -266,6 +266,16 @@ export function buildBoidsResponsePayload(
   };
 }
 
+// Explicit provider metadata only; never infer private thinking from language
+// or wording (an ordinary English answer must remain an ordinary answer).
+export function isPrivateOutput(value) {
+  if (!value || typeof value !== "object") return false;
+  return [value.type, value.phase, value.channel].some(field =>
+    typeof field === "string" && /^(?:analysis|reasoning|thinking|commentary)(?:[._]|$)/i.test(field)) ||
+    ["tool", "system", "developer"].includes(value.role) ||
+    (typeof value.recipient === "string" && !["all", "user"].includes(value.recipient));
+}
+
 function extractMessageText(item) {
   if (!Array.isArray(item?.content)) return "";
   return item.content
@@ -274,7 +284,8 @@ function extractMessageText(item) {
         part &&
         typeof part === "object" &&
         (part.type === "input_text" || part.type === "output_text") &&
-        typeof part.text === "string",
+        typeof part.text === "string" &&
+        (item.role !== "assistant" || !isPrivateOutput(part)),
     )
     .map((part) => part.text)
     .join("\n")
@@ -293,7 +304,8 @@ export function normalizeConversationHistory(
       !item ||
       typeof item !== "object" ||
       item.type !== "message" ||
-      (item.role !== "user" && item.role !== "assistant")
+      (item.role !== "user" && item.role !== "assistant") ||
+      (item.role === "assistant" && isPrivateOutput(item))
     ) {
       continue;
     }
@@ -362,14 +374,15 @@ export function extractCompletedText(payload, streamedText = "") {
       if (
         !item ||
         typeof item !== "object" ||
-        (item.type && item.type !== "message")
+        (item.type && item.type !== "message") ||
+        (item.role && item.role !== "assistant") || isPrivateOutput(item)
       )
         continue;
       if (!Array.isArray(item.content)) continue;
       for (const content of item.content) {
         if (
           content?.type === "output_text" &&
-          typeof content.text === "string"
+          typeof content.text === "string" && !isPrivateOutput(content)
         ) {
           pieces.push(content.text);
         }

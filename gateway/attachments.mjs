@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { posix } from "node:path";
-import { GatewayError, readJsonBody } from "./core.mjs";
+import { GatewayError, isPrivateOutput, readJsonBody } from "./core.mjs";
 import {
   ATTACHMENT_ONLY_INPUT, DEFAULT_FILE_BYTES, MAX_ATTACHMENT_FILES,
   MAX_TURN_BYTES, isSafeFileName, isFileId, hasRetiredAttachment,
@@ -91,14 +91,16 @@ export function nativeAttachmentReferences(items, role) {
   const files = new Map();
   for (const item of items || []) {
     if (item?.type !== "message" || item.role !== role || !Array.isArray(item.content)) continue;
+    if (role === "assistant" && isPrivateOutput(item)) continue;
     for (const part of item.content) {
+      if (role === "assistant" && isPrivateOutput(part)) continue;
       const candidates = role === "user" && part?.type === "input_file" ? [part] :
         role === "assistant" && part?.type === "output_text" && Array.isArray(part.annotations)
           ? part.annotations.filter((entry) => entry?.type === "file_path") : [];
       // `index` is NOT a documented text offset. Only attribute a prose path
       // when there is one file; otherwise screen each file's own metadata.
       const privateSource = role === "assistant" && candidates.length === 1 && typeof part.text === "string" &&
-        [...part.text.matchAll(/(?:sandbox:)?\/(?:workspace|opt)\/[^`\n<>)]*/g)]
+        [...part.text.matchAll(/(?:sandbox:)?\/(?:workspace|opt)\/[^`"'\n<>)]*/g)]
           .some(match => isInternalOutputFile(match[0].trim()));
       for (const reference of candidates) {
         if (!isFileId(reference.file_id)) continue;
@@ -262,18 +264,20 @@ export async function messageAttachments(items, role, conversationId, config, lo
     const retired = items.some((item) => item.content?.some((part) => hasRetiredAttachment(part.text)));
     return retired ? { attachmentWarning: "旧版附件已停用，请重新上传文件，或让 Agent 重新生成。" } : {};
   }
+  const publicReferences = references.filter(reference => role !== "assistant" || !reference.restricted && !isInternalOutputFile(reference.name));
+  if (!publicReferences.length) return { attachments: [] };
   if (!complete) return { attachmentWarning: "附件尚未生成完成，请稍后同步历史。" };
   if (!config.attachments.enabled) return { attachmentWarning: "附件服务已停用，暂时无法下载。" };
   let withheld = false;
-  const resolved = await Promise.all(references.map(async (reference) => {
-    if (role === "assistant" && (reference.restricted || isInternalOutputFile(reference.name))) { withheld = true; return null; }
+  const resolved = await Promise.all(publicReferences.map(async (reference) => {
     const metadata = await lookup(reference.fileId);
-    if (role === "assistant" && (!metadata || !isSafeFileName(metadata.name) || isInternalOutputFile(metadata.name))) { withheld = true; return null; }
+    if (role === "assistant" && isInternalOutputFile(metadata?.name)) return null;
+    if (role === "assistant" && (!metadata || !isSafeFileName(metadata.name))) { withheld = true; return null; }
     return signFile({ ...reference, ...metadata }, role === "user" ? "inputs" : "outputs", conversationId, config);
   }));
   const attachments = resolved.filter(Boolean);
   return { attachments: attachments.slice(0, MAX_ATTACHMENT_FILES), ...(withheld
-    ? { attachmentWarning: "部分文件无法作为附件提供；如需业务文件，请让 Agent 重新生成。" }
+    ? { attachmentWarning: "部分附件暂时无法读取，请稍后同步历史重试。" }
     : attachments.length > MAX_ATTACHMENT_FILES ? { attachmentWarning: "每条消息最多展示 3 个附件，请让 Agent 分次提供其余文件。" } : {}) };
 }
 

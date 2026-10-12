@@ -28,8 +28,11 @@ preview, not a deployment command.
 - Browser opens same-origin `POST /api/agent/voice/stream` with a random UUID
   and its current session selector. The signed HttpOnly cookie is authoritative.
 - `/responses` claims that UUID once, under the same conversation. Only server
-  observed `response.output_text.delta` content can reach TTS. Browser text,
-  reasoning and tool events cannot be submitted directly to the voice channel.
+  observed public `response.output_text.delta` content can reach TTS. The gateway
+  removes typed/private reasoning, reserved inline thinking/attachment blocks
+  and private file paths before any text is pushed. Browser text, reasoning and
+  tool events cannot be submitted directly to the voice channel. Signed replay
+  tickets are filtered again after verification, including older tickets.
 - Gateway opens BytePlus V3 `/tts/bidirection` using `seed-icl-2.0` and the
   existing cloned speaker. Text is incrementally cleaned and sent through
   TaskRequest; video sends FinishSession at LLM completion, while pure audio
@@ -130,8 +133,8 @@ two sessions, 4 MiB buffered PCM per batch and 24 MiB total generated audio.
 The deterministic QA fixture also sends late/unmatched subtitles, not idealized
 subtitle-before-audio events.
 Browser regression checks confirmed that both the second and third assistant
-replies (with reasoning blocks) start highlighting their first body group;
-reasoning is never highlighted, pause preserves the group, and Back to speaking
+replies start highlighting their first public body group; internal reasoning
+is neither displayed nor highlighted, pause preserves the group, and Back to speaking
 centers that group in the message list.
 
 ## Verification

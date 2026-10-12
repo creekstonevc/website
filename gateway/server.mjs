@@ -10,7 +10,8 @@ import { HighlightedLiveVoice, createLiveVoiceRegistry } from "./live-voice.mjs"
 import { createMizzenManager, mizzenConfig } from "./mizzen.mjs";
 import { createAsrBridge } from "./asr.mjs";
 import { createHandoffManager, handoffConfig, readHandoffBody } from "./handoff.mjs";
-import { createHandoffTextFilter, extractHandoffProposal, PROPOSAL_PREFIX, sanitizeHandoffEvent, stripHandoffProposal, stripWebsiteCapability, withWebsiteCapability } from "./handoff-proposal.mjs";
+import { extractHandoffProposal, PROPOSAL_PREFIX, stripWebsiteCapability, withWebsiteCapability } from "./handoff-proposal.mjs";
+import { createPublicTextFilter, publicAssistantText } from "./public-output.mjs";
 import {
   GatewayError,
   buildBoidsResponsePayload,
@@ -19,6 +20,7 @@ import {
   createTtsTicket,
   decodeBytePlusAudio,
   extractCompletedText,
+  isPrivateOutput,
   normalizeConversationHistory,
   parseSseFrame,
   readJsonBody,
@@ -224,8 +226,8 @@ async function fetchBoidsHistory(conversationId, config, fetchImpl, limit, after
     const items = oldestFirst.filter((item) => message.itemIds?.includes(item.id));
     const complete = !items.some((item) => ["in_progress", "incomplete", "failed"].includes(item.status));
     const attachments = await messageAttachments(items, message.role, conversationId, config, config.fileMetadata, complete);
-    const content = attachmentDisplayText(message.role === "assistant" ? stripHandoffProposal(message.content) : stripWebsiteCapability(message.content), message.role === "assistant");
-    return { ...message, content, complete, ...attachments,
+    const content = message.role === "assistant" ? publicAssistantText(message.content) : attachmentDisplayText(stripWebsiteCapability(message.content));
+    return { ...message, content, complete, hasFiles: !!attachments.attachments?.length, ...attachments,
       ttsTicket: complete && message.role === "assistant" ? createTtsTicket(content, config.signingSecret, {
         ttlMs: config.ticketTtlMs, maxCharacters: config.maxTtsCharacters,
       }) || undefined : undefined };
@@ -234,7 +236,7 @@ async function fetchBoidsHistory(conversationId, config, fetchImpl, limit, after
     (item) => item?.type === "message",
   ).length;
   return {
-    messages,
+    messages: messages.filter(message => message.role !== "assistant" || !message.complete || message.content.trim() || message.hasFiles || message.attachmentWarning),
     needsBootstrap: rawMessageCount === 0 && newestFirst.length === 0 && !payload.has_more && !after,
     truncated: payload?.has_more === true,
     nextCursor,
@@ -433,10 +435,17 @@ async function proxyResponseStream(
     let streamedText = "";
     let ticketSent = false;
     let completedHandled = false;
-    const outputFilter = createHandoffTextFilter();
-    const reasoningFilters = new Map();
+    const outputFilter = createPublicTextFilter();
+    const privateItems = new Set();
+    const privateParts = new Set();
     const outputItems = new Map();
     const fileAnnotations = new Map();
+    const writeEvent = (type, payload) => response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`);
+    const writeDelta = (delta) => {
+      if (!delta) return;
+      liveVoice?.push(delta);
+      writeEvent("response.output_text.delta", { delta });
+    };
 
     const emitTicket = (text) => {
       if (ticketSent) return;
@@ -453,8 +462,21 @@ async function proxyResponseStream(
 
     const relayFrame = async (frame) => {
       const parsed = parseSseFrame(frame);
+      if (completedHandled) return;
       // Provider/model metadata never has the authority of a gateway event.
       if (parsed.type.startsWith("creekstone.")) return;
+      const eventItem = parsed.payload?.item;
+      if (eventItem && (isPrivateOutput(eventItem) || eventItem.type !== "message" || eventItem.role !== "assistant")) {
+        if (eventItem.id !== undefined) privateItems.add(eventItem.id);
+        if (parsed.payload.output_index !== undefined) privateItems.add(parsed.payload.output_index);
+      }
+      const partKey = `${parsed.payload?.item_id ?? parsed.payload?.output_index ?? "default"}:${parsed.payload?.content_index ?? 0}`;
+      if (isPrivateOutput(parsed.payload?.part)) privateParts.add(partKey);
+      if (isPrivateOutput(parsed.payload) || isPrivateOutput(parsed.payload?.part) ||
+          /reasoning|thinking|analysis/.test(parsed.type) ||
+          parsed.type.startsWith("response.output_text.") && privateParts.has(partKey) ||
+          privateItems.has(parsed.payload?.item_id) || privateItems.has(parsed.payload?.output_index)) return;
+      if (eventItem && (isPrivateOutput(eventItem) || eventItem.type !== "message" || eventItem.role !== "assistant")) return;
       // Some providers send annotations on item/annotation events, others only
       // in response.completed. Neither grants access before terminal success.
       if (parsed.type === "response.output_item.done" && parsed.payload?.item?.type === "message" && outputItems.size < 16) {
@@ -468,45 +490,49 @@ async function proxyResponseStream(
         typeof parsed.payload?.delta === "string"
       ) {
         streamedText += parsed.payload.delta;
-        const delta = outputFilter.push(parsed.payload.delta);
-        if (!delta) return;
-        liveVoice?.push(delta);
-        response.write(`event: ${parsed.type}\ndata: ${JSON.stringify({ ...parsed.payload, delta })}\n\n`);
+        writeDelta(outputFilter.push(parsed.payload.delta));
         return;
       }
       if (parsed.type === "response.completed") {
         if (completedHandled) return;
         completedHandled = true;
-        const rawText = extractCompletedText(parsed.payload, streamedText);
-        const text = stripHandoffProposal(rawText);
+        const terminal = parsed.payload?.response || parsed.payload;
+        if (terminal?.status && terminal.status !== "completed") {
+          writeEvent("response.incomplete", { error: { code: "response_interrupted", message: "The answer was interrupted; sync history before retrying." } });
+          return;
+        }
+        const items = Array.isArray(terminal?.output) ? terminal.output : [...outputItems.values()];
+        const rawText = extractCompletedText({ output: items }, streamedText);
+        const text = publicAssistantText(rawText);
+        writeDelta(outputFilter.finish());
         if (!streamedText) liveVoice?.push(text);
         liveVoice?.finish();
         voiceFinished = true;
-        const terminal = parsed.payload?.response || parsed.payload;
-        const items = Array.isArray(terminal?.output) ? terminal.output : [...outputItems.values()];
-        const completedItems = items.filter((item) => !["in_progress", "incomplete", "failed"].includes(item.status));
+        const completedItems = items.filter((item) => item?.type === "message" && item.role === "assistant" && !isPrivateOutput(item) && !["in_progress", "incomplete", "failed"].includes(item.status));
         const assistantText = extractCompletedText({ output: completedItems.filter(item => item.type === "message" && item.role === "assistant") });
         const proposal = proposalSupported && !body.bootstrap && (!terminal.status || terminal.status === "completed") ? extractHandoffProposal(assistantText) : null;
         if (proposal) response.write(`event: creekstone.handoff.proposal\ndata: ${JSON.stringify({ sessionKey: sessionKey(session.conversationId), content: proposal })}\n\n`);
         else if (proposalSupported && !body.bootstrap && assistantText.includes(PROPOSAL_PREFIX)) response.write(`event: creekstone.handoff.unavailable\ndata: ${JSON.stringify({ sessionKey: sessionKey(session.conversationId), code: "invalid_proposal" })}\n\n`);
         if (fileAnnotations.size) completedItems.push({ type: "message", role: "assistant", content: [
-          { type: "output_text", text, annotations: [...fileAnnotations.values()] },
+          { type: "output_text", text: rawText, annotations: [...fileAnnotations.values()] },
         ] });
         const attachments = await messageAttachments(completedItems, "assistant", session.conversationId, config, config.fileMetadata);
         if (Object.keys(attachments).length) response.write(
           `event: creekstone.attachments.ready\ndata: ${JSON.stringify(attachments)}\n\n`,
         );
-        emitTicket(attachmentDisplayText(text, true));
-      }
-      if ((parsed.type.includes("reasoning") || parsed.type.includes("thinking")) && parsed.type.endsWith(".delta") && typeof parsed.payload?.delta === "string") {
-        const key = parsed.payload.item_id ?? parsed.payload.output_index ?? "reasoning";
-        if (!reasoningFilters.has(key) && reasoningFilters.size < 32) reasoningFilters.set(key, createHandoffTextFilter());
-        const delta = reasoningFilters.get(key)?.push(parsed.payload.delta) || "";
-        if (delta) response.write(`event: ${parsed.type}\ndata: ${JSON.stringify({ ...parsed.payload, delta })}\n\n`);
+        emitTicket(text);
+        // Public projection, not recursive redaction: repeated provider items,
+        // reasoning, tool calls and internal metadata never reach the browser.
+        writeEvent("response.completed", { response: { status: "completed", output: [
+          { type: "message", role: "assistant", content: [{ type: "output_text", text }] },
+        ] } });
         return;
       }
-      if (parsed.payload) response.write(`event: ${parsed.type}\ndata: ${JSON.stringify(sanitizeHandoffEvent(parsed.payload))}\n\n`);
-      else response.write(`${frame}\n\n`);
+      if (["response.failed", "response.incomplete", "error"].includes(parsed.type)) {
+        completedHandled = true;
+        writeEvent(parsed.type, { error: { code: "response_interrupted", message: "The answer was interrupted; sync history before retrying." } });
+      }
+      // All other provider events are internal, not part of the public API.
     };
 
     try {
@@ -598,7 +624,8 @@ async function renderTicketedTts(
     if (error.code !== "expired_tts_ticket" || !readConversationSession(request, config)) throw error;
     verified = verifyTtsTicket(body.ticket, config.signingSecret, { now: Date.now() - 24 * 60 * 60_000 });
   }
-  const { text } = verified;
+  const text = publicAssistantText(verified.text).trim();
+  if (!text) throw new GatewayError(422, "empty_tts_text", "This answer has no playable text");
   const key = ttsCacheKey(text, config);
 
   let audio = cache.get(key);
@@ -715,7 +742,7 @@ export function createGateway({
           liveVoices.open(body.id, session.conversationId, response, { videoId: body.videoId });
           if (replay) {
             const voice = liveVoices.claim(body.id, session.conversationId);
-            voice.push(replay.text);
+            voice.push(publicAssistantText(replay.text));
             voice.finish();
           }
         }

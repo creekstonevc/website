@@ -5,6 +5,19 @@ import { streamReply, shouldSendOnEnter, openConversation } from "./agent-client
 const handlers = { onOutputDelta() {}, onThinkingDelta() {} };
 const event = (type, data = {}) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
 
+test("legacy reasoning events never reach UI callbacks, while final answers remain visible", async t => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    event("response.reasoning_summary_text.delta", { delta: "private" }) +
+    event("response.thinking.delta", { delta: "private" }) +
+    event("response.completed", { response: { output: [
+      { type: "reasoning", content: [{ type: "output_text", text: "private" }] },
+      { type: "message", phase: "commentary", role: "assistant", content: [{ type: "output_text", text: "private" }] },
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: "Here is the answer." }] },
+    ] } })));
+  const result = await streamReply("test", { onOutputDelta() {}, onThinkingDelta() { assert.fail("private traces must not be consumed"); } });
+  assert.equal(result.text, "Here is the answer.");
+});
+
 test("IME candidate confirmation, Safari 229 and compositionend Enter never submit", () => {
   const enter = { key: "Enter", shiftKey: false, isComposing: false, keyCode: 13 };
   assert.equal(shouldSendOnEnter(enter, false, 101), true);

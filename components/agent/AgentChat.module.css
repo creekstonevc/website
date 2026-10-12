@@ -1016,58 +1016,6 @@ button[aria-pressed="true"] .toggleTrack::after { transform: translateX(10px); b
   .markdown :global([data-speech-group]) { transition: none; }
 }
 
-.thinking {
-  margin-bottom: 12px;
-  border: 1px solid rgba(229, 189, 82, 0.18);
-  background: rgba(5, 5, 5, 0.68);
-}
-
-.thinkingHeader {
-  width: 100%;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  color: rgba(243, 239, 229, 0.54);
-  border: 0;
-  background: transparent;
-  font: inherit;
-  font-size: 0.49rem;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  text-align: left;
-  text-transform: uppercase;
-}
-
-.thinkingLive,
-.thinkingIdle {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-
-.thinkingLive {
-  background: var(--agent-gold);
-  box-shadow: 0 0 8px rgba(229, 189, 82, 0.8);
-  animation: agentLive 1s ease-in-out infinite;
-}
-
-.thinkingIdle {
-  background: rgba(243, 239, 229, 0.24);
-}
-
-.thinkingBody {
-  max-height: 150px;
-  overflow-y: auto;
-  padding: 9px 10px 12px 24px;
-  color: rgba(243, 239, 229, 0.46);
-  border-top: 1px solid rgba(229, 189, 82, 0.12);
-  font-size: 0.72rem;
-  line-height: 1.55;
-  white-space: pre-wrap;
-}
-
 .waiting {
   display: flex;
   align-items: center;

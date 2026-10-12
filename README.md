@@ -138,7 +138,8 @@ managed upstream; removing a draft does not delete the stored file.
   position is preserved. A missing/ignored cursor fails explicitly without
   replacing current messages. Boids pagination support is assumed, not live-verified.
 - Drafting while generating, user cancellation and live stream resumption remain
-  intentionally deferred. Bootstrap reasoning remains hidden only in the UI.
+  intentionally deferred. Private reasoning/tool events are excluded by the
+  gateway for every turn, including history and voice; there is no trace UI.
 
 Local regression checks (Node 22.6+ for the TypeScript client tests):
 
