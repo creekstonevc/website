@@ -8,7 +8,7 @@ const secret = "a-long-enough-test-secret-for-signing-only";
 const config = {
   allowedOrigins: new Set(["http://localhost:3100"]), signingSecret: secret,
   conversationCookieName: "creekstone_conversation", conversationTtlMs: 2592000000,
-  conversationHistoryLimit: 2, bootstrapPrompt: "Hi", requestMaxBytes: 65536,
+  conversationHistoryLimit: 2, bootstrapPrompt: "你好", requestMaxBytes: 65536,
   boidsBaseUrl: "https://test.invalid/v1", boidsApiKey: "test-only", boidsModel: "agent:test",
   ticketTtlMs: 60000, maxTtsCharacters: 8000, maxInputCharacters: 4000,
   bytePlusUrl: "https://voice.invalid/", bytePlusApiKey: "test-only",

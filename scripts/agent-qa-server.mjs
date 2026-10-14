@@ -26,7 +26,7 @@ const msg = (role, text) => ({ id: `msg_${++serial}`, type: "message", role, con
 const config = {
   allowedOrigins: new Set([`http://localhost:${port}`]), signingSecret: "qa-only-not-a-production-secret-1234567890",
   conversationCookieName: "creekstone_qa_conversation", conversationTtlMs: 2592000000,
-  conversationHistoryLimit: 20, bootstrapPrompt: "Hi", requestMaxBytes: 65536,
+  conversationHistoryLimit: 20, bootstrapPrompt: "你好", requestMaxBytes: 65536,
   boidsBaseUrl: "https://qa.invalid/v1", boidsApiKey: "qa-only", boidsModel: "agent:qa",
   ticketTtlMs: 60000, maxTtsCharacters: 8000, maxInputCharacters: 4000,
   attachments: attachmentConfig(),
@@ -78,7 +78,7 @@ const fakeFetch = async (url, options = {}) => {
     if (input === "seed history") {
       for (let i = 1; i <= 35; i++) items.push(msg("user", `Earlier question ${i}`), msg("assistant", `Earlier answer ${i}. This is a preserved conversation record.`));
     }
-    let answer = input === "Hi" ? "你好，我是一豪的 AI 分身。你正在做什么？" :
+    let answer = input === "你好" ? "你好，我是一豪的 AI 分身。你正在做什么？" :
       Array.from({ length: input === "long" ? 50 : 6 }, (_, i) => `\n\n**Signal ${i + 1}** — 先把问题讲清楚，再一起讨论。Build from a real founder problem and test your assumptions with the people who need it.`).join("");
     if (input === "linebreak") answer = '**2. 主动式 AI / Intent Layer** — 产品不是等用户发命令，而是在正确时机识别意图、提出建议或发起可控行动。触发规则得可解释，权限得可撤回，错误成本得可控。\n\n**3. AI-Native 生产力和开发工具** — 能把模型能力转成可委托的完整交付，在真实生产流程里承担验证与协作。最关键的检验是：如果用户能无成本切换到平台原生功能，你的价值还在不在。';
     const annotations = [];

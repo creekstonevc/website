@@ -63,9 +63,9 @@ not automatically sent to the Agent. Retrying may create another file.
 }
 ```
 
-Text-only turns and the hidden `Hi` bootstrap remain ordinary text, without
+Text-only turns and the hidden `你好` bootstrap remain ordinary text, without
 hidden attachment manifests, storage paths or extra instructions. A file-only
-input uses `请查看附件。` as its visible default prompt. A genuine user `Hi`
+input uses `请查看附件。` as its visible default prompt. A genuine user `你好` or `Hi`
 with a native attachment is not hidden as bootstrap history.
 
 ### Generated output

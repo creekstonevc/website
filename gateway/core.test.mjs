@@ -102,6 +102,17 @@ test("history normalization hides only the oldest internal Hi", () => {
   );
 });
 
+test("Chinese and legacy English openings are hidden only on the oldest page, never later or attached greetings", () => {
+  const message = (role, text) => ({ type: "message", role, content: [{ type: role === "user" ? "input_text" : "output_text", text }] });
+  for (const greeting of ["你好", "Hi"]) {
+    const items = [message("user", greeting), message("assistant", "开场白"), message("user", "你好"), message("assistant", "继续"), message("user", "Hi")];
+    assert.deepEqual(normalizeConversationHistory(items).map(item => item.content), ["开场白", "你好", "继续", "Hi"]);
+    assert.equal(normalizeConversationHistory(items, { oldestItemIncluded: false })[0].content, greeting);
+    items[0].content.push({ type: "input_file", file_id: "file-user-owned" });
+    assert.equal(normalizeConversationHistory(items)[0].content, greeting);
+  }
+});
+
 test("TTS tickets are signed, expire, and contain speech-normalized text", () => {
   const ticket = createTtsTicket(
     "## Hello\n[Creekstone](https://example.com) **founder**",

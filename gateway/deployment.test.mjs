@@ -4,6 +4,11 @@ import { readFileSync } from "node:fs";
 
 const deploy = readFileSync(new URL("../deploy.sh", import.meta.url), "utf8");
 
+test("production environment uses the Chinese hidden opening", () => {
+  assert.match(deploy, /GATEWAY_BOOTSTRAP_PROMPT=你好/);
+  assert.doesNotMatch(deploy, /GATEWAY_BOOTSTRAP_PROMPT=Hi/);
+});
+
 test("root lock retains cross-platform optional native-build dependencies", () => {
   const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
   for (const name of ["@emnapi/core", "@emnapi/runtime"]) {

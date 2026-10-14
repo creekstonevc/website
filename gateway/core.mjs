@@ -294,7 +294,7 @@ function extractMessageText(item) {
 
 export function normalizeConversationHistory(
   items,
-  { bootstrapPrompt = "Hi", oldestItemIncluded = true, includeIds = false } = {},
+  { bootstrapPrompt = "你好", oldestItemIncluded = true, includeIds = false } = {},
 ) {
   if (!Array.isArray(items)) return [];
 
@@ -331,7 +331,8 @@ export function normalizeConversationHistory(
     oldestItemIncluded &&
     messages[0]?.role === "user" &&
     !messages[0].hasFiles &&
-    messages[0].content.trim() === bootstrapPrompt
+    // Keep older English bootstraps hidden after switching the default language.
+    [bootstrapPrompt, "你好", "Hi"].includes(messages[0].content.trim())
   ) {
     return messages.slice(1);
   }

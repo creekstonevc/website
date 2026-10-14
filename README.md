@@ -105,8 +105,8 @@ to ten recent conversations (subject to cookie size and 30-day expiry). The UI
 receives only opaque selectors; arbitrary upstream IDs cannot open a session.
 Clearing cookies removes browser access, and this is not cross-device history.
 Old conversations are never deleted when starting a new one. The first empty session
-silently submits the fixed user prompt `Hi`; the gateway removes only that
-oldest internal prompt when returning history, while preserving later user
+silently submits the fixed user prompt `你好`; the gateway removes only that
+oldest internal prompt (including legacy `Hi`) when returning history, while preserving later user
 messages with the same text. `New conversation` switches the active cookie and
 generates a fresh Agent opening. Conversation titles and per-conversation drafts
 are kept in localStorage; pending-request recovery is kept in sessionStorage.

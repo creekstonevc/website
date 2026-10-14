@@ -68,7 +68,7 @@ export function loadConfig(env = process.env) {
     conversationHistoryLimit: Number(
       env.GATEWAY_CONVERSATION_HISTORY_LIMIT || 100,
     ),
-    bootstrapPrompt: env.GATEWAY_BOOTSTRAP_PROMPT || "Hi",
+    bootstrapPrompt: env.GATEWAY_BOOTSTRAP_PROMPT || "你好",
     boidsApiKey: required("BOIDS_API_KEY", env),
     boidsBaseUrl: (env.BOIDS_BASE_URL || "https://api.boids.so/v1").replace(
       /\/$/,
@@ -180,7 +180,7 @@ async function createBoidsConversation(config, fetchImpl) {
     method: "POST",
     headers: boidsHeaders(config),
     body: JSON.stringify({
-      metadata: { source: "creekstone-web", bootstrap_prompt: "hi_v1" },
+      metadata: { source: "creekstone-web", bootstrap_prompt: "nihao_v1" },
     }),
     signal: AbortSignal.timeout(30_000),
   });

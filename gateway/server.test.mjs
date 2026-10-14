@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
-import { createGateway } from "./server.mjs";
+import { createGateway, loadConfig } from "./server.mjs";
 import { WEBSITE_CAPABILITY } from "./handoff-proposal.mjs";
 
 const origin = "https://creekstonevc.com";
@@ -19,7 +19,7 @@ function testConfig() {
     conversationCookieName: "creekstone_conversation",
     conversationTtlMs: 30 * 24 * 60 * 60_000,
     conversationHistoryLimit: 100,
-    bootstrapPrompt: "Hi",
+    bootstrapPrompt: "你好",
     boidsApiKey: "boids-test-key",
     boidsBaseUrl: "https://boids.example/v1",
     boidsModel: "agent:creekstone",
@@ -258,6 +258,7 @@ test("gateway forces the hidden bootstrap prompt and refuses unsigned conversati
     const url = String(rawUrl);
     const method = options.method || "GET";
     if (url.endsWith("/conversations") && method === "POST") {
+      assert.equal(JSON.parse(options.body).metadata.bootstrap_prompt, "nihao_v1");
       return Response.json({ id: "conv_bootstrap", object: "conversation" });
     }
     if (url.includes("/conversations/conv_bootstrap/items")) {
@@ -301,11 +302,17 @@ test("gateway forces the hidden bootstrap prompt and refuses unsigned conversati
     await bootstrap.text();
     assert.deepEqual(boidsPayload, {
       model: "agent:creekstone",
-      input: "Hi",
+      input: "你好",
       conversation: "conv_bootstrap",
       stream: true,
     });
   });
+});
+
+test("gateway defaults to a Chinese greeting without a bootstrap environment override", () => {
+  const env = { GATEWAY_SIGNING_SECRET: "test-secret", BOIDS_API_KEY: "test-key", BYTEPLUS_TTS_API_KEY: "test-key", BYTEPLUS_TTS_SPEAKER_ID: "test-speaker" };
+  assert.equal(loadConfig(env).bootstrapPrompt, "你好");
+  assert.equal(loadConfig({ ...env, GATEWAY_BOOTSTRAP_PROMPT: "自定义招呼" }).bootstrapPrompt, "自定义招呼");
 });
 
 test("gateway rejects missing origins, unsupported methods, and unknown routes", async () => {
