@@ -6,7 +6,7 @@ import { createGateway, loadConfig } from "./server.mjs";
 import { createConversationArchive, createConversationCredential, createTtsTicket } from "./core.mjs";
 import { stripWebsiteCapability } from "./handoff-proposal.mjs";
 
-async function harness(run) {
+async function harness(run, { onCancel } = {}) {
   const voices = [], logs = [];
   const config = loadConfig({ GATEWAY_SIGNING_SECRET: "test-local-voice-secret-at-least-32-characters", BOIDS_API_KEY: "test-boids",
     BYTEPLUS_TTS_API_KEY: "test-voice", BYTEPLUS_TTS_SPEAKER_ID: "test-speaker" });
@@ -15,7 +15,7 @@ async function harness(run) {
     makeLiveVoice: (emit) => {
       const voice = { text: [], cancelled: false,
         push: (s) => { voice.text.push(s); emit("audio", { data: Buffer.from([1, 0, 2, 0]).toString("base64") }); },
-        finish: () => emit("done", {}), cancel: () => { voice.cancelled = true; } };
+        finish: () => emit("done", {}), cancel: () => { voice.cancelled = true; return onCancel?.(voice); } };
       voices.push(voice); return voice;
     },
     fetchImpl: async (url, options) => {
@@ -23,6 +23,7 @@ async function harness(run) {
       if (url.includes("/items")) return Response.json({ data: [], has_more: false });
       const body = JSON.parse(options.body);
       assert.equal(body.liveVoiceId, undefined);
+      if (stripWebsiteCapability(body.input) === "upstream-failure") throw new TypeError("fetch failed");
       const frames = [
         'event: response.reasoning.delta\ndata: {"delta":"PRIVATE reasoning"}',
         'event: creekstone.fake\ndata: {"value":"untrusted"}',
@@ -167,3 +168,52 @@ test("interrupted text closes its voice channel and a replaced subscription canc
   assert.match(await audio.text(), /event: done/);
   assert.equal(voices[1].cancelled, true);
 }));
+
+test("an upstream request failure waits for graceful voice cleanup without replacing its original error", async () => {
+  let finishCleanup, markCleanupStarted;
+  const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+  const cleanupStarted = new Promise(resolve => { markCleanupStarted = resolve; });
+  await harness(async ({ post, session, voices }) => {
+    const user = await session(), id = randomUUID();
+    const audio = await post("/voice/stream", { id, sessionKey: user.sessionKey }, user.cookie);
+    let replySettled = false, audioSettled = false;
+    const audioText = audio.text().then(value => { audioSettled = true; return value; });
+    const reply = post("/responses", { input: "upstream-failure", sessionKey: user.sessionKey, liveVoiceId: id }, user.cookie)
+      .then(value => { replySettled = true; return value; });
+    try {
+      await cleanupStarted;
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(replySettled, false);
+      assert.equal(audioSettled, false);
+      assert.deepEqual(voices[0].text, []);
+      finishCleanup();
+      const result = await reply;
+      assert.ok(result.status >= 500);
+      assert.match(await audioText, /event: done/);
+      assert.equal(voices[0].cancelled, true);
+      assert.equal(voices.length, 1, "failed LLM requests must not retry or reopen voice automatically");
+    } finally { finishCleanup(); await Promise.allSettled([reply, audioText]); }
+  }, { onCancel: () => { markCleanupStarted(); return cleanup; } });
+});
+
+test("explicit voice cancellation responds only after its media input has safely ended", async () => {
+  let finishCleanup, markCleanupStarted;
+  const cleanup = new Promise(resolve => { finishCleanup = resolve; });
+  const cleanupStarted = new Promise(resolve => { markCleanupStarted = resolve; });
+  await harness(async ({ post, session }) => {
+    const user = await session(), id = randomUUID();
+    const audio = await post("/voice/stream", { id, sessionKey: user.sessionKey }, user.cookie);
+    const audioText = audio.text();
+    let settled = false;
+    const cancelled = post("/voice/cancel", { id, sessionKey: user.sessionKey }, user.cookie)
+      .then(value => { settled = true; return value; });
+    try {
+      await cleanupStarted;
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(settled, false);
+      finishCleanup();
+      assert.equal((await cancelled).status, 200);
+      assert.match(await audioText, /event: done/);
+    } finally { finishCleanup(); await Promise.allSettled([cancelled, audioText]); }
+  }, { onCancel: () => { markCleanupStarted(); return cleanup; } });
+});

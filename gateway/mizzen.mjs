@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { GatewayError } from "./core.mjs";
-import { BytePlusLiveVoice } from "./live-voice.mjs";
+import { PacedVideoTts } from "./video-tts.mjs";
 import { MIZZEN_AUDIO_ERROR_CODES, MizzenAudio } from "./mizzen-audio.mjs";
 
 const fault = (code, message, status = 502) => new GatewayError(status, code, message);
@@ -11,7 +11,7 @@ export function mizzenConfig(env = process.env) {
 }
 
 export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (url, key, options) => new MizzenAudio(url, key, options),
-  makeTts = (emit) => new BytePlusLiveVoice(config, emit), pollMs = 500, keepaliveMs = 15000,
+  makeTts = (emit, options) => new PacedVideoTts(config, emit, options), pollMs = 500, keepaliveMs = 15000,
   log = event => process.stderr.write(`${JSON.stringify(event)}\n`) } = {}) {
   const settings = config.mizzen || mizzenConfig({});
   const entries = new Map(), creating = new Set(), rates = new Map();
@@ -277,6 +277,27 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
         scheduleKeepalive(entry);
         emit("done", interrupted ? { interrupted: true } : {});
       };
+      const interrupt = () => {
+        if (interruptPromise) return interruptPromise;
+        if (finished || cancelled) return Promise.resolve();
+        interrupted = true; pending = []; pendingCharacters = 0; tts?.cancel();
+        log({ event: "video.soft_interrupt", videoId: entry.id, upstreamSession: entry.upstream, replyId, streamId: audio?.id ?? null });
+        // A failed chat/TTS turn owns only this input stream, not the video
+        // session. Reuse it only after ACK + end + WS close prove safe cleanup.
+        interruptPromise = (async () => {
+          try { if (audio) await audio.interrupt(); else await entry.keepalive; complete(); }
+          catch (error) { fail("audio", error?.code); throw error; }
+        })();
+        return interruptPromise;
+      };
+      const failReply = (source, code) => {
+        if (cancelled || finished || interrupted) return;
+        const allowed = ["voice_unavailable", "voice_timeout", "voice_limit", "voice_protocol_error", "voice_interrupted", "voice_backpressure", "pending_text_limit"];
+        log({ event: "video.voice_failed", videoId: entry.id, upstreamSession: entry.upstream, replyId,
+          streamId: audio?.id ?? null, source, code: allowed.includes(code) ? code : "voice_unknown", recoverable: true });
+        emit("reply_error", { code: "video_reply_failed" });
+        void interrupt().catch(() => {});
+      };
       // Keep the public voice API synchronous while serializing a new reply
       // behind an in-flight silent stream, including its server-side WS close.
       void Promise.resolve(entry.keepalive).then(() => {
@@ -300,39 +321,24 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
             }).then(() => {
               if (!interrupted) complete(); // Input ended + socket closed, NOT playback complete.
             }).catch(error => fail("audio", error?.code));
-          } else if (event === "error") fail("tts", data?.code);
+          } else if (event === "error") failReply("tts", data?.code);
           else emit(event, data);
-        });
+        }, { bufferedMs: () => (audio.queue?.length ?? 0) / 48 + (audio.inflight?.size ?? 0) * 40 });
         entry.tts = tts;
         for (const text of pending) { if (cancelled || interrupted) break; tts.push(text); }
         pending = []; pendingCharacters = 0;
         if (inputFinished && !cancelled && !interrupted) tts.finish();
-      }).catch(error => fail("setup", error?.code));
+      }).catch(error => audio ? failReply("tts", error?.code) : fail("setup", error?.code));
       return { push: text => {
         if (cancelled || finished || inputFinished || interrupted) return;
-        if (tts) { try { tts.push(text); } catch (error) { fail("tts", error?.code); } }
+        if (tts) { try { tts.push(text); } catch (error) { failReply("tts", error?.code); } }
         else if ((pendingCharacters += text.length) <= 131072) pending.push(text);
-        else fail("input", "pending_text_limit");
+        else failReply("input", "pending_text_limit");
       }, finish: () => {
         if (cancelled || finished || inputFinished || interrupted) return;
         inputFinished = true;
-        try { tts?.finish(); } catch (error) { fail("tts", error?.code); }
-      }, interrupt: () => {
-        if (interruptPromise) return interruptPromise;
-        if (finished || cancelled) return Promise.resolve();
-        interrupted = true; pending = []; pendingCharacters = 0; tts?.cancel();
-        log({ event: "video.soft_interrupt", videoId: entry.id, upstreamSession: entry.upstream, replyId, streamId: audio?.id ?? null });
-        // Keep this reply's seat until ACK + input_ended + WS close. If still
-        // waiting for keepalive, skip opening a speech stream altogether.
-        interruptPromise = (async () => {
-          try { if (audio) await audio.interrupt(); else await entry.keepalive; complete(); }
-          catch (error) { fail("audio", error?.code); throw error; }
-        })();
-        return interruptPromise;
-      }, cancel: () => {
-        if (finished || cancelled || interrupted) return;
-        cancelled = true; pending = []; tts?.cancel(); void release(entry).catch(() => {});
-      } };
+        try { tts?.finish(); } catch (error) { failReply("tts", error?.code); }
+      }, interrupt, cancel: interrupt };
     },
     close() { clearInterval(sweep); return Promise.allSettled([...entries.values()].map(release)); },
   };

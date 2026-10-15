@@ -410,13 +410,13 @@ test('registry closes interrupted SSE only after input close, without destructiv
   }
   try {
     const opened = await connectManager(manager), response = new ResponseSink(), id = randomUUID();
-    registry.open(id, 'alice', response, { videoId: opened.videoId }); await pause(0);
+    await registry.open(id, 'alice', response, { videoId: opened.videoId }); await pause(0);
     await registry.interrupt(id, 'bob'); assert.equal(audio.interruptCalls, 0);
     const ended = registry.interrupt(id, 'alice');
     assert.equal(response.destroyed, false); audio.complete(); await ended;
     assert.equal(response.destroyed, true); assert.match(response.frames.join(''), /"interrupted":true/);
     assert.equal(audio.cancelled, false); assert.equal(calls.some(call => call.method === 'DELETE'), false);
-    registry.open(randomUUID(), 'alice', new ResponseSink(), { videoId: opened.videoId }); await pause(0);
+    await registry.open(randomUUID(), 'alice', new ResponseSink(), { videoId: opened.videoId }); await pause(0);
     await registry.interrupt(id, 'alice'); assert.equal(audio.interruptCalls, 1);
   } finally { registry.close(); await manager.close(); }
 });
@@ -464,7 +464,7 @@ test('idle silence has its own ended stream; reply waits for close and preserves
     assert.equal(JSON.stringify(logs).includes('secret'), false);
   } finally { await manager.close(); }
 });
-test('cancelling a reply waiting for keepalive closes its lease and never starts queued TTS', async () => {
+test('cancelling a reply waiting for keepalive preserves its lease and never starts queued TTS', async () => {
   const audio = new ManagedAudio(false); let started;
   const keepaliveStarted = new Promise(resolve => { started = resolve; });
   let connections = 0;
@@ -474,11 +474,14 @@ test('cancelling a reply waiting for keepalive closes its lease and never starts
   try {
     const opened = await connectManager(manager); await waitFor(keepaliveStarted);
     const events = [], voice = manager.voice(event => events.push(event), 'alice', opened.videoId);
-    voice.push('must not synthesize'); voice.finish(); voice.cancel();
+    voice.push('must not synthesize'); voice.finish(); const cancelled = voice.cancel();
     await pause(30);
     assert.equal(connections, 1); assert.deepEqual(ttsCalls, []); assert.deepEqual(events, []);
-    assert.equal(audio.cancelled, true);
-    assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
+    assert.equal(audio.cancelled, false);
+    assert.equal(calls.filter(call => call.method === 'DELETE').length, 0);
+    audio.complete(); await cancelled;
+    assert.deepEqual(events, ['done']);
+    assert.deepEqual(ttsCalls, []);
   } finally { await manager.close(); }
 });
 test('failed audio input emits one interruption, cleans up, and never schedules another stream', async () => {
@@ -495,16 +498,27 @@ test('failed audio input emits one interruption, cleans up, and never schedules 
     assert.equal(JSON.stringify(logs).includes('private failure'), false);
   } finally { await manager.close(); }
 });
-test('TTS failures retain a bounded reason and never log raw provider data', async () => {
+test('TTS failures safely end only the reply, keep video reusable and log only a bounded reason', async () => {
   for (const code of ['voice_backpressure', 'provider_secret_value']) {
-    const logs = [], { manager, emit } = managerFixture({ log: event => logs.push(event) });
+    const logs = [], events = [], { manager, emit, calls, audioConnections } = managerFixture({ log: event => logs.push(event) });
     try {
       const opened = await connectManager(manager);
-      manager.voice(() => {}, 'alice', opened.videoId); await pause(0);
+      manager.voice(event => events.push(event), 'alice', opened.videoId); await pause(0);
+      emit('audio', { data: Buffer.alloc(1920).toString('base64') });
       emit('error', { code, message: 'private provider content' }); await pause(0);
       const event = logs.find(item => item.event === 'video.voice_failed');
       assert.equal(event.source, 'tts');
       assert.equal(event.code, code === 'voice_backpressure' ? code : 'voice_unknown');
+      assert.equal(event.recoverable, true);
+      assert.deepEqual(events, ['reply_error', 'done']);
+      assert.equal(audioConnections[0].interruptCalls, 1);
+      assert.equal(audioConnections[0].cancelled, false);
+      assert.equal(calls.filter(call => call.method === 'DELETE').length, 0);
+      assert.equal((await manager.handle('heartbeat', 'alice', opened)).state, 'ready');
+      const next = manager.voice(() => {}, 'alice', opened.videoId); await pause(0);
+      next.push('new reply'); emit('done'); await pause(0);
+      assert.equal(audioConnections.length, 2);
+      assert.equal(calls.filter(call => call.method === 'DELETE').length, 0);
       assert.equal(JSON.stringify(logs).includes('private provider content'), false);
       assert.equal(JSON.stringify(logs).includes('provider_secret_value'), false);
     } finally { await manager.close(); }

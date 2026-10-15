@@ -444,6 +444,7 @@ async function proxyResponseStream(
     const decoder = new TextDecoder();
     let pending = "";
     let streamedText = "";
+    let publicText = "";
     let ticketSent = false;
     let completedHandled = false;
     const outputFilter = createPublicTextFilter();
@@ -454,6 +455,7 @@ async function proxyResponseStream(
     const writeEvent = (type, payload) => response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`);
     const writeDelta = (delta) => {
       if (!delta) return;
+      publicText += delta;
       liveVoice?.push(delta);
       writeEvent("response.output_text.delta", { delta });
     };
@@ -514,9 +516,12 @@ async function proxyResponseStream(
         }
         const items = Array.isArray(terminal?.output) ? terminal.output : [...outputItems.values()];
         const rawText = extractCompletedText({ output: items }, streamedText);
-        const text = publicAssistantText(rawText);
         writeDelta(outputFilter.finish());
-        if (!streamedText) liveVoice?.push(text);
+        // Completion metadata may contain only the last assistant message, or
+        // a rewritten answer. Never replace prose already displayed and spoken.
+        // Hidden-only deltas do not count as an answer; retain final-only APIs.
+        if (!publicText.trim()) writeDelta(publicAssistantText(rawText));
+        const text = publicText;
         liveVoice?.finish();
         voiceFinished = true;
         const completedItems = items.filter((item) => item?.type === "message" && item.role === "assistant" && !isPrivateOutput(item) && !["in_progress", "incomplete", "failed"].includes(item.status));
@@ -562,7 +567,7 @@ async function proxyResponseStream(
       reader.releaseLock();
     }
   } finally {
-    if (!voiceFinished) liveVoice?.cancel();
+    if (!voiceFinished && liveVoice) await Promise.resolve().then(() => liveVoice.cancel()).catch(() => {});
     if (ownsTurn) activeTurns.delete(session.conversationId);
     releaseBootstrap?.();
   }
@@ -753,7 +758,7 @@ export function createGateway({
               replay = verifyTtsTicket(body.ticket, config.signingSecret, { now: Date.now() - 24 * 60 * 60_000 });
             }
           }
-          liveVoices.open(body.id, session.conversationId, response, { videoId: body.videoId });
+          await liveVoices.open(body.id, session.conversationId, response, { videoId: body.videoId });
           if (replay) {
             const voice = liveVoices.claim(body.id, session.conversationId);
             voice.push(publicAssistantText(replay.text));
@@ -762,7 +767,7 @@ export function createGateway({
         }
         else {
           if (url.pathname === "/voice/interrupt") await liveVoices.interrupt(body.id, session.conversationId);
-          else liveVoices.cancel(body.id, session.conversationId);
+          else await liveVoices.cancel(body.id, session.conversationId);
           sendJson(response, 200, { ok: true });
         }
         return;

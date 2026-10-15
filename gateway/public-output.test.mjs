@@ -105,6 +105,67 @@ test("HTTP SSE projects public output only: traces, tools, repeated payloads, in
   assert.match(result, /response.completed/);
 });
 
+function publicEvents(wire) {
+  return [...wire.matchAll(/^event: ([^\n]+)\ndata: (.*)$/gm)].map(match => ({ type: match[1], ...JSON.parse(match[2]) }));
+}
+
+test("completed output cannot discard or rewrite streamed prose, its live voice, or its replay ticket", async t => {
+  for (const finalText of ["第二段正文。", "完成时重写的不同正文。", "第一段正文。第二段正文。"])
+    await t.test(finalText, async t => {
+      const expected = "第一段正文。第二段正文。";
+      const wire = event("response.output_text.delta", { delta: "第一段正文。", item_id: "first" }) +
+        event("response.output_item.done", { item: item("第一段正文。", { id: "first" }) }) +
+        event("response.output_text.delta", { delta: "第二段正文。", item_id: "last" }) +
+        event("response.completed", { response: { output: [item(finalText)] } });
+      const f = await fixture(t, wire);
+      const id = randomUUID();
+      const voice = await f.post("/voice/stream", { id });
+      const result = publicEvents(await (await f.post("/responses", { input: "test", liveVoiceId: id })).text());
+      await voice.text();
+      assert.equal(result.filter(value => value.type === "response.output_text.delta").map(value => value.delta).join(""), expected);
+      assert.equal(result.find(value => value.type === "response.completed").response.output[0].content[0].text, expected);
+      assert.equal(f.spoken.join(""), expected, "terminal text must not be spoken again");
+      assert.equal(verifyTtsTicket(result.find(value => value.type === "creekstone.tts.ready").ticket, config.signingSecret).text, expected);
+    });
+});
+
+test("final-only and hidden-only streams publish the sanitized final answer exactly once", async t => {
+  for (const hidden of ["", `<think>${secret}</think>`, xml, "<atta", `\n<think>${secret}</think>\n`])
+    await t.test(hidden.slice(0, 30) || "no deltas", async t => {
+      const wire = event("response.output_text.delta", { delta: hidden }) +
+        event("response.completed", { response: { output: [item(`<think>${secret}</think>安全正文。${xml}`)] } });
+      const f = await fixture(t, wire);
+      const id = randomUUID();
+      const voice = await f.post("/voice/stream", { id });
+      const raw = await (await f.post("/responses", { input: "test", liveVoiceId: id })).text();
+      await voice.text();
+      assert.doesNotMatch(raw, forbidden);
+      const result = publicEvents(raw);
+      const canonical = result.find(value => value.type === "response.completed").response.output[0].content[0].text;
+      assert.equal(canonical.trim(), "安全正文。");
+      assert.equal(result.filter(value => value.type === "response.output_text.delta").map(value => value.delta).join(""), canonical);
+      assert.equal(f.spoken.join(""), canonical);
+      assert.equal(verifyTtsTicket(result.find(value => value.type === "creekstone.tts.ready").ticket, config.signingSecret).text, "安全正文。");
+    });
+});
+
+test("filter completion tails belong to the stream and terminal metadata still grants attachments and proposals", async t => {
+  const card = { summary: "测试项目", contact: "qa@example.invalid", project_name: "", founder_name: "" };
+  const finalText = `终态不覆盖。\n${PROPOSAL_OPEN}\n${JSON.stringify(card)}\n${PROPOSAL_CLOSE}`;
+  const output = item(finalText, { content: [{ type: "output_text", text: finalText, annotations: [
+    { type: "file_path", file_id: "file-business" }, { type: "file_path", file_id: "file-internal" },
+  ] }] });
+  const f = await fixture(t, event("response.output_text.delta", { delta: "/workspace/session/业务分析.pdf" }) +
+    event("response.completed", { response: { output: [output] } }));
+  const raw = await (await f.post("/responses", { input: "test", handoffProposalVersion: 1 })).text();
+  assert.doesNotMatch(raw, forbidden);
+  const result = publicEvents(raw);
+  assert.equal(result.filter(value => value.type === "response.output_text.delta").map(value => value.delta).join(""), "附件");
+  assert.equal(result.find(value => value.type === "response.completed").response.output[0].content[0].text, "附件");
+  assert.deepEqual(result.find(value => value.sessionKey === key).content, card);
+  assert.deepEqual(result.find(value => value.attachments).attachments.map(file => file.fileId), ["file-business"]);
+});
+
 test("internal exports disappear silently in final and history, mixed business files and review cards survive", async t => {
   const card = { summary: "测试项目", contact: "qa@example.invalid", project_name: "", founder_name: "" };
   const raw = `已生成未保存的确认卡。\n${xml}\n${businessXml}\n${PROPOSAL_OPEN}\n${JSON.stringify(card)}\n${PROPOSAL_CLOSE}`;

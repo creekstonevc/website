@@ -260,7 +260,9 @@ export class AvatarConnection {
     const openingTimeout = setTimeout(() => controller.abort(), 5000);
     try {
       const response = await fetch("/api/agent/voice/stream", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, sessionKey: this.sessionKey, videoId: this.id, ...(ticket ? { ticket } : {}) }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(330000)]) });
+        // The server still limits each reply to 330s; transport must also allow
+        // its bounded (45s) graceful input end before deciding cleanup failed.
+        body: JSON.stringify({ id, sessionKey: this.sessionKey, videoId: this.id, ...(ticket ? { ticket } : {}) }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(380000)]) });
       if (!response.ok || !response.body) throw new Error("voice");
       if (epoch === this.voiceEpoch) this.state("connected", "Voice channel ready · waiting for Yihao’s words");
       void this.readVoice(response.body, controller, epoch);
@@ -278,7 +280,8 @@ export class AvatarConnection {
     ++this.voiceEpoch; // Ignore old SSE status/audio/error callbacks immediately.
     const pending = (async () => {
       // The SSE subscription may still be opening (e.g. the automatic greeting).
-      // Never abort it first: disconnect currently means destroy the video session.
+      // Wait for registration so the targeted interrupt can confirm safe input
+      // cleanup before aborting the subscription or allowing another reply.
       await opening;
       if (this.closed) return;
       if (id) {
@@ -300,7 +303,7 @@ export class AvatarConnection {
     return pending;
   }
   private async readVoice(body: ReadableStream<Uint8Array>, controller: AbortController, epoch: number) {
-    const reader = body.getReader(), decoder = new TextDecoder(); let pending = "", completed = false;
+    const reader = body.getReader(), decoder = new TextDecoder(); let pending = "", completed = false, replyFailed = false;
     try {
       while (!controller.signal.aborted) {
         const chunk = await reader.read(); if (chunk.done) break;
@@ -311,14 +314,19 @@ export class AvatarConnection {
           const frame = pending.slice(0, end); pending = pending.slice(end + 2);
           if (epoch !== this.voiceEpoch || this.closed) continue;
           if (/^event: error$/m.test(frame)) throw new Error("voice");
-          if (/^event: audio_started$/m.test(frame)) this.video.muted = false;
+          if (/^event: reply_error$/m.test(frame)) {
+            replyFailed = true;
+            this.video.muted = true;
+            this.state("connected", "This reply’s voice was interrupted · video remains connected");
+          }
+          if (/^event: audio_started$/m.test(frame) && !replyFailed) this.video.muted = false;
           if (/^event: done$/m.test(frame)) completed = true;
         }
       }
       if (epoch !== this.voiceEpoch || this.closed) return;
       if (!completed) throw new Error("interrupted");
       this.feeding = false; this.voiceId = "";
-      this.state("connected", "Live avatar · AI-generated video and voice");
+      this.state("connected", replyFailed ? "This reply’s voice was interrupted · video remains connected" : "Live avatar · AI-generated video and voice");
     } catch { if (!this.closed && epoch === this.voiceEpoch) this.fail("Video audio interrupted. Your text conversation is preserved."); }
     finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
   }

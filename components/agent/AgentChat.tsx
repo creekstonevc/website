@@ -451,7 +451,9 @@ export function AgentChat() {
       saveRecovery(null);
     } catch (error) {
       stopLiveVoice();
-      if (videoMode) avatar.close();
+      // The LLM request may fail before claiming the pre-opened voice stream.
+      // End only that reply; a healthy video session must remain connected.
+      if (videoMode) await avatar.interrupt();
       const rejected = error instanceof AgentRequestError &&
         (error.status === 429 || ["response_rejected", "session_changed", "conversation_busy", "invalid_attachment", "attachment_expired", "invalid_attachments", "attachments_too_large", "attachments_unavailable"].includes(error.code));
       saveRecovery({ kind: rejected ? "retry" : "sync", input,

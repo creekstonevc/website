@@ -342,7 +342,9 @@ export async function streamReply(
     }
 
     if (type === "response.completed") {
-      completedOutput = extractFinalText(payload) || streamedOutput;
+      // Keep the exact visible stream: terminal output can omit earlier
+      // assistant messages, and replacing it also invalidates speech timing.
+      completedOutput = streamedOutput.trim() ? streamedOutput : extractFinalText(payload) || streamedOutput;
       return true;
     }
 

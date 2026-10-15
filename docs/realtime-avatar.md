@@ -30,6 +30,7 @@
 3. 浏览器建立 recvonly video + audio WebRTC，H.264 `42e01f` / packetization-mode 1，等待 ICE 收集完成，再通过 Gateway 交换 SDP。2026-09-23 核对对方文档 revision 3：明确不支持 Trickle ICE，无独立 candidate 上传接口；必须提交完整 offer。遵循文档示例的 15 秒 ICE 收集截止时间，超时不提交半成品 offer、不自动新建会话；界面明确提示 ICE 准备超时。
 4. 实际收到第一帧且连接成功后，才启用该会话的语音输出。自动播放受限时显示 Play video。
 5. 发消息时复用现有 Responses 流，`output_text.delta` → BytePlus 双向流式 TTS → 24kHz/16-bit/mono PCM → Gateway Mizzen WebSocket。
+   视频专用 TTS 按最多160字符的短批串行合成，优先在标点处断开；视频待发送/待ACK音频低于5秒时才启动下一批，向输入适配器交付PCM不超过12秒。未来内容保留为文本，不提前合成几分钟音频。每批仍边合成边输出，40ms分片及原有ACK规则不变；纯语音播放不使用此节流器。
 6. **每轮回复使用新的音频 WebSocket 和 `stream_id`，复用视频 `session_id`。** Gateway 按 40ms / 960 samples 分包，流内 seq/sample_offset 从零连续递增，最多八个未 ACK 包；按实际时长推送。TTS 完成后附加300ms静音，等待全部 PCM（含静音）发送并收到 ACK，随后发送带精确 `total_samples` 的 `audio.end`。等待 `audio.input_ended` 和服务端关闭这条音频 WebSocket，才允许下一轮；不是关闭视频 session。
 7. 无回复时每15秒创建一个独立的40ms零值PCM输入流，并按同样流程正常结束，避免120秒静息超时。如果新回复恰好到来，先等待保活流结束；暂存此时的文字及 finish 信号，不丢字、不并发占用音频入口。正在生成的回复遇到长时间 TTS 间隙时，仅在无语音排队时插入保活PCM。
 8. 音视频统一从 WebRTC 播放，不再单独播放 PCM，以免重音/不同步。`audio.input_ended` / ready **不代表视频播放结束**，不会销毁会话。离开或发生故障才释放整个会话，下一次连接创建新session，不重启已停止session。现有550秒会话上限和45秒浏览器失联回收仍保留。
@@ -46,7 +47,10 @@
 - `gateway.media_conflict` 记录媒体 HTTP 409 的安全路由、`code`、`requestId` 和合法本地 `videoId`（若有），区分 `session_changed`、`conversation_required`、`video_expired` 等，不记录 Cookie 或请求正文。
 - `video.audio_input` 的 `interrupted` 事件包含固定 `reason`、失败阶段、`queuedSamples/queuedMs`、`inflightChunks`、`oldestAckAgeMs`、socket 状态及可取得的数字关闭码。`queue_overflow`、`ack_timeout`、`ready_timeout`、`end_timeout`、`close_timeout`、`socket_closed` 等可以分开定位；主动本地清理标记为 `cancelled/local_cancel`。
 - `video.audio_input_failed` 与 `video.voice_failed` 关联具体视频/回复/输入流，并保留白名单原因码。不输出原始供应商错误、音频、文本、连接凭证或 WebSocket close reason。
-- 未发送 PCM 队列仍有120秒硬上限，实时发送速度不变。旧日志不能证明历史故障是否来自此上限；若新日志出现 `queue_overflow`，再据此设计 TTS 背压，不能直接扩大无界缓冲或把所有错误归因于网络。
+- 2026-10-15生产日志已确认多次 `queue_overflow`：排队音频接近120秒、ACK仍正常、WebRTC仍连接。新增上述TTS分批背压，保留适配器原有120秒硬上限作为最后保护，不扩大缓冲或加快视频输入速度。当前合成批次另有4MiB缓冲和整轮24MiB音频上限；语音订阅仍有330秒总时限。
+- 聊天请求失败/取消以及可恢复TTS失败只安全结束当前音频输入，不关闭健康的视频session。TTS失败通过 `reply_error` 提示，待ACK、`audio.input_ended`及输入WS关闭后再发送 `done` 并释放语音槽位；下一轮可复用同一视频连接。音频协议、ACK或结束超时、WebRTC故障仍按致命错误清理。
+  视频单轮330秒到限也走同样的安全收尾，浏览器SSE传输截止设为380秒以容纳收尾时间；这不延长单轮生成上限，纯语音播放的时限不变。
+- Responses最终事件不再用最终正文替换已输出的流式正文；流式正文也是TTS票据的准绳。只有未输出任何可见正文时才使用最终正文兜底。完成状态、附件注解、转交卡片仍从最终事件解析，不丢弃终态元数据。
 
 ## 2026-09-23 线上故障记录（北京时间）
 

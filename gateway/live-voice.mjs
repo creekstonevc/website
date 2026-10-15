@@ -266,59 +266,98 @@ export function createLiveVoiceRegistry(config, makeVoice = (emit) => new BytePl
   const sessions = new Map();
   const owners = new Map();
   const starts = new Map();
+  const openingOwners = new Set();
+  const openingIds = new Set();
   return {
-    open(id, owner, response, options = {}) {
+    async open(id, owner, response, options = {}) {
       if (!/^[a-f0-9-]{36}$/.test(id || "")) throw new GatewayError(400, "invalid_voice", "Invalid voice session");
-      if (sessions.has(id)) throw new GatewayError(409, "voice_busy", "Voice session already exists");
+      if (sessions.has(id) || openingIds.has(id) || openingOwners.has(owner)) throw new GatewayError(409, "voice_busy", "Voice session already exists or is starting");
       const now = Date.now();
       for (const [key, entry] of starts) if (now - entry.time > 60000) starts.delete(key);
       const rate = starts.get(owner) || { time: now, count: 0 };
       if (++rate.count > 12 || sessions.size >= 32 || starts.size >= 1024) throw new GatewayError(429, "voice_busy", "Voice channel is busy");
       starts.set(owner, rate);
-      owners.get(owner)?.end();
-      let voice;
-      const entry = { owner, claimed: false, closed: false,
-        end: () => {
-          if (entry.closed) return; entry.closed = true;
-          clearTimeout(entry.timer); clearInterval(entry.heartbeat); voice?.cancel();
-          sessions.delete(id); if (owners.get(owner) === entry) owners.delete(owner);
-          if (!response.destroyed) response.end();
-        },
-        emit: (event, data) => {
-          if (entry.closed || response.destroyed) return;
-          if (response.writableLength > 512 * 1024) { entry.end(); return; }
-          response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-          if (event === "error" || event === "done") entry.end();
-        },
-      };
-      voice = makeVoice(entry.emit, { ...options, owner });
-      entry.voice = voice;
-      sessions.set(id, entry); owners.set(owner, entry);
-      response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store",
-        "X-Accel-Buffering": "no", "X-Content-Type-Options": "nosniff" });
-      response.flushHeaders();
-      entry.emit("ready", { sampleRate: 24000, format: "pcm_s16le", channels: 1 });
-      entry.timer = setTimeout(() => { entry.emit("error", { code: "voice_timeout" }); }, 330000);
-      entry.heartbeat = setInterval(() => { if (!response.destroyed) response.write(": heartbeat\n\n"); }, 15000);
-      entry.timer.unref?.(); entry.heartbeat.unref?.();
-      response.on("close", entry.end);
+      openingOwners.add(owner); openingIds.add(id);
+      try {
+        // A video voice may need to ACK/end its input before releasing its slot.
+        // Never create the replacement while that older input is still active.
+        const previous = owners.get(owner);
+        if (previous) await previous.end({ event: "done", data: { interrupted: true } });
+        if (response.destroyed) throw new GatewayError(409, "voice_cancelled", "Voice connection was closed");
+        let voice;
+        const entry = { owner, claimed: false, closed: false,
+          end: (terminal) => {
+            if (entry.closing) return entry.closing;
+            entry.closed = true;
+            clearTimeout(entry.timer); clearInterval(entry.heartbeat);
+            const write = (event, data) => {
+              if (!response.destroyed && !response.writableEnded) response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+            };
+            const finish = () => {
+              sessions.delete(id); if (owners.get(owner) === entry) owners.delete(owner);
+              if (!response.destroyed && !response.writableEnded) response.end();
+            };
+            // Suppress provider emissions immediately, but retain ownership and
+            // the SSE until graceful media cleanup has actually completed.
+            entry.closing = Promise.resolve().then(() => voice?.cancel()).then(() => {
+              if (terminal) write(terminal.event, terminal.data);
+              finish();
+            }, error => {
+              write("error", { code: "voice_interrupted" });
+              finish();
+              throw error;
+            });
+            // EventEmitter close handlers cannot await; API callers still get
+            // the original rejection and must not report cleanup as successful.
+            void entry.closing.catch(() => {});
+            return entry.closing;
+          },
+          emit: (event, data) => {
+            if (entry.closed || response.destroyed) return;
+            if (response.writableLength > 512 * 1024) { entry.end(); return; }
+            if (event === "error" || event === "done") { entry.end({ event, data }); return; }
+            response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+          },
+        };
+        voice = makeVoice(entry.emit, { ...options, owner });
+        entry.voice = voice;
+        sessions.set(id, entry); owners.set(owner, entry);
+        response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store",
+          "X-Accel-Buffering": "no", "X-Content-Type-Options": "nosniff" });
+        response.flushHeaders();
+        entry.emit("ready", { sampleRate: 24000, format: "pcm_s16le", channels: 1 });
+        entry.timer = setTimeout(() => {
+          if (options.videoId) {
+            // The per-reply limit is not a failure of the WebRTC session.
+            // Keep it only after the input has safely ACKed, ended and closed.
+            entry.emit("reply_error", { code: "voice_timeout" });
+            void entry.end({ event: "done", data: { interrupted: true } });
+          } else entry.emit("error", { code: "voice_timeout" });
+        }, 330000);
+        entry.heartbeat = setInterval(() => { if (!response.destroyed) response.write(": heartbeat\n\n"); }, 15000);
+        entry.timer.unref?.(); entry.heartbeat.unref?.();
+        response.on("close", () => { void entry.end(); });
+      } finally { openingOwners.delete(owner); openingIds.delete(id); }
     },
     claim(id, owner) {
       const entry = sessions.get(id);
-      if (!entry || entry.owner !== owner || entry.claimed) return null;
+      if (!entry || entry.owner !== owner || entry.claimed || entry.closed) return null;
       entry.claimed = true;
-      return { push: (text) => entry.voice.push(text), finish: () => entry.voice.finish(),
-        cancel: () => { entry.emit("done", {}); entry.end(); } };
+      return { push: (text) => { if (!entry.closed) entry.voice.push(text); }, finish: () => { if (!entry.closed) entry.voice.finish(); },
+        cancel: () => entry.end({ event: "done", data: { interrupted: true } }) };
     },
-    cancel(id, owner) { const entry = sessions.get(id); if (entry?.owner === owner) { entry.emit("done", {}); entry.end(); } },
+    cancel(id, owner) { const entry = sessions.get(id); return entry?.owner === owner
+      ? entry.end({ event: "done", data: { interrupted: true } }) : Promise.resolve(); },
     async interrupt(id, owner) {
       const entry = sessions.get(id);
       // A completed input has nothing left to truncate; never target a newer
       // voice by owner alone. Late duplicate requests are harmless.
       if (!entry || entry.owner !== owner) return;
+      if (entry.closing) return entry.closing;
       if (typeof entry.voice.interrupt !== "function") throw new GatewayError(400, "video_required", "Soft interruption requires video");
       await entry.voice.interrupt();
+      if (entry.closing) await entry.closing;
     },
-    close() { for (const entry of sessions.values()) entry.end(); },
+    close() { return Promise.allSettled([...sessions.values()].map(entry => entry.end())); },
   };
 }

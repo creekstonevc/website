@@ -128,6 +128,42 @@ test("only the documented H264 packetization and profile are advertised", () => 
 });
 function element() { return { srcObject: null, play: async () => {}, pause() {}, addEventListener() {}, removeEventListener() {}, cancelVideoFrameCallback() {} }; }
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+test('video transport survives the 330-second reply limit while graceful input cleanup finishes', async t => {
+  const calls = [], timeouts = [];
+  let stream, signal;
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.method(AbortSignal, 'timeout', milliseconds => {
+    timeouts.push(milliseconds);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), milliseconds);
+    return controller.signal;
+  });
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push(url);
+    if (url.endsWith('/voice/stream')) {
+      signal = options.signal;
+      return new Response(new ReadableStream({ start(controller) { stream = controller; } }));
+    }
+    return Response.json({});
+  });
+  const client = new AvatarConnection('session', element(), () => {});
+  client.id = 'video'; client.ready = true;
+  const frame = event => stream.enqueue(new TextEncoder().encode(`event: ${event}\ndata: {}\n\n`));
+  try {
+    await client.startReply();
+    assert.deepEqual(timeouts, [380000]);
+    t.mock.timers.tick(330000);
+    frame('reply_error');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(signal.aborted, false); assert.equal(client.closed, false);
+    t.mock.timers.tick(44000);
+    assert.equal(signal.aborted, false);
+    frame('done'); stream.close();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(client.closed, false); assert.equal(client.feeding, false);
+    assert.equal(calls.some(url => url.endsWith('/video/close')), false);
+  } finally { await client.close(); t.mock.timers.reset(); }
+});
 test('soft interrupt latches mute, waits for graceful end and ignores stale audio/errors before next reply', async () => {
   const saved = globalThis.fetch, calls = [], streams = [], states = []; let ended;
   const media = { ...element(), muted: false }, client = new AvatarConnection('session', media, state => states.push(state));
@@ -169,6 +205,48 @@ test('already-ended speech stays muted after empty input, until a later reply ac
     assert.equal(media.muted, true); assert.equal(client.closed, false);
     assert.deepEqual(calls, []);
   } finally { client.close(); globalThis.fetch = saved; }
+});
+
+test('a recoverable reply voice error preserves the video and warning after safe done', async () => {
+  const saved = globalThis.fetch, calls = [], states = [], streams = [];
+  const media = { ...element(), muted: false }, client = new AvatarConnection('session', media, state => states.push(state));
+  client.ready = true; client.id = 'video';
+  globalThis.fetch = async url => {
+    calls.push(url);
+    if (url.endsWith('/voice/stream')) return new Response(new ReadableStream({ start(controller) { streams.push(controller); } }));
+    return Response.json({});
+  };
+  const frame = event => streams[0].enqueue(new TextEncoder().encode(`event: ${event}\ndata: {}\n\n`));
+  try {
+    await client.startReply(); frame('audio_started'); await tick();
+    frame('reply_error'); frame('audio_started'); await tick();
+    assert.equal(media.muted, true, 'late old audio must not restart a failed reply');
+    assert.equal(client.feeding, true, 'the voice slot is retained until safe end');
+    frame('done'); streams[0].close(); await tick();
+    assert.equal(client.closed, false); assert.equal(client.ready, true); assert.equal(client.feeding, false);
+    assert.equal(states.at(-1).phase, 'connected'); assert.match(states.at(-1).message, /reply.*interrupted/);
+    assert.equal(calls.some(url => /\/(close|cancel)$/.test(url)), false);
+    assert.match(await client.startReply(), /^[a-f0-9-]{36}$/);
+    streams[1].enqueue(new TextEncoder().encode('event: done\ndata: {}\n\n')); streams[1].close(); await tick();
+  } finally { await client.close(); globalThis.fetch = saved; }
+});
+
+test('fatal voice errors and an unconfirmed reply_error EOF still close unknown video state', async () => {
+  const saved = globalThis.fetch;
+  try {
+    for (const event of ['error', 'reply_error']) {
+      const calls = [], states = [], client = new AvatarConnection('session', element(), state => states.push(state));
+      client.ready = true; client.id = 'video';
+      globalThis.fetch = async url => {
+        calls.push(url);
+        return url.endsWith('/voice/stream') ? new Response(`event: ${event}\ndata: {}\n\n`) : Response.json({});
+      };
+      await client.startReply(); await tick();
+      assert.equal(client.closed, true); assert.equal(states.at(-1).phase, 'error');
+      assert.ok(calls.some(url => url.endsWith('/video/close')));
+      await client.close();
+    }
+  } finally { globalThis.fetch = saved; }
 });
 test('submitted text soft-interrupts the old reply and opens its video voice only after the old input closes', async () => {
   const saved = globalThis.fetch, calls = [], streams = []; let endOld;

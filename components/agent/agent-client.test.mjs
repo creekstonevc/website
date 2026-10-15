@@ -40,6 +40,37 @@ test("stream completion survives split UTF-8 frames and produces a voice ticket"
   assert.deepEqual(result, { text: "你好", ttsTicket: "signed" });
 });
 
+test("terminal snapshots never replace or repeat a visible answer, even when they contain only its last message", async t => {
+  for (const finalText of ["第二段。", "重写后的答案。", "第一段。第二段。", ""]) {
+    const expected = "第一段。第二段。";
+    t.mock.method(globalThis, "fetch", async () => new Response(
+      event("response.output_text.delta", { delta: "第一段。" }) +
+      event("response.thinking.delta", { delta: "private" }) +
+      event("response.output_text.delta", { delta: "第二段。" }) +
+      event("creekstone.tts.ready", { ticket: "canonical-ticket" }) +
+      event("response.completed", { response: { output: [
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: finalText }] },
+      ] } })));
+    let emitted = "";
+    const result = await streamReply("test", { ...handlers, onOutputDelta: delta => { emitted += delta; } });
+    assert.equal(emitted, expected);
+    assert.equal(result.text, expected);
+    assert.equal(result.ttsTicket, "canonical-ticket");
+  }
+});
+
+test("a whitespace-only stream still accepts a final-only answer and terminal attachment metadata", async t => {
+  t.mock.method(globalThis, "fetch", async () => new Response(
+    event("response.output_text.delta", { delta: "\n" }) +
+    event("creekstone.attachments.ready", { attachmentWarning: "附件暂时不可下载" }) +
+    event("response.completed", { response: { output: [
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: "最终正文。" }] },
+    ] } })));
+  const result = await streamReply("test", handlers);
+  assert.equal(result.text, "最终正文。");
+  assert.equal(result.attachmentWarning, "附件暂时不可下载");
+});
+
 for (const suffix of ["", "data: [DONE]\n\n", event("response.incomplete"), event("response.failed"), event("error")]) {
   test(`unterminated or failed response is not success: ${suffix.slice(0, 35)}`, async (t) => {
     t.mock.method(globalThis, "fetch", async () => new Response(event("response.output_text.delta", { delta: "partial" }) + suffix));
