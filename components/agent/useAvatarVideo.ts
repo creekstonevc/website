@@ -20,7 +20,8 @@ export function useAvatarVideo(enabled: boolean, sessionKey: string, element: Re
     startTextReply: useCallback(() => connection.current?.startTextReply() ?? Promise.resolve(undefined), []),
     interrupt: useCallback(() => connection.current?.interrupt() ?? Promise.resolve(), []),
     close: useCallback(() => {
-      connection.current?.close();
+      const closing = connection.current?.close() ?? Promise.resolve();
       setState({ phase: "error", message: "Video stopped. Reconnect to continue; text chat is still open." });
+      return closing;
     }, []) };
 }

@@ -285,6 +285,39 @@ async function connectManager(manager) {
   await manager.handle('ready', 'alice', opened);
   return opened;
 }
+test('close is idempotent for missing/closed IDs but cannot close another owner or accept malformed IDs', async () => {
+  const { manager, calls } = managerFixture();
+  try {
+    const opened = await manager.handle('open', 'alice', {});
+    await assert.rejects(manager.handle('close', 'bob', opened), { code: 'video_expired', status: 409 });
+    assert.equal(calls.some(call => call.method === 'DELETE'), false);
+    for (const videoId of [undefined, '', 'not-a-session', '../private']) {
+      await assert.rejects(manager.handle('close', 'alice', { videoId }), { code: 'video_id_invalid', status: 400 });
+    }
+    assert.deepEqual(await manager.handle('close', 'alice', { videoId: randomUUID() }), { closed: true });
+    assert.deepEqual(await manager.handle('close', 'alice', opened), { closed: true });
+    assert.deepEqual(await manager.handle('close', 'alice', opened), { closed: true });
+    assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
+  } finally { await manager.close(); }
+});
+
+test('concurrent closes share upstream cleanup and explicit teardown does not log an audio failure', async () => {
+  const audio = new ManagedAudio(false), logs = [];
+  const { manager, calls } = managerFixture({ makeAudio: () => audio, log: event => logs.push(event) });
+  try {
+    const opened = await connectManager(manager);
+    manager.voice(() => {}, 'alice', opened.videoId);
+    await pause(0);
+    const closing = manager.handle('close', 'alice', opened);
+    const again = await manager.handle('close', 'alice', opened);
+    assert.deepEqual(again, { closed: true, cleanupPending: true });
+    await closing; await pause(0);
+    assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
+    assert.equal(audio.cancelled, true);
+    assert.equal(logs.some(event => ['video.audio_input_failed', 'video.voice_failed'].includes(event.event)), false);
+  } finally { await manager.close(); }
+});
+
 test('soft interruption stops TTS, preserves WebRTC/session and serializes the next reply behind input close', async () => {
   const first = new ManagedAudio(false), audios = [first], events = [], logs = [];
   const { manager, emit, ttsCalls, calls } = managerFixture({ log: event => logs.push(event),
@@ -449,16 +482,33 @@ test('cancelling a reply waiting for keepalive closes its lease and never starts
   } finally { await manager.close(); }
 });
 test('failed audio input emits one interruption, cleans up, and never schedules another stream', async () => {
-  const audio = new ManagedAudio(false);
-  const { manager, calls, emit } = managerFixture({ makeAudio: () => audio, keepaliveMs: 10 });
+  const audio = new ManagedAudio(false), logs = [];
+  const { manager, calls, emit } = managerFixture({ makeAudio: () => audio, keepaliveMs: 10, log: event => logs.push(event) });
   try {
     const opened = await connectManager(manager), events = [];
     manager.voice(event => events.push(event), 'alice', opened.videoId);
     await pause(0); emit('done'); await pause(0);
-    audio.reject(new Error('provider private failure')); await pause(30);
+    audio.reject(Object.assign(new Error('provider private failure'), { code: 'ack_timeout' })); await pause(30);
     assert.deepEqual(events, ['error']);
     assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
+    assert.equal(logs.find(event => event.event === 'video.audio_input_failed').code, 'ack_timeout');
+    assert.equal(JSON.stringify(logs).includes('private failure'), false);
   } finally { await manager.close(); }
+});
+test('TTS failures retain a bounded reason and never log raw provider data', async () => {
+  for (const code of ['voice_backpressure', 'provider_secret_value']) {
+    const logs = [], { manager, emit } = managerFixture({ log: event => logs.push(event) });
+    try {
+      const opened = await connectManager(manager);
+      manager.voice(() => {}, 'alice', opened.videoId); await pause(0);
+      emit('error', { code, message: 'private provider content' }); await pause(0);
+      const event = logs.find(item => item.event === 'video.voice_failed');
+      assert.equal(event.source, 'tts');
+      assert.equal(event.code, code === 'voice_backpressure' ? code : 'voice_unknown');
+      assert.equal(JSON.stringify(logs).includes('private provider content'), false);
+      assert.equal(JSON.stringify(logs).includes('provider_secret_value'), false);
+    } finally { await manager.close(); }
+  }
 });
 test("uncertain session creation quarantines further allocation instead of blindly duplicating sessions", async () => {
   let calls = 0;
@@ -549,7 +599,11 @@ test("terminal sessions with retained media errors release seats; pending cleanu
   });
   try {
     const first = await manager.handle('open', 'alice', {});
-    await assert.rejects(manager.handle('close', 'alice', first), { code: 'video_cleanup' });
+    assert.deepEqual(await manager.handle('close', 'alice', first), { closed: true, cleanupPending: true });
+    const cleanupAttempts = logs.filter(event => event.event === 'video.cleanup_state').length;
+    assert.deepEqual(await manager.handle('close', 'alice', first), { closed: true, cleanupPending: true });
+    assert.equal(logs.filter(event => event.event === 'video.cleanup_state').length, cleanupAttempts);
+    await assert.rejects(manager.handle('close', 'bob', first), { code: 'video_expired' });
     const second = await manager.handle('open', 'alice', {});
     assert.notEqual(second.videoId, first.videoId);
     const third = await manager.handle('open', 'alice', {});

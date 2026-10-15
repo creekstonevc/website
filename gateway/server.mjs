@@ -256,6 +256,17 @@ function archivedSessions(request, config) {
   return entries;
 }
 
+// A tab may keep a media connection for an older conversation after another
+// tab changes the active cookie. Public session keys only select credentials:
+// authority still comes exclusively from signed, unexpired browser cookies.
+function readMediaSession(request, config, requestedKey) {
+  const entries = archivedSessions(request, config);
+  if (!entries.length) throw new GatewayError(409, "conversation_required", "Open a conversation first");
+  const selected = entries.find((entry) => sessionKey(entry.cid) === requestedKey);
+  if (!selected) throw new GatewayError(409, "session_changed", "This conversation is no longer saved in this browser");
+  return { conversationId: selected.cid, expiresAt: selected.exp };
+}
+
 function sessionResponse(request, response, config, conversationId, history, created) {
   const entries = [{ cid: conversationId, exp: Date.now() + config.conversationTtlMs },
     ...archivedSessions(request, config).filter((entry) => entry.cid !== conversationId)];
@@ -658,7 +669,9 @@ export function createGateway({
   config = loadConfig(),
   fetchImpl = fetch,
   makeLiveVoice,
+  connectAsr,
   invokeHandoffHost,
+  log = event => process.stderr.write(`${JSON.stringify(event)}\n`),
 } = {}) {
   config = { ...config, attachments: config.attachments || attachmentConfig() };
   config.fileMetadata = createFileMetadataLookup(config, fetchImpl);
@@ -675,6 +688,7 @@ export function createGateway({
 
   const server = createServer(async (request, response) => {
     const requestId = randomUUID();
+    const mediaContext = {};
     response.setHeader("X-Request-Id", requestId);
 
     try {
@@ -682,6 +696,9 @@ export function createGateway({
         request.url || "/",
         `http://${request.headers.host || "localhost"}`,
       );
+      if (/^\/(video\/(capabilities|open|offer|ready|heartbeat|close|stats|diagnostics)|voice\/(stream|cancel|interrupt))$/.test(url.pathname)) {
+        mediaContext.route = url.pathname;
+      }
       if (request.method === "GET" && url.pathname === "/health") {
         sendJson(response, 200, {
           ok: true,
@@ -711,10 +728,9 @@ export function createGateway({
       }
 
       if (/^\/video\/(capabilities|open|offer|ready|heartbeat|close|stats|diagnostics)$/.test(url.pathname)) {
-        const session = readConversationSession(request, config);
-        if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation first");
         const body = await readJsonBody(request, config.requestMaxBytes);
-        if (body.sessionKey !== sessionKey(session.conversationId)) throw new GatewayError(409, "session_changed", "Conversation changed");
+        if (typeof body.videoId === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(body.videoId)) mediaContext.videoId = body.videoId;
+        const session = readMediaSession(request, config, body.sessionKey);
         const result = await video.handle(url.pathname.split("/").at(-1), session.conversationId, body);
         if (response.destroyed && result.videoId) {
           await video.handle("close", session.conversationId, result);
@@ -723,10 +739,8 @@ export function createGateway({
       }
 
       if (["/voice/stream", "/voice/cancel", "/voice/interrupt"].includes(url.pathname)) {
-        const session = readConversationSession(request, config);
-        if (!session) throw new GatewayError(409, "conversation_required", "Open a conversation before starting voice");
         const body = await readJsonBody(request, config.requestMaxBytes);
-        if (body.sessionKey !== sessionKey(session.conversationId)) throw new GatewayError(409, "session_changed", "Conversation changed");
+        const session = readMediaSession(request, config, body.sessionKey);
         if (url.pathname === "/voice/stream") {
           // Reuse an already generated, signed reply; never accept arbitrary TTS text.
           let replay = null;
@@ -809,6 +823,9 @@ export function createGateway({
           ? "upstream_timeout"
           : "gateway_error";
       const message = known ? error.message : "Gateway request failed";
+      if (status === 409 && mediaContext.route) {
+        log({ event: "gateway.media_conflict", requestId, ...mediaContext, status, code });
+      }
       sendJson(response, status, {
         ok: false,
         error: { code, message, requestId },
@@ -823,10 +840,10 @@ export function createGateway({
   const asr = createAsrBridge(config, request => {
     assertOrigin(request, config);
     const url = new URL(request.url, 'http://localhost');
-    const session = readConversationSession(request, config);
-    if (url.pathname !== '/asr/stream' || !session || url.searchParams.get('sessionKey') !== sessionKey(session.conversationId)) throw new Error('unauthorized');
+    if (url.pathname !== '/asr/stream') throw new Error('unauthorized');
+    const session = readMediaSession(request, config, url.searchParams.get('sessionKey'));
     return session.conversationId;
-  });
+  }, connectAsr ? { connect: connectAsr } : {});
   server.on('upgrade', asr.upgrade);
   server.stopMedia = () => { asr.close(); liveVoices.close(); return video.close(); };
   server.on("close", () => { void server.stopMedia(); });

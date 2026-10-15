@@ -152,7 +152,7 @@ export function AgentChat() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const avatar = useAvatarVideo(videoMode, sessionKey, videoRef);
   const greetingPlayed = useRef(new Set<string>());
-  const { startReply: startAvatarReply } = avatar;
+  const { startReply: startAvatarReply, close: closeAvatar } = avatar;
   useEffect(() => {
     if (!videoMode || speechActive || avatar.state.phase !== "connected" || busy || !ready || loadingHistory || nextCursor || !sessionKey || recovery) return;
     // Hidden bootstrap Hi is absent from the visible history. A lone completed
@@ -334,6 +334,11 @@ export function AgentChat() {
       setHistoryError("");
 
       try {
+        // Stop the old media while its conversation cookie is still active.
+        // History refreshes of the same conversation must not interrupt video.
+        if (sessionKeyRef.current && (options.reset || options.sessionKey && options.sessionKey !== sessionKeyRef.current)) {
+          await closeAvatar();
+        }
         const session = await openConversation(options);
         applySession(session);
         follow();
@@ -393,7 +398,7 @@ export function AgentChat() {
         operation.current = false;
       }
     },
-    [applySession, disposeAudio, follow, renderReply, replaceAttachments, saveRecovery],
+    [applySession, closeAvatar, disposeAudio, follow, renderReply, replaceAttachments, saveRecovery],
   );
 
   useEffect(() => {

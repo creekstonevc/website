@@ -34,9 +34,19 @@
 7. 无回复时每15秒创建一个独立的40ms零值PCM输入流，并按同样流程正常结束，避免120秒静息超时。如果新回复恰好到来，先等待保活流结束；暂存此时的文字及 finish 信号，不丢字、不并发占用音频入口。正在生成的回复遇到长时间 TTS 间隙时，仅在无语音排队时插入保活PCM。
 8. 音视频统一从 WebRTC 播放，不再单独播放 PCM，以免重音/不同步。`audio.input_ended` / ready **不代表视频播放结束**，不会销毁会话。离开或发生故障才释放整个会话，下一次连接创建新session，不重启已停止session。现有550秒会话上限和45秒浏览器失联回收仍保留。
 
-`/video/*` 均为同源 POST，强制 Origin、签名会话和 sessionKey；videoId 只能属于当前会话。
+`/video/*` 均为同源 POST，强制 Origin、签名会话和 sessionKey；videoId 只能属于该请求选择的已授权会话。媒体请求（视频、实时语音及 ASR）可选择当前签名 Cookie 或签名 archive Cookie 中仍未过期的会话，避免其他标签页切换当前会话后误伤旧媒体连接；单独提供 sessionKey 不构成授权。Responses 仍校验当前活动会话，不自动向其他会话发送消息。
 切回 Text、切换会话、离开页面会关闭连接并释放上游会话。浏览器失联45秒由服务端回收；最长550秒主动回收（供应商上限600秒）。供应商的120秒音频空闲限制仍适用，心跳不伪装音频保活。
 最多三个并发会话；每会话每分钟最多四次启动。清理未确认的旧会话继续占用席位，但有剩余席位时允许新建；后台持续重试清理，间隔逐渐增加到60秒。`closed/failed` 即使保留错误原因也视为结束。创建结果未知时仍停止分配，须先向供应商确认回收，不能靠重启绕过保护。
+
+## 会话切换、重复清理与断连诊断
+
+- 显式新建/切换对话时，浏览器先关闭旧媒体连接并等待有界清理，再请求更新活动会话 Cookie；同一会话的历史刷新不主动中断视频。
+- `/video/close` 对已关闭或不存在的合法 UUID 返回成功，不重复 DELETE 上游；仍拒绝关闭其他会话拥有的现存视频。`cleanupPending: true` 表示本地已关闭、上游资源回收尚待后台确认，不代表已经释放席位。
+- 正常心跳间隔15秒。网络错误、408、429及5xx允许两次短重试（1.5秒、3秒），成功后恢复正常间隔；权限/会话过期等错误不重试，也不自动创建新视频。
+- `gateway.media_conflict` 记录媒体 HTTP 409 的安全路由、`code`、`requestId` 和合法本地 `videoId`（若有），区分 `session_changed`、`conversation_required`、`video_expired` 等，不记录 Cookie 或请求正文。
+- `video.audio_input` 的 `interrupted` 事件包含固定 `reason`、失败阶段、`queuedSamples/queuedMs`、`inflightChunks`、`oldestAckAgeMs`、socket 状态及可取得的数字关闭码。`queue_overflow`、`ack_timeout`、`ready_timeout`、`end_timeout`、`close_timeout`、`socket_closed` 等可以分开定位；主动本地清理标记为 `cancelled/local_cancel`。
+- `video.audio_input_failed` 与 `video.voice_failed` 关联具体视频/回复/输入流，并保留白名单原因码。不输出原始供应商错误、音频、文本、连接凭证或 WebSocket close reason。
+- 未发送 PCM 队列仍有120秒硬上限，实时发送速度不变。旧日志不能证明历史故障是否来自此上限；若新日志出现 `queue_overflow`，再据此设计 TTS 背压，不能直接扩大无界缓冲或把所有错误归因于网络。
 
 ## 2026-09-23 线上故障记录（北京时间）
 

@@ -40,6 +40,70 @@ test('heartbeat is single-flight and an intentional close cancellation never pro
   } finally { client.close(); globalThis.fetch = original; }
 });
 
+test('a transient heartbeat failure preserves playback, retries briefly and resets after success', async () => {
+  const original = globalThis.fetch, states = [], calls = [];
+  let failures = 1;
+  globalThis.fetch = async url => {
+    calls.push(url);
+    if (url.endsWith('/heartbeat') && failures-- > 0) return Response.json({ error: { code: 'video_network' } }, { status: 502 });
+    return Response.json({ ready: true });
+  };
+  const client = new AvatarConnection('session', element(), state => states.push(state)), delays = [];
+  client.id = 'video'; client.ready = true;
+  client.scheduleHeartbeat = delay => delays.push(delay);
+  try {
+    await client.sendHeartbeat();
+    assert.equal(client.closed, false); assert.equal(client.ready, true);
+    assert.deepEqual(states, []); assert.deepEqual(delays, [1500]);
+    await client.sendHeartbeat();
+    assert.equal(client.heartbeatFailures, 0); assert.equal(delays.at(-1), 15000);
+    assert.equal(calls.some(url => url.endsWith('/close')), false);
+    failures = 1; await client.sendHeartbeat();
+    assert.equal(client.closed, false); assert.equal(delays.at(-1), 1500);
+  } finally { await client.close(); globalThis.fetch = original; }
+});
+
+test('heartbeat retries are bounded and genuine expiration or authorization failure is not retried', async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const [status, code, attempts] of [[503, 'video_unavailable', 3], [409, 'video_expired', 1], [409, 'session_changed', 1], [403, 'origin_not_allowed', 1]]) {
+      const states = [], delays = [], client = new AvatarConnection('session', element(), state => states.push(state));
+      client.id = 'video'; client.ready = true;
+      client.scheduleHeartbeat = delay => { if (!client.closed) delays.push(delay); };
+      globalThis.fetch = async url => url.endsWith('/heartbeat')
+        ? Response.json({ error: { code, message: 'raw upstream details must not appear' } }, { status })
+        : Response.json({ closed: true });
+      for (let i = 0; i < attempts; i++) await client.sendHeartbeat();
+      assert.equal(client.closed, true); assert.equal(states.at(-1).phase, 'error');
+      assert.doesNotMatch(states.at(-1).message, /raw upstream/);
+      assert.deepEqual(delays, attempts === 3 ? [1500, 3000] : []);
+      if (code === 'video_expired') assert.match(states.at(-1).message, /session ended/);
+      if (code === 'session_changed') assert.match(states.at(-1).message, /Conversation access changed/);
+      await client.close();
+    }
+  } finally { globalThis.fetch = original; }
+});
+
+test('connection cleanup is awaitable and duplicate callers share one close operation', async () => {
+  const original = globalThis.fetch, requests = [], pending = [];
+  const client = new AvatarConnection('old-session', element(), () => {});
+  client.id = 'video'; client.voiceId = 'voice';
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, body: JSON.parse(options.body) });
+    return new Promise(resolve => pending.push(() => resolve(Response.json({ closed: true }))));
+  };
+  try {
+    const closing = client.close(); let settled = false;
+    void closing.then(() => { settled = true; });
+    assert.equal(client.close(), closing);
+    await Promise.resolve(); assert.equal(settled, false);
+    assert.deepEqual(requests.map(call => call.url), ['/api/agent/voice/cancel', '/api/agent/video/close']);
+    assert.ok(requests.every(call => call.body.sessionKey === 'old-session'));
+    pending.forEach(resolve => resolve()); await closing;
+    assert.equal(settled, true); assert.equal(requests.length, 2);
+  } finally { pending.forEach(resolve => resolve()); await client.close(); globalThis.fetch = original; }
+});
+
 test('playback telemetry uses cumulative real counters and selected-pair RTT, preserving unknowns and signed loss', () => {
   const rows = [
     { id: 'v', type: 'inbound-rtp', kind: 'video', framesDecoded: 250, framesDropped: 2, packetsLost: -3, transportId: 't', jitter: .02 },

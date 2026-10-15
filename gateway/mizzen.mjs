@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { GatewayError } from "./core.mjs";
 import { BytePlusLiveVoice } from "./live-voice.mjs";
-import { MizzenAudio } from "./mizzen-audio.mjs";
+import { MIZZEN_AUDIO_ERROR_CODES, MizzenAudio } from "./mizzen-audio.mjs";
 
 const fault = (code, message, status = 502) => new GatewayError(status, code, message);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -111,9 +111,10 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
     log({ event: "video.audio_open", videoId: entry.id, upstreamSession: entry.upstream, purpose, replyId, streamId: audio.id });
     void audio.done.then(() => {
       if (entry.audio === audio) entry.audio = null;
-    }, () => {
+    }, error => {
       if (!entry.closed) {
-        log({ event: "video.audio_input_failed", videoId: entry.id, upstreamSession: entry.upstream, purpose, replyId, streamId: audio.id });
+        const code = MIZZEN_AUDIO_ERROR_CODES.includes(error?.code) ? error.code : "audio_input_unknown";
+        log({ event: "video.audio_input_failed", videoId: entry.id, upstreamSession: entry.upstream, purpose, replyId, streamId: audio.id, code });
         void release(entry).catch(() => {});
       }
     });
@@ -185,8 +186,24 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
         } catch (error) { if (entry) await release(entry).catch(() => {}); throw error; }
         finally { creating.delete(owner); }
       }
+      if (action === "close") {
+        if (typeof body.videoId !== "string" || !uuid.test(body.videoId)) throw fault("video_id_invalid", "Invalid video session ID.", 400);
+        const entry = entries.get(body.videoId);
+        // Closing twice is normal: the server, tab lifecycle and voice stream
+        // can all finish the same lease. Never let this close another owner.
+        if (entry && entry.owner !== owner) throw fault("video_expired", "Video session expired. Reconnect to continue.", 409);
+        if (!entry) return { closed: true };
+        clientLog(entry, body.diagnostics);
+        if (entry.closed) return { closed: true, cleanupPending: true };
+        try { await release(entry); return { closed: true }; }
+        catch (error) {
+          if (error.code !== "video_cleanup") throw error;
+          // The local lease is closed; release() retains the occupied seat and
+          // retries upstream cleanup independently of browser teardown.
+          return { closed: true, cleanupPending: true };
+        }
+      }
       const entry = own(body.videoId, owner); entry.seen = Date.now();
-      if (action === "close") { clientLog(entry, body.diagnostics); await release(entry); return { closed: true }; }
       if (action === "diagnostics") { clientLog(entry, body.diagnostics); return { accepted: true }; }
       if (action === "stats") {
         if (!entry.negotiated) throw fault("video_not_ready", "Connect playback first.", 409);
@@ -244,9 +261,14 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
       let finished = false, cancelled = false, draining = false, inputFinished = false, interrupted = false, interruptPromise;
       const replyId = randomUUID();
       let tts, audio, pending = [], pendingCharacters = 0;
-      const fail = () => {
+      const fail = (source = "setup", code) => {
         if (cancelled || finished) return;
         cancelled = true; pending = [];
+        if (!entry.closed) {
+          const allowed = [...MIZZEN_AUDIO_ERROR_CODES, "voice_unavailable", "voice_timeout", "voice_limit", "voice_protocol_error", "voice_interrupted", "voice_backpressure", "video_not_ready", "pending_text_limit"];
+          log({ event: "video.voice_failed", videoId: entry.id, upstreamSession: entry.upstream, replyId,
+            streamId: audio?.id ?? null, source, code: allowed.includes(code) ? code : "voice_unknown" });
+        }
         emit("error", { code: "video_interrupted" }); void release(entry).catch(() => {});
       };
       const complete = () => {
@@ -264,11 +286,11 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
           if (progress.stage === "first_pcm_sent" && !interrupted && !cancelled && !finished)
             emit("audio_started", {}); // Input sent, NOT a playback boundary.
         });
-        void audio.done.catch(fail);
+        void audio.done.catch(error => fail("audio", error?.code));
         tts = makeTts((event, data) => {
           if (cancelled || finished || draining || interrupted) return;
           if (event === "audio") {
-            try { audio.push(Buffer.from(data.data, "base64")); } catch { fail(); }
+            try { audio.push(Buffer.from(data.data, "base64")); } catch (error) { fail("audio", error?.code); }
           } else if (event === "done") {
             draining = true;
             void audio.drain({ tailMs: 300, onProgress: progress => log({
@@ -277,24 +299,24 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
               if (!cancelled && !entry.closed && !interrupted) return audio.finish();
             }).then(() => {
               if (!interrupted) complete(); // Input ended + socket closed, NOT playback complete.
-            }).catch(fail);
-          } else if (event === "error") fail();
+            }).catch(error => fail("audio", error?.code));
+          } else if (event === "error") fail("tts", data?.code);
           else emit(event, data);
         });
         entry.tts = tts;
         for (const text of pending) { if (cancelled || interrupted) break; tts.push(text); }
         pending = []; pendingCharacters = 0;
         if (inputFinished && !cancelled && !interrupted) tts.finish();
-      }).catch(fail);
+      }).catch(error => fail("setup", error?.code));
       return { push: text => {
         if (cancelled || finished || inputFinished || interrupted) return;
-        if (tts) { try { tts.push(text); } catch { fail(); } }
+        if (tts) { try { tts.push(text); } catch (error) { fail("tts", error?.code); } }
         else if ((pendingCharacters += text.length) <= 131072) pending.push(text);
-        else fail();
+        else fail("input", "pending_text_limit");
       }, finish: () => {
         if (cancelled || finished || inputFinished || interrupted) return;
         inputFinished = true;
-        try { tts?.finish(); } catch { fail(); }
+        try { tts?.finish(); } catch (error) { fail("tts", error?.code); }
       }, interrupt: () => {
         if (interruptPromise) return interruptPromise;
         if (finished || cancelled) return Promise.resolve();
@@ -304,7 +326,7 @@ export function createMizzenManager(config, { fetchImpl = fetch, makeAudio = (ur
         // waiting for keepalive, skip opening a speech stream altogether.
         interruptPromise = (async () => {
           try { if (audio) await audio.interrupt(); else await entry.keepalive; complete(); }
-          catch (error) { fail(); throw error; }
+          catch (error) { fail("audio", error?.code); throw error; }
         })();
         return interruptPromise;
       }, cancel: () => {

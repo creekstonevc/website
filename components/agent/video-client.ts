@@ -25,13 +25,29 @@ export function playbackStats(report: RTCStatsReport) {
     concealed_samples: sum(audio, 'concealedSamples', true) };
 }
 
+class VideoRequestError extends Error {
+  status: number;
+  code: string;
+  constructor(status: number, code: string) {
+    super(code === 'session_changed' || code === 'conversation_required'
+      ? 'Conversation access changed. Reopen the conversation before reconnecting video.'
+      : code === 'video_expired' ? 'Video session ended. Reconnect to continue.'
+      : 'Video connection unavailable. Text chat is still open.');
+    this.status = status; this.code = code;
+  }
+}
+
 async function request(action: string, sessionKey: string, body: Record<string, unknown> = {}, signal?: AbortSignal) {
   const response = await fetch(`/api/agent/video/${action}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...body, sessionKey }), signal,
     keepalive: action === "close" || action === "diagnostics",
   });
-  if (!response.ok) throw new Error("Video connection unavailable. Text chat is still open.");
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const code = typeof payload?.error?.code === 'string' && /^[a-z_]{1,64}$/.test(payload.error.code) ? payload.error.code : 'video_request_failed';
+    throw new VideoRequestError(response.status, code);
+  }
   return response.json();
 }
 
@@ -70,10 +86,12 @@ export class AvatarConnection {
   private pc?: RTCPeerConnection;
   private id = "";
   private closed = false;
+  private closing?: Promise<void>;
   private ready = false;
   private markingReady = false;
   private heartbeat?: ReturnType<typeof setTimeout>;
   private heartbeatPending = false;
+  private heartbeatFailures = 0;
   private startedAt = Date.now();
   private stage = 'open';
   private offerSent = false;
@@ -119,18 +137,27 @@ export class AvatarConnection {
     void request('diagnostics', this.sessionKey, { videoId: this.id, diagnostics: this.diagnostics(stage, reason) },
       AbortSignal.timeout(5000)).catch(() => {});
   }
-  private scheduleHeartbeat() {
-    if (!this.closed) this.heartbeat = setTimeout(() => { void this.sendHeartbeat(); }, 15000);
+  private scheduleHeartbeat(delay = 15000) {
+    clearTimeout(this.heartbeat);
+    if (!this.closed) this.heartbeat = setTimeout(() => { void this.sendHeartbeat(); }, delay);
   }
   private async sendHeartbeat() {
     if (this.closed || this.heartbeatPending) return;
     this.heartbeatPending = true;
-    try { await this.api('heartbeat'); }
-    catch {
-      if (!this.closed && !this.controller.signal.aborted) this.fail('Video heartbeat failed. Reconnect to continue; text chat is still available.', 'heartbeat_failed');
+    let nextDelay = 15000;
+    try { await this.api('heartbeat'); this.heartbeatFailures = 0; }
+    catch (error) {
+      if (!this.closed && !this.controller.signal.aborted) {
+        const transient = !(error instanceof VideoRequestError) || error.status >= 500 || [408, 429].includes(error.status);
+        if (transient && ++this.heartbeatFailures <= 2) {
+          // A missed HTTP probe is not proof that the WebRTC picture/audio died.
+          // Retry briefly; never retry expired sessions or failed authorization.
+          nextDelay = this.heartbeatFailures * 1500;
+        } else this.fail(error instanceof VideoRequestError ? error.message : 'Video heartbeat failed. Reconnect to continue; text chat is still available.', 'heartbeat_failed');
+      }
     } finally {
       this.heartbeatPending = false;
-      this.scheduleHeartbeat();
+      this.scheduleHeartbeat(nextDelay);
     }
   }
   async connect() {
@@ -146,7 +173,7 @@ export class AvatarConnection {
       this.id = opened.videoId;
       this.upstreamSessionId = opened.sessionId;
       if (Number.isFinite(opened.expiresAt) && Number.isFinite(opened.serverNow)) this.expiresAt = Date.now() + Math.max(0, opened.expiresAt - opened.serverNow);
-      if (this.closed) { void request("close", this.sessionKey, { videoId: this.id }).catch(() => {}); return; }
+      if (this.closed) { void request("close", this.sessionKey, { videoId: this.id }, AbortSignal.timeout(8000)).catch(() => {}); return; }
       this.scheduleHeartbeat();
       const pc = this.pc = new RTCPeerConnection({ iceServers: opened.iceServers, bundlePolicy: "max-bundle", iceTransportPolicy: "all" });
       pc.onicecandidateerror = event => {
@@ -296,8 +323,8 @@ export class AvatarConnection {
     finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
   }
   private fail(message: string, reason = 'media_failed') { if (this.closed) return; this.state("error", message); this.close(reason); }
-  close(reason = 'client_closed') {
-    if (this.closed) return;
+  close(reason = 'client_closed'): Promise<void> {
+    if (this.closed) return this.closing ?? Promise.resolve();
     const diagnostics = this.diagnostics('closed', reason);
     this.closed = true; this.ready = false; this.controller.abort(); this.voiceController?.abort();
     clearTimeout(this.heartbeat); clearInterval(this.statsTimer); clearTimeout(this.firstFrameTimer);
@@ -305,8 +332,11 @@ export class AvatarConnection {
     if (this.frameCallback !== undefined) this.video.cancelVideoFrameCallback(this.frameCallback);
     if (this.pc) { this.pc.onconnectionstatechange = null; this.pc.onicecandidateerror = null; this.pc.ontrack = null; this.pc.close(); }
     this.video.pause(); this.video.srcObject = null;
-    if (this.voiceId) void fetch("/api/agent/voice/cancel", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: this.voiceId, sessionKey: this.sessionKey }), keepalive: true }).catch(() => {});
-    if (this.id) void request("close", this.sessionKey, { videoId: this.id, diagnostics }).catch(() => {});
+    const cleanup: Promise<unknown>[] = [];
+    if (this.voiceId) cleanup.push(fetch("/api/agent/voice/cancel", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: this.voiceId, sessionKey: this.sessionKey }), keepalive: true, signal: AbortSignal.timeout(8000) }));
+    if (this.id) cleanup.push(request("close", this.sessionKey, { videoId: this.id, diagnostics }, AbortSignal.timeout(8000)));
+    this.closing = Promise.allSettled(cleanup).then(() => {});
+    return this.closing;
   }
 }

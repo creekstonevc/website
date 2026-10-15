@@ -5,6 +5,8 @@ import { createServer } from 'node:http';
 import WebSocket from 'ws';
 import { asrPacket, parseAsrPacket, createAsrBridge } from './asr.mjs';
 import { createGateway, loadConfig } from './server.mjs';
+import { createConversationArchive, createConversationCredential } from './core.mjs';
+import { createHash } from 'node:crypto';
 
 test('ASR binary frames decode full and final transcripts; malformed frames fail closed', () => {
   assert.deepEqual(parseAsrPacket(asrPacket(9, 0, Buffer.from(JSON.stringify({ result: { text: '你好' } })), true)), { final: false, text: '你好' });
@@ -63,4 +65,47 @@ test('ASR upgrade rejects missing cookie, mismatched conversation and foreign or
       });
     }
   } finally { await server.stopMedia(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+test('ASR still reaches ready and transcribes using a signed archived conversation after a tab switch', async () => {
+  const config = loadConfig({ GATEWAY_SIGNING_SECRET: 'asr-test-signing-secret-32-characters', BOIDS_API_KEY: 'test', BYTEPLUS_TTS_API_KEY: 'test', BYTEPLUS_TTS_SPEAKER_ID: 'test' });
+  const now = Date.now(), cid = 'conv_asr_archived';
+  const key = createHash('sha256').update(cid).digest('hex').slice(0, 24);
+  const activeCookie = `${config.conversationCookieName}=${createConversationCredential('conv_asr_new', config.signingSecret)}`;
+  const archiveName = `${config.conversationCookieName}_archive`;
+  const valid = createConversationArchive([{ cid, exp: now + 60000 }], config.signingSecret);
+  const expired = createConversationArchive([{ cid, exp: now - 1000 }], config.signingSecret, now - 2000);
+  let upstreamCount = 0;
+  const server = createGateway({ config, fetchImpl: () => { throw new Error('no HTTP upstream expected'); },
+    connectAsr: () => {
+      upstreamCount++;
+      const upstream = new EventEmitter(); upstream.readyState = WebSocket.OPEN; upstream.bufferedAmount = 0;
+      upstream.terminate = () => {};
+      upstream.send = data => {
+        if ((data[1] >> 4) === 2) queueMicrotask(() => upstream.emit('message', asrPacket(9, data[1] & 2,
+          Buffer.from(JSON.stringify({ result: { text: '你好，一豪' } })), true)));
+      };
+      queueMicrotask(() => upstream.emit('open')); return upstream;
+    },
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const url = `ws://127.0.0.1:${server.address().port}/asr/stream?sessionKey=${key}`;
+  let client;
+  try {
+    for (const token of [`${valid}x`, expired]) {
+      await new Promise((resolve, reject) => {
+        const ws = new WebSocket(url, { headers: { Origin: 'http://localhost:3100', Cookie: `${activeCookie}; ${archiveName}=${token}` } });
+        ws.on('open', () => reject(new Error('unauthorized accepted'))); ws.on('error', () => {});
+        ws.on('unexpected-response', (_, response) => { assert.equal(response.statusCode, 403); response.resume(); ws.terminate(); resolve(); });
+      });
+    }
+    assert.equal(upstreamCount, 0);
+    client = new WebSocket(url, { headers: { Origin: 'http://localhost:3100', Cookie: `${activeCookie}; ${archiveName}=${valid}` } });
+    assert.equal(JSON.parse((await once(client, 'message'))[0]).type, 'ready');
+    const partial = once(client, 'message'); client.send(Buffer.alloc(3200));
+    assert.deepEqual(JSON.parse((await partial)[0]), { type: 'partial', text: '你好，一豪' });
+    const final = once(client, 'message'); client.send(JSON.stringify({ type: 'finish' }));
+    assert.deepEqual(JSON.parse((await final)[0]), { type: 'final', text: '你好，一豪' });
+    assert.equal(upstreamCount, 1);
+  } finally { client?.terminate(); await server.stopMedia(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
