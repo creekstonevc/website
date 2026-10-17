@@ -32,6 +32,7 @@
 5. 发消息时复用现有 Responses 流，`output_text.delta` → BytePlus 双向流式 TTS → 24kHz/16-bit/mono PCM → Gateway Mizzen WebSocket。
    视频专用 TTS 按最多160字符的短批串行合成，优先在标点处断开；视频待发送/待ACK音频低于5秒时才启动下一批，向输入适配器交付PCM不超过12秒。未来内容保留为文本，不提前合成几分钟音频。每批仍边合成边输出，40ms分片及原有ACK规则不变；纯语音播放不使用此节流器。
 6. **每轮回复使用新的音频 WebSocket 和 `stream_id`，复用视频 `session_id`。** Gateway 按 40ms / 960 samples 分包，流内 seq/sample_offset 从零连续递增，最多八个未 ACK 包；按实际时长推送。TTS 完成后附加300ms静音，等待全部 PCM（含静音）发送并收到 ACK，随后发送带精确 `total_samples` 的 `audio.end`。等待 `audio.input_ended` 和服务端关闭这条音频 WebSocket，才允许下一轮；不是关闭视频 session。
+   发送期限由单调时钟起点加累计采样时长计算，不再使用“实际发送时刻 + 40ms”，避免定时器误差逐包累积。默认每10ms检查一次；普通调度抖动允许有限追赶：每次 pump 最多一包，两包至少间隔上一包时长的一半（正常40ms包为20ms，从实际发送完成算起），最多保留1秒追赶欠账，使偶发100～200ms进程暂停可以恢复、不逐次变成永久延迟；ACK窗口和socket背压仍优先。长时间阻塞超出1秒的部分重新设定时间基准，不突发灌入旧音频；真正的TTS断供后重新起算，不把静息时间当作欠账。供应商若协商更小分片，检查间隔随分片时长缩短（最小1ms；低于系统定时器精度的分片不承诺实时吞吐）。结尾仍等待最后一包从实际发出算起的完整时长以及所有ACK，再发end，追赶不提前截短尾音。
 7. 无回复时每15秒创建一个独立的40ms零值PCM输入流，并按同样流程正常结束，避免120秒静息超时。如果新回复恰好到来，先等待保活流结束；暂存此时的文字及 finish 信号，不丢字、不并发占用音频入口。正在生成的回复遇到长时间 TTS 间隙时，仅在无语音排队时插入保活PCM。
 8. 音视频统一从 WebRTC 播放，不再单独播放 PCM，以免重音/不同步。`audio.input_ended` / ready **不代表视频播放结束**，不会销毁会话。离开或发生故障才释放整个会话，下一次连接创建新session，不重启已停止session。现有550秒会话上限和45秒浏览器失联回收仍保留。
 
@@ -47,6 +48,7 @@
 - `gateway.media_conflict` 记录媒体 HTTP 409 的安全路由、`code`、`requestId` 和合法本地 `videoId`（若有），区分 `session_changed`、`conversation_required`、`video_expired` 等，不记录 Cookie 或请求正文。
 - `video.audio_input` 的 `interrupted` 事件包含固定 `reason`、失败阶段、`queuedSamples/queuedMs`、`inflightChunks`、`oldestAckAgeMs`、socket 状态及可取得的数字关闭码。`queue_overflow`、`ack_timeout`、`ready_timeout`、`end_timeout`、`close_timeout`、`socket_closed` 等可以分开定位；主动本地清理标记为 `cancelled/local_cancel`。
 - `video.audio_input_failed` 与 `video.voice_failed` 关联具体视频/回复/输入流，并保留白名单原因码。不输出原始供应商错误、音频、文本、连接凭证或 WebSocket close reason。
+- `video.audio_input` 的 `pacing` 事件每5秒记录单调时钟耗时 `elapsedMs`、累计输入音频时长 `sentAudioMs`、当前调度落后 `scheduleLagMs`、长阻塞重置量 `pacingRebasedMs`、TTS缺帧时间 `underrunMs`、最大发包间隔/晚发时间、队列和未ACK数量，以及累计ACK平均/最大耗时 `meanAckMs/maxAckMs`（无ACK时为null）。`at`仍为墙上时钟时间，便于与上游日志对齐；这些是输入侧指标，不能当作WebRTC播放延迟。普通抖动应保持有界，TTS断供、长ACK阻塞、事件循环暂停仍可造成实际停顿。
 - 2026-10-15生产日志已确认多次 `queue_overflow`：排队音频接近120秒、ACK仍正常、WebRTC仍连接。新增上述TTS分批背压，保留适配器原有120秒硬上限作为最后保护，不扩大缓冲或加快视频输入速度。当前合成批次另有4MiB缓冲和整轮24MiB音频上限；语音订阅仍有330秒总时限。
 - 聊天请求失败/取消以及可恢复TTS失败只安全结束当前音频输入，不关闭健康的视频session。TTS失败通过 `reply_error` 提示，待ACK、`audio.input_ended`及输入WS关闭后再发送 `done` 并释放语音槽位；下一轮可复用同一视频连接。音频协议、ACK或结束超时、WebRTC故障仍按致命错误清理。
   视频单轮330秒到限也走同样的安全收尾，浏览器SSE传输截止设为380秒以容纳收尾时间；这不延长单轮生成上限，纯语音播放的时限不变。
@@ -98,6 +100,15 @@
 `npm run dev:agent -- --server-credentials` 仅沿用已授权的 Boids/BytePlus 服务端凭证；Mizzen 新凭证请配置到本地环境并使用前一种启动方式。
 
 无任何凭证的 UI fixture：`npm run build && node scripts/agent-qa-server.mjs`。它的回复是测试数据，不代表真实 Agent。
+
+音频节拍回归：`node --test gateway/mizzen-audio-pacing.test.mjs`，覆盖长时间定时器抖动、ACK延迟、时钟跳变、断供恢复和有界追赶。真实Node定时器与本地WebSocket的5分钟验证：`node scripts/mizzen-audio-soak.mjs --seconds=300`，检查逐分钟发送落后、完整PCM哈希、分片顺序和收尾。它不连接供应商，不等同于浏览器端真实音视频听感验收。
+
+### 2026-10-17 发送节拍验证与边界
+
+- 确定性5分钟回归：普通抖动最终落后0～10ms；每10秒反复注入200/400/800ms暂停共29次，均追回至26ms以内，最终落后0ms、无时间基准重置；7,500包的PCM哈希、序号、偏移完全一致。5秒极端暂停另验证1秒有界追赶及ACK/尾包保护。
+- 本地真实Node定时器＋WebSocket连续5分钟：实际用时300.06秒，发送300秒PCM，各分钟平均发送偏差6.08/6.06/6.03/6.64/6.26ms；最后10秒均值6.24ms，较首分钟增长0.17ms。约109ms事件循环暂停后的临时偏差可恢复，无重置/断供，7,500包及所有ACK、哈希、正常收尾均通过。
+- 真实供应商普通抖动对照（独立session `2dfc7507-a047-4789-9d8e-76d274257a26`）：每3.1秒注入35ms暂停，连续发送5分钟/7,500包；各分钟平均发送偏差5.22/5.32/5.63/5.58/5.43ms，最大临时偏差45.15ms、最后一包6.45ms，无重置/断供。应用层ACK平均38.86ms、最大74.02ms，峰值3包未ACK；全部输入确认并正常关闭后session仍ready。随后DELETE并确认closed。此测试验证真实供应商输入协议，不代替WebRTC画面/听感验收。
+- 真实供应商强压力测试（独立session `eed2972d-d860-4422-9540-8a4b09249e59`）：5分钟内反复注入200/800ms暂停，7,500包完整ACK并正常结束输入，但最后一包发送落后约3.20秒、ACK窗口曾达到8包；该压力场景**未通过无累积验收**，不能归入成功结果。仅凭这些指标不能确定是网络还是供应商处理限制，应用层ACK耗时也不是纯网络RTT。测试session已DELETE并确认closed。
 
 拿到 Key 后重点验收：第一帧与首句延迟、尾音/尾帧、连续多轮、切换会话/视图、自动播放限制、120秒空闲回收、UDP受限网络、三席位容量、退出清理、真实清理失败响应、Safari/iOS H.264。
 

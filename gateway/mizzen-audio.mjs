@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import WebSocket from "ws";
 
 export const MIZZEN_AUDIO_ERROR_CODES = Object.freeze([
@@ -10,11 +11,17 @@ export const MIZZEN_AUDIO_ERROR_CODES = Object.freeze([
 // Mizzen v1: 40 ms PCM packets, real-time pacing and an eight-packet ACK window.
 // The adapter accepts unaligned provider chunks; only complete samples go out.
 export class MizzenAudio {
-  constructor(url, key, { socketFactory = (url, options) => new WebSocket(url, options), tickMs = 40, now = Date.now, onProgress } = {}) {
-    this.now = now; this.onProgress = onProgress; this.drainers = [];
+  constructor(url, key, { socketFactory = (url, options) => new WebSocket(url, options), tickMs = 40, now = Date.now,
+    monotonicNow = now === Date.now ? () => performance.now() : now, onProgress } = {}) {
+    // Keep externally correlated log timestamps on the wall clock. Scheduling,
+    // ACK ages and timeouts must not follow NTP/manual wall-clock adjustments.
+    this.now = now; this.clock = monotonicNow; this.onProgress = onProgress; this.drainers = [];
     this.id = randomUUID(); this.queue = Buffer.alloc(0); this.inflight = new Map();
     this.seq = 0; this.samples = 0; this.ready = false; this.ending = false; this.ended = false;
-    this.closed = false; this.lastActivity = now(); this.lastSent = now(); this.tickMs = tickMs;
+    this.closed = false; this.lastActivity = monotonicNow(); this.lastSentAt = this.lastActivity;
+    this.lastSent = now(); this.lastPacketMs = 0; this.tickMs = tickMs;
+    this.pacingRebasedMs = 0; this.underrunMs = 0; this.maxSendGapMs = 0; this.maxLatenessMs = 0;
+    this.ackCount = 0; this.ackTotalMs = 0; this.maxAckMs = 0;
     this.done = new Promise((resolve, reject) => { this.resolve = resolve; this.reject = reject; });
     this.done.catch(() => {});
     this.socket = socketFactory(url, { headers: { Authorization: `Bearer ${key}` }, handshakeTimeout: 10000, maxPayload: 16384 });
@@ -32,11 +39,19 @@ export class MizzenAudio {
             !Number.isInteger(data.max_inflight_chunks) || data.max_inflight_chunks < 1) { this.fail("invalid_limits"); return; }
         this.packetBytes = Math.min(960, data.max_chunk_samples) * 2;
         this.window = Math.min(8, data.max_inflight_chunks); this.ready = true;
+        // Smaller negotiated chunks need more frequent checks to keep up.
+        const interval = Math.max(1, Math.min(10, this.packetBytes / 48 * (tickMs / 40) / 4));
+        if (interval < Math.max(1, Math.min(tickMs / 4, 10))) {
+          clearInterval(this.timer);
+          this.timer = setInterval(() => this.pump(), interval); this.timer.unref?.();
+        }
         this.report("ready");
       } else if (data.type === "audio.ack") {
         const expected = this.inflight.get(data.seq);
         if (!expected || data.received_samples !== expected.samples) { this.fail("invalid_ack"); return; }
-        this.inflight.delete(data.seq); this.lastAckAt = this.now();
+        this.inflight.delete(data.seq); this.lastAckAt = this.clock();
+        const ackMs = this.lastAckAt - expected.at;
+        this.ackCount++; this.ackTotalMs += ackMs; this.maxAckMs = Math.max(this.maxAckMs, ackMs);
         for (const waiter of this.drainers) {
           if (waiter.onProgress && !waiter.acked && data.received_samples >= waiter.tailEnd) {
             waiter.acked = true;
@@ -47,7 +62,7 @@ export class MizzenAudio {
         if (!this.endSent || data.total_samples !== undefined && data.total_samples !== this.samples) { this.fail("invalid_end"); return; }
         this.ended = true; this.report("input_ended");
       } else if (data.type === "error") { this.fail("provider_error"); return; }
-      this.lastActivity = this.now();
+      this.lastActivity = this.clock();
     });
     this.socket.on("error", () => this.fail("socket_error"));
     this.socket.on("close", (code) => {
@@ -56,10 +71,26 @@ export class MizzenAudio {
       if (!this.ended) this.fail("socket_closed", { socketCloseCode });
       else { this.closed = true; clearInterval(this.timer); this.report("closed", { socketCloseCode }); this.resolve(); }
     });
-    this.timer = setInterval(() => this.pump(), Math.min(tickMs, 20)); this.timer.unref?.();
+    // Poll faster than the 20ms catch-up floor so jitter does not repeatedly
+    // skip its narrow send windows. This is a wake-up cadence, not packet size.
+    this.timer = setInterval(() => this.pump(), Math.max(1, Math.min(tickMs / 4, 10))); this.timer.unref?.();
   }
   report(stage, extra = {}) {
     this.onProgress?.({ stage, streamId: this.id, at: this.now(), samples: this.samples, ...extra });
+  }
+  reportPacing(now) {
+    if (this.pacingStartedAt === undefined || now - this.lastPacingReportAt < 5000) return;
+    this.lastPacingReportAt = now;
+    // Numeric, cumulative counters only; these describe INPUT, not playback.
+    this.report("pacing", {
+      elapsedMs: now - this.pacingStartedAt, sentAudioMs: this.samples / 24,
+      scheduleLagMs: this.nextSendAt === undefined ? 0 : Math.max(0, now - this.nextSendAt),
+      pacingRebasedMs: this.pacingRebasedMs,
+      underrunMs: this.underrunMs + (this.underrunAt === undefined ? 0 : now - this.underrunAt),
+      maxSendGapMs: this.maxSendGapMs, maxLatenessMs: this.maxLatenessMs,
+      queuedMs: this.queue.length / 48, inflightChunks: this.inflight.size,
+      meanAckMs: this.ackCount ? this.ackTotalMs / this.ackCount : null, maxAckMs: this.ackCount ? this.maxAckMs : null,
+    });
   }
   send(data) {
     if (this.closed) return false;
@@ -111,25 +142,51 @@ export class MizzenAudio {
   }
   pump() {
     if (this.closed) return;
-    const now = this.now();
+    const now = this.clock();
     if (!this.ready && now - this.lastActivity > 10000) { this.fail("ready_timeout"); return; }
     if (this.endSent && now - this.endSentAt > 25000) { this.fail(this.ended ? "close_timeout" : "end_timeout"); return; }
     if ([...this.inflight.values()].some((item) => now - item.at > 10000)) { this.fail("ack_timeout"); return; }
     if (!this.ready || this.endSent) return;
+    this.reportPacing(now);
     if (!this.queue.length && !this.inflight.size) {
       for (const waiter of this.drainers.splice(0)) waiter.resolve();
       // One 40ms zero-PCM packet every 15s, never inserted into queued speech.
-      if (!this.ending && now - this.lastSent >= 15000) this.queue = Buffer.alloc(1920);
+      if (!this.ending && now - this.lastSentAt >= 15000) this.queue = Buffer.alloc(1920);
     }
     if (this.ending && this.queue.length % 2) { this.fail("incomplete_sample"); return; }
-    if (this.inflight.size >= this.window || now < this.nextSendAt) return;
     if (this.queue.length >= this.packetBytes || (this.ending || this.drainers.length) && this.queue.length > 0) {
+      if (this.inflight.size >= this.window) return;
+      if (this.nextSendAt === undefined) {
+        if (this.underrunAt !== undefined) { this.underrunMs += now - this.underrunAt; this.underrunAt = undefined; }
+        this.pacingOriginAt = Math.max(now, this.lastSentAt + this.lastPacketMs);
+        this.pacingOriginSample = this.samples; this.nextSendAt = this.pacingOriginAt;
+      }
+      if (now < this.nextSendAt || now < this.lastSentAt + this.lastPacketMs / 2) return;
+      const lateness = now - this.nextSendAt;
+      this.maxLatenessMs = Math.max(this.maxLatenessMs, lateness);
+      // Recover ordinary timer jitter, but never bank seconds of catch-up after
+      // a blocked event loop/ACK window. Retain at most one second of debt so
+      // ordinary 100-200ms GC/OS pauses can recover instead of becoming drift;
+      // one packet per pump, with a >=half-packet inter-send gap (<=2x rate).
+      const maxDebtMs = 25 * this.tickMs;
+      if (lateness > maxDebtMs) {
+        const shift = lateness - maxDebtMs;
+        this.pacingOriginAt += shift; this.pacingRebasedMs += shift;
+      }
       const bytes = this.queue.subarray(0, Math.min(this.packetBytes, this.queue.length));
       const count = bytes.length / 2;
       if (this.samples + count > 7920000) { this.fail("sample_limit"); return; }
       if (!this.send({ type: "audio.chunk", stream_id: this.id, seq: this.seq, sample_offset: this.samples,
         sample_count: count, data: bytes.toString("base64") })) return;
-      this.samples += count; this.inflight.set(this.seq++, { samples: this.samples, at: now });
+      // The process can be preempted inside pump/send. A fresh timestamp after
+      // the write enforces the next minimum gap against the actual send, not a
+      // stale callback-entry timestamp. Initial/restarted audio anchors here.
+      const sentAt = this.clock();
+      if (this.samples === this.pacingOriginSample) this.pacingOriginAt = Math.max(this.pacingOriginAt, sentAt);
+      this.maxLatenessMs = Math.max(this.maxLatenessMs, sentAt - this.nextSendAt);
+      if (this.pacingStartedAt === undefined) { this.pacingStartedAt = sentAt; this.lastPacingReportAt = sentAt; }
+      else this.maxSendGapMs = Math.max(this.maxSendGapMs, sentAt - this.lastSentAt);
+      this.samples += count; this.inflight.set(this.seq++, { samples: this.samples, at: sentAt });
       if (!this.reportedFirstPcm && this.firstQueuedSample !== undefined && this.samples > this.firstQueuedSample) {
         this.reportedFirstPcm = true; this.report("first_pcm_sent");
       }
@@ -137,18 +194,27 @@ export class MizzenAudio {
         for (const [flag, boundary, stage] of [["speechSent", waiter.speechEnd, "speech_tail_sent"], ["tailSent", waiter.tailEnd, "silence_tail_sent"]]) {
           if (waiter.onProgress && !waiter[flag] && this.samples >= boundary) {
             waiter[flag] = true;
-            waiter.onProgress({ stage, at: now, samples: this.samples, seq: this.seq - 1 });
+            waiter.onProgress({ stage, at: this.now(), samples: this.samples, seq: this.seq - 1 });
           }
         }
       }
       this.queue = this.queue.subarray(bytes.length);
-      this.nextSendAt = now + count / 24 * (this.tickMs / 40);
-      this.lastActivity = now;
-      this.lastSent = now;
+      // Absolute sample clock: a late callback must not shift every later one.
+      this.nextSendAt = this.pacingOriginAt + (this.samples - this.pacingOriginSample) / 24 * (this.tickMs / 40);
+      this.lastActivity = sentAt;
+      this.lastPacketMs = count / 24 * (this.tickMs / 40);
+      this.lastSentAt = sentAt; this.lastSent = this.now();
     } else if (this.ending && !this.inflight.size) {
+      // Catch-up cannot shorten the final packet's duration before audio.end.
+      if (now < this.lastSentAt + this.lastPacketMs) return;
       this.endSent = true; this.endSentAt = now; this.lastActivity = now;
       if (!this.send({ type: "audio.end", stream_id: this.id, total_samples: this.samples })) return;
       this.report("end_sent", { afterLastAckMs: this.lastAckAt == null ? null : now - this.lastAckAt });
+    } else if (!this.ending && this.nextSendAt !== undefined && now >= Math.max(this.nextSendAt, this.lastSentAt + this.lastPacketMs)) {
+      // A real TTS gap is not scheduling debt. Do not reset just because the
+      // queue emptied after a send: PCM may still arrive before its deadline.
+      this.underrunAt = Math.max(this.nextSendAt, this.lastSentAt + this.lastPacketMs);
+      this.nextSendAt = undefined;
     }
   }
   fail(reason, extra = {}, stage = "interrupted") {
@@ -156,7 +222,7 @@ export class MizzenAudio {
     this.closed = true; clearInterval(this.timer);
     // Snapshot before discarding PCM. Never log raw WS errors/reasons, messages,
     // audio, URLs or credentials: only fixed reason codes and numeric counters.
-    const at = this.now();
+    const at = this.clock();
     const phase = !this.ready ? "waiting_ready" : this.ended ? "waiting_close" : this.endSent ? "waiting_end"
       : this.ending && !this.queue.length ? "waiting_ack" : "streaming";
     this.report(stage, {
